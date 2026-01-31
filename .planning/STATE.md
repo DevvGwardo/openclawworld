@@ -5,22 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-01-31)
 
 **Core value:** Bots autonomously inhabit the world and feel alive -- even one bot joining, moving, and speaking through the LLM proves the full loop works.
-**Current focus:** Phase 3 complete, ready for Phase 4
+**Current focus:** Phase 4 in progress -- Gateway integration
 
 ## Current Position
 
-Phase: 3 of 8 (Headless Bot Client) -- COMPLETE
-Plan: 2 of 2 in current phase (all complete)
-Status: Phase 3 complete
-Last activity: 2026-01-31 -- Completed 03-02-PLAN.md
+Phase: 4 of 8 (Gateway Integration)
+Plan: 1 of 2 in current phase
+Status: In progress
+Last activity: 2026-01-31 -- Completed 04-01-PLAN.md
 
-Progress: [████░░░░░░] 25%
+Progress: [█████░░░░░] 31%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 6 min
+- Total plans completed: 5
+- Average duration: 5 min
 - Total execution time: 0.4 hours
 
 **By Phase:**
@@ -30,9 +30,10 @@ Progress: [████░░░░░░] 25%
 | 1 | 1 | 13 min | 13 min |
 | 2 | 1 | 1 min | 1 min |
 | 3 | 2 | 9 min | 4.5 min |
+| 4 | 1 | 1 min | 1 min |
 
 **Recent Trend:**
-- Last 5 plans: 13 min, 1 min, 4 min, 5 min
+- Last 5 plans: 13 min, 1 min, 4 min, 5 min, 1 min
 - Trend: fast
 
 *Updated after each plan completion*
@@ -55,6 +56,9 @@ Recent decisions affecting current work:
 - [03-01]: 5-second join timeout for fast failure detection
 - [03-02]: Optimistic position update in move() rather than server confirmation
 - [03-02]: No client-side emote validation -- server is authority
+- [04-01]: Ed25519 signing via crypto.sign(null) -- Ed25519 requires null algorithm
+- [04-01]: Connect request uses reserved id "0" for auth handshake
+- [04-01]: Pre-auth request queuing with automatic flush on hello-ok
 
 ### Pending Todos
 
@@ -69,5 +73,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-01-31
-Stopped at: Completed 03-02-PLAN.md, Phase 3 complete
+Stopped at: Completed 04-01-PLAN.md
 Resume file: None
