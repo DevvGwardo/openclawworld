@@ -126,6 +126,41 @@ export class BotClient extends EventEmitter {
     this.characters = [];
   }
 
+  move(toGridPos) {
+    if (this.position === null) {
+      throw new Error("Cannot move: not in a room");
+    }
+    if (!Array.isArray(toGridPos) || toGridPos.length !== 2) {
+      throw new Error("Invalid target: must be [x, y] array");
+    }
+    this.socket.emit("move", this.position, toGridPos);
+    this.position = toGridPos;
+  }
+
+  say(message) {
+    if (!this.socket || !this.id) {
+      throw new Error("Cannot say: not connected or not in a room");
+    }
+    if (typeof message !== "string" || message.length === 0) {
+      throw new Error("Message must be a non-empty string");
+    }
+    this.socket.emit("chatMessage", message);
+  }
+
+  emote(emoteName) {
+    if (!this.socket || !this.room) {
+      throw new Error("Cannot emote: not in a room");
+    }
+    this.socket.emit("emote:play", emoteName);
+  }
+
+  dance() {
+    if (!this.socket || !this.room) {
+      throw new Error("Cannot dance: not in a room");
+    }
+    this.socket.emit("dance");
+  }
+
   disconnect() {
     if (this.socket) {
       this.socket.disconnect();
