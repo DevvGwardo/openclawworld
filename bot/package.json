@@ -1,0 +1,13 @@
+{
+  "name": "openclawworld-bot",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.7.2"
+  }
+}
