@@ -44,11 +44,10 @@ Plans:
   1. A character can be created with an `isBot: true` flag that persists in the room's character data
   2. Server handles emote events (wave, sit, nod) beyond the existing dance, and other connected clients receive them
   3. A GET request to the health endpoint returns JSON status of the game server
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 02-01: Add isBot flag to character schema and emote event handlers
-- [ ] 02-02: Add health endpoint to game server
+- [ ] 02-01-PLAN.md -- Add isBot flag, emote:play handler, and /health endpoint to server/index.js
 
 ### Phase 3: Headless Bot Client
 **Goal**: A Node.js process can join the game room as a visible player without a browser
@@ -147,7 +146,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 (parallel with 4) -> 4 -> 5 -> 6 ->
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Base Setup | 1/1 | Complete | 2026-01-31 |
-| 2. Server Modifications | 0/2 | Not started | - |
+| 2. Server Modifications | 0/1 | Not started | - |
 | 3. Headless Bot Client | 0/2 | Not started | - |
 | 4. Gateway Integration | 0/2 | Not started | - |
 | 5. Bot Bridge | 0/3 | Not started | - |
