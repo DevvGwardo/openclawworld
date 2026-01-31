@@ -72,11 +72,11 @@ Plans:
   1. WebSocket connection to Gateway completes challenge-based authentication handshake
   2. A hardcoded perception string sent to the Gateway returns a parseable action JSON from the LLM
   3. Gateway connection automatically reconnects and re-authenticates after a dropped connection
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 04-01: Gateway WebSocket client with challenge auth and request/response correlation
-- [ ] 04-02: Reconnection logic and connection health monitoring
+- [ ] 04-01-PLAN.md -- DeviceIdentity module (Ed25519 keypair) and GatewayClient with challenge auth and agent RPC
+- [ ] 04-02-PLAN.md -- Reconnection with exponential backoff, heartbeat monitoring, and integration test script
 
 ### Phase 5: Bot Bridge
 **Goal**: One bot autonomously perceives the world, decides via LLM, and acts in the game room
