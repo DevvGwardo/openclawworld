@@ -5,22 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-01-31)
 
 **Core value:** Bots autonomously inhabit the world and feel alive -- even one bot joining, moving, and speaking through the LLM proves the full loop works.
-**Current focus:** Phase 4 in progress -- Gateway integration
+**Current focus:** Phase 4 complete -- ready for Phase 5 (Bot Bridge)
 
 ## Current Position
 
 Phase: 4 of 8 (Gateway Integration)
-Plan: 1 of 2 in current phase
-Status: In progress
-Last activity: 2026-01-31 -- Completed 04-01-PLAN.md
+Plan: 2 of 2 in current phase
+Status: Phase complete
+Last activity: 2026-01-31 -- Completed 04-02-PLAN.md
 
-Progress: [█████░░░░░] 31%
+Progress: [██████░░░░] 38%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
-- Average duration: 5 min
+- Total plans completed: 6
+- Average duration: 4 min
 - Total execution time: 0.4 hours
 
 **By Phase:**
@@ -30,10 +30,10 @@ Progress: [█████░░░░░] 31%
 | 1 | 1 | 13 min | 13 min |
 | 2 | 1 | 1 min | 1 min |
 | 3 | 2 | 9 min | 4.5 min |
-| 4 | 1 | 1 min | 1 min |
+| 4 | 2 | 2 min | 1 min |
 
 **Recent Trend:**
-- Last 5 plans: 13 min, 1 min, 4 min, 5 min, 1 min
+- Last 5 plans: 1 min, 4 min, 5 min, 1 min, 1 min
 - Trend: fast
 
 *Updated after each plan completion*
@@ -59,6 +59,9 @@ Recent decisions affecting current work:
 - [04-01]: Ed25519 signing via crypto.sign(null) -- Ed25519 requires null algorithm
 - [04-01]: Connect request uses reserved id "0" for auth handshake
 - [04-01]: Pre-auth request queuing with automatic flush on hello-ok
+- [04-02]: Reconnect promise resolves immediately for reconnects (event-driven, not caller-blocking)
+- [04-02]: Heartbeat interval configurable via constructor (default 15s)
+- [04-02]: 20% jitter on backoff delay to prevent thundering herd
 
 ### Pending Todos
 
@@ -66,12 +69,11 @@ None yet.
 
 ### Blockers/Concerns
 
-- Phase 4 (Gateway): Exact LLM method names on Gateway API need verification during planning
 - Phase 5 (Bot Bridge): Perception serialization token budget TBD during implementation
 - Phase 7 (Bot Character): Emotional state modeling approach TBD (simple vector vs discrete states)
 
 ## Session Continuity
 
 Last session: 2026-01-31
-Stopped at: Completed 04-01-PLAN.md
+Stopped at: Completed 04-02-PLAN.md (Phase 4 complete)
 Resume file: None
