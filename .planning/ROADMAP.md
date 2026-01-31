@@ -58,11 +58,11 @@ Plans:
   2. The headless bot can be commanded (via code) to move to a grid position and the browser shows the avatar walking there
   3. The headless bot can emit a chat message that appears in the browser client
   4. Disconnecting the Node.js process removes the avatar from the browser scene
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 03-01: BotClient class with socket.io-client connecting to game server
-- [ ] 03-02: Action methods (move, say, emote) and connection lifecycle
+- [ ] 03-01-PLAN.md -- BotClient class with socket.io-client, connect/join lifecycle, package setup
+- [ ] 03-02-PLAN.md -- Action methods (move, say, emote), entry point, and live verification
 
 ### Phase 4: Gateway Integration
 **Goal**: Bot Bridge can send prompts to an LLM via OpenClaw Gateway and receive structured responses
