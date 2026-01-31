@@ -1,7 +1,7 @@
 # Requirements: OpenClaw World
 
 **Defined:** 2026-01-31
-**Core Value:** Bots autonomously inhabit the world and feel alive — even one bot joining, moving, and speaking through the LLM proves the full loop works.
+**Core Value:** Bots autonomously inhabit the world and feel alive -- even one bot joining, moving, and speaking through the LLM proves the full loop works.
 
 ## v1 Requirements
 
@@ -21,7 +21,7 @@
 - [ ] **CORE-06**: LLM decision request sent via Gateway, action response received and parsed
 - [ ] **CORE-07**: Action validation via Zod discriminated union schema before execution
 - [ ] **CORE-08**: Rate limiting per bot (token bucket: 3 actions/sec burst, 1 action/sec refill)
-- [ ] **CORE-09**: Bot session lifecycle: spawn → active → idle → disconnect → cleanup
+- [ ] **CORE-09**: Bot session lifecycle: spawn -> active -> idle -> disconnect -> cleanup
 
 ### Bot Actions
 
@@ -88,7 +88,7 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SETUP-01 | Phase 1 | Pending |
+| SETUP-01 | Phase 1 | Complete |
 | SETUP-02 | Phase 2 | Pending |
 | SETUP-03 | Phase 2 | Pending |
 | CORE-01 | Phase 3 | Pending |
@@ -111,7 +111,7 @@
 | CHAR-04 | Phase 7 | Pending |
 | UI-01 | Phase 6 | Pending |
 | UI-02 | Phase 6 | Pending |
-| INFRA-01 | Phase 8 | Pending |
+| INFRA-01 | Phase 2 | Pending |
 | INFRA-02 | Phase 5 | Pending |
 | INFRA-03 | Phase 8 | Pending |
 | INFRA-04 | Phase 8 | Pending |
@@ -119,8 +119,8 @@
 **Coverage:**
 - v1 requirements: 25 total
 - Mapped to phases: 25
-- Unmapped: 0 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-01-31*
-*Last updated: 2026-01-31 after initial definition*
+*Last updated: 2026-01-31 after roadmap creation*

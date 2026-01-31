@@ -12,7 +12,7 @@ OpenClaw World transforms a Sims-style R3F multiplayer template into a living bo
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Base Setup** - Clone, run, and verify the existing R3F Sims multiplayer template
+- [x] **Phase 1: Base Setup** - Clone, run, and verify the existing R3F Sims multiplayer template
 - [ ] **Phase 2: Server Modifications** - Make game server bot-aware with isBot flag, emotes, and health endpoint
 - [ ] **Phase 3: Headless Bot Client** - Bot connects to game server as a first-class player via socket.io-client
 - [ ] **Phase 4: Gateway Integration** - Connect to OpenClaw Gateway via WebSocket with challenge auth
@@ -34,7 +34,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 1 plan
 
 Plans:
-- [ ] 01-01-PLAN.md -- Clone repo, install deps, start server + client, verify multiplayer (presence, movement, chat)
+- [x] 01-01-PLAN.md -- Clone repo, install deps, start server + client, verify multiplayer (presence, movement, chat)
 
 ### Phase 2: Server Modifications
 **Goal**: Game server supports bot-specific data and expanded interaction events
@@ -146,7 +146,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 (parallel with 4) -> 4 -> 5 -> 6 ->
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Base Setup | 0/1 | Not started | - |
+| 1. Base Setup | 1/1 | Complete | 2026-01-31 |
 | 2. Server Modifications | 0/2 | Not started | - |
 | 3. Headless Bot Client | 0/2 | Not started | - |
 | 4. Gateway Integration | 0/2 | Not started | - |
