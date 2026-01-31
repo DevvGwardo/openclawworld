@@ -9,7 +9,8 @@ import {
 
 /**
  * WebSocket client for the OpenClaw Gateway.
- * Handles challenge-based Ed25519 auth handshake and request/response RPC.
+ * Handles challenge-based Ed25519 auth handshake, request/response RPC,
+ * automatic reconnection with exponential backoff, and ping/pong heartbeat.
  */
 export class GatewayClient extends EventEmitter {
   /**
@@ -17,6 +18,7 @@ export class GatewayClient extends EventEmitter {
    * @param {string} [options.url] - Gateway WebSocket URL
    * @param {string} [options.token] - Auth token
    * @param {string} [options.identityPath] - Path to .device-keys.json
+   * @param {number} [options.heartbeatIntervalMs=15000] - Heartbeat ping interval
    */
   constructor(options = {}) {
     super();
@@ -32,6 +34,23 @@ export class GatewayClient extends EventEmitter {
     this._ws = null;
     this._connectPromise = null;
 
+    // Reconnection state
+    this._reconnectAttempt = 0;
+    this._maxReconnectAttempts = 10;
+    this._autoReconnect = true;
+    this._reconnectTimer = null;
+    this._backoff = {
+      initial: 1000,
+      max: 30000,
+      factor: 2,
+      jitter: 0.2, // 0-20% random jitter
+    };
+
+    // Heartbeat state
+    this._alive = false;
+    this._heartbeatInterval = null;
+    this._heartbeatIntervalMs = options.heartbeatIntervalMs ?? 15000;
+
     this._identity = loadOrCreateIdentity(this._identityPath);
   }
 
@@ -45,13 +64,25 @@ export class GatewayClient extends EventEmitter {
    * @returns {Promise<void>} Resolves when hello-ok is received.
    */
   connect() {
+    // Re-enable auto-reconnect for fresh connections
+    this._autoReconnect = true;
+
+    // If already connecting/connected, return existing promise
     if (this._state !== "disconnected") {
       return this._connectPromise ?? Promise.resolve();
     }
 
+    // Clean up previous WebSocket if exists
+    this._cleanupWs();
+
+    const isReconnect = this._reconnectAttempt > 0;
+
     this._connectPromise = new Promise((resolve, reject) => {
-      this._connectResolve = resolve;
-      this._connectReject = reject;
+      // Only store resolve/reject for initial connect (not reconnects)
+      if (!isReconnect) {
+        this._connectResolve = resolve;
+        this._connectReject = reject;
+      }
 
       this._ws = new WebSocket(this._url);
 
@@ -63,25 +94,113 @@ export class GatewayClient extends EventEmitter {
         this._handleMessage(raw);
       });
 
+      this._ws.on("pong", () => {
+        this._alive = true;
+      });
+
       this._ws.on("close", (code, reason) => {
         const wasConnecting = this._state !== "connected" && this._state !== "disconnected";
         this._state = "disconnected";
+
+        // Clear heartbeat
+        this._clearHeartbeat();
+
+        // Reject all pending requests so callers do not hang
         this._rejectAllPending("WebSocket closed");
+
         this.emit("disconnected", { code, reason: reason?.toString() });
-        if (wasConnecting) {
+
+        if (wasConnecting && !isReconnect) {
           reject(new Error(`WebSocket closed during auth (code ${code})`));
+        }
+
+        // Auto-reconnect on non-intentional close
+        if (code !== 1000 && this._autoReconnect) {
+          this._scheduleReconnect();
         }
       });
 
       this._ws.on("error", (err) => {
         this.emit("error", err);
-        if (this._state !== "connected") {
+        if (this._state !== "connected" && !isReconnect) {
           reject(err);
         }
       });
+
+      // For reconnects, resolve immediately (the reconnect flow is event-driven)
+      if (isReconnect) {
+        resolve();
+      }
     });
 
     return this._connectPromise;
+  }
+
+  /**
+   * Remove listeners and terminate previous WebSocket if still open.
+   */
+  _cleanupWs() {
+    if (this._ws) {
+      this._ws.removeAllListeners();
+      if (this._ws.readyState === WebSocket.OPEN || this._ws.readyState === WebSocket.CONNECTING) {
+        this._ws.terminate();
+      }
+      this._ws = null;
+    }
+  }
+
+  /**
+   * Schedule a reconnection attempt with exponential backoff.
+   */
+  _scheduleReconnect() {
+    if (!this._autoReconnect) return;
+
+    if (this._reconnectAttempt >= this._maxReconnectAttempts) {
+      this.emit("reconnectFailed");
+      return;
+    }
+
+    const { initial, max, factor, jitter } = this._backoff;
+    const baseDelay = Math.min(initial * Math.pow(factor, this._reconnectAttempt), max);
+    const jitterMs = Math.floor(baseDelay * jitter * Math.random());
+    const delay = baseDelay + jitterMs;
+
+    this._reconnectAttempt++;
+    this.emit("reconnecting", { attempt: this._reconnectAttempt, delay });
+
+    this._reconnectTimer = setTimeout(() => {
+      this._reconnectTimer = null;
+      this.connect();
+    }, delay);
+  }
+
+  /**
+   * Start the ping/pong heartbeat interval.
+   * Called after successful authentication (hello-ok).
+   */
+  _startHeartbeat() {
+    this._clearHeartbeat();
+    this._alive = true;
+
+    this._heartbeatInterval = setInterval(() => {
+      if (!this._alive) {
+        // Peer did not respond to last ping -- connection is stale
+        this._ws.terminate(); // triggers close event -> reconnect
+        return;
+      }
+      this._alive = false;
+      this._ws.ping();
+    }, this._heartbeatIntervalMs);
+  }
+
+  /**
+   * Clear the heartbeat interval.
+   */
+  _clearHeartbeat() {
+    if (this._heartbeatInterval) {
+      clearInterval(this._heartbeatInterval);
+      this._heartbeatInterval = null;
+    }
   }
 
   /**
@@ -114,7 +233,14 @@ export class GatewayClient extends EventEmitter {
               saveDeviceToken(this._identityPath, this._identity);
             }
             this._state = "connected";
-            this.emit("connected");
+
+            // Reset reconnect counter on successful auth
+            this._reconnectAttempt = 0;
+
+            // Start heartbeat monitoring
+            this._startHeartbeat();
+
+            this.emit("connected", msg.payload);
             this._flushQueue();
             this._connectResolve?.();
           } else {
@@ -262,13 +388,27 @@ export class GatewayClient extends EventEmitter {
 
   /**
    * Gracefully disconnect from the Gateway.
+   * Disables auto-reconnect before closing to prevent reconnection loops.
    */
   disconnect() {
+    this._autoReconnect = false;
+
+    // Cancel any scheduled reconnect
+    if (this._reconnectTimer) {
+      clearTimeout(this._reconnectTimer);
+      this._reconnectTimer = null;
+    }
+
+    // Clear heartbeat
+    this._clearHeartbeat();
+
     if (this._ws && this._ws.readyState === WebSocket.OPEN) {
       this._ws.close(1000);
     }
+
     this._state = "disconnected";
     this._rejectAllPending("Client disconnected");
+    this._reconnectAttempt = 0;
   }
 
   /**
