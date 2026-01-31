@@ -1,0 +1,14 @@
+{
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon index.js --ignore '*.json'",
+    "start": "NODE_ENV=production node index.js"
+  },
+  "dependencies": {
+    "pathfinding": "^0.4.18",
+    "socket.io": "^4.7.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
