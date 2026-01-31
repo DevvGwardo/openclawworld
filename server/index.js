@@ -1,15 +1,44 @@
 import fs from "fs";
+import http from "http";
 import pathfinding from "pathfinding";
 import { Server } from "socket.io";
 
 const origin = process.env.CLIENT_URL || "http://localhost:5173";
-const io = new Server({
-  cors: {
-    origin,
-  },
+
+const ALLOWED_EMOTES = ["dance", "wave", "sit", "nod"];
+
+const httpServer = http.createServer((req, res) => {
+  if (req.method === "GET" && req.url === "/health") {
+    const health = {
+      status: "ok",
+      uptime: Math.floor(process.uptime()),
+      timestamp: new Date().toISOString(),
+      rooms: rooms.map((r) => ({
+        id: r.id,
+        name: r.name,
+        players: r.characters.length,
+        bots: r.characters.filter((c) => c.isBot).length,
+      })),
+      totalPlayers: rooms.reduce((sum, r) => sum + r.characters.length, 0),
+      totalBots: rooms.reduce(
+        (sum, r) => sum + r.characters.filter((c) => c.isBot).length,
+        0
+      ),
+    };
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(health));
+    return;
+  }
+  // Non-health requests: return 404 (Socket.IO attaches its own listener)
+  res.writeHead(404);
+  res.end();
 });
 
-io.listen(3000);
+const io = new Server(httpServer, {
+  cors: { origin },
+});
+
+httpServer.listen(3000);
 
 console.log("Server started on port 3000, allowed cors origin: " + origin);
 
@@ -129,6 +158,8 @@ io.on("connection", (socket) => {
         session: parseInt(Math.random() * 1000),
         position: generateRandomPosition(room),
         avatarUrl: opts.avatarUrl,
+        isBot: opts.isBot === true,
+        name: opts.name || null,
       };
       room.characters.push(character);
 
@@ -187,6 +218,16 @@ io.on("connection", (socket) => {
     socket.on("dance", () => {
       io.to(room.id).emit("playerDance", {
         id: socket.id,
+      });
+    });
+
+    socket.on("emote:play", (emoteName) => {
+      if (!room) return;
+      if (typeof emoteName !== "string") return;
+      if (!ALLOWED_EMOTES.includes(emoteName)) return;
+      io.to(room.id).emit("emote:play", {
+        id: socket.id,
+        emote: emoteName,
       });
     });
 
