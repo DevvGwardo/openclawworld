@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Base Setup** - Clone, run, and verify the existing R3F Sims multiplayer template
 - [x] **Phase 2: Server Modifications** - Make game server bot-aware with isBot flag, emotes, and health endpoint
-- [ ] **Phase 3: Headless Bot Client** - Bot connects to game server as a first-class player via socket.io-client
+- [x] **Phase 3: Headless Bot Client** - Bot connects to game server as a first-class player via socket.io-client
 - [ ] **Phase 4: Gateway Integration** - Connect to OpenClaw Gateway via WebSocket with challenge auth
 - [ ] **Phase 5: Bot Bridge** - Wire perception-decision-action loop with validation and rate limiting
 - [ ] **Phase 6: Client UI** - Chat bubbles and chat log visible in the 3D scene
@@ -61,8 +61,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 03-01-PLAN.md -- BotClient class with socket.io-client, connect/join lifecycle, package setup
-- [ ] 03-02-PLAN.md -- Action methods (move, say, emote), entry point, and live verification
+- [x] 03-01-PLAN.md -- BotClient class with socket.io-client, connect/join lifecycle, package setup
+- [x] 03-02-PLAN.md -- Action methods (move, say, emote), entry point, and live verification
 
 ### Phase 4: Gateway Integration
 **Goal**: Bot Bridge can send prompts to an LLM via OpenClaw Gateway and receive structured responses
@@ -147,7 +147,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 (parallel with 4) -> 4 -> 5 -> 6 ->
 |-------|----------------|--------|-----------|
 | 1. Base Setup | 1/1 | Complete | 2026-01-31 |
 | 2. Server Modifications | 1/1 | Complete | 2026-01-31 |
-| 3. Headless Bot Client | 0/2 | Not started | - |
+| 3. Headless Bot Client | 2/2 | Complete | 2026-01-31 |
 | 4. Gateway Integration | 0/2 | Not started | - |
 | 5. Bot Bridge | 0/3 | Not started | - |
 | 6. Client UI | 0/2 | Not started | - |

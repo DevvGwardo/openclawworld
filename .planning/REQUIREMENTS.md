@@ -13,8 +13,8 @@
 
 ### Bot Core
 
-- [ ] **CORE-01**: Headless bot connects to game server via socket.io-client from Node.js
-- [ ] **CORE-02**: Bot joins a room and appears as a character with an avatar
+- [x] **CORE-01**: Headless bot connects to game server via socket.io-client from Node.js
+- [x] **CORE-02**: Bot joins a room and appears as a character with an avatar
 - [ ] **CORE-03**: Perception loop reads world state at 2-4 Hz (positions, chat, objects, events)
 - [ ] **CORE-04**: Perception serialized to concise text for LLM prompt (~500 tokens max)
 - [ ] **CORE-05**: OpenClaw Gateway WebSocket connection with challenge-based auth (connect.challenge handshake)
@@ -91,8 +91,8 @@
 | SETUP-01 | Phase 1 | Complete |
 | SETUP-02 | Phase 2 | Complete |
 | SETUP-03 | Phase 2 | Complete |
-| CORE-01 | Phase 3 | Pending |
-| CORE-02 | Phase 3 | Pending |
+| CORE-01 | Phase 3 | Complete |
+| CORE-02 | Phase 3 | Complete |
 | CORE-03 | Phase 5 | Pending |
 | CORE-04 | Phase 5 | Pending |
 | CORE-05 | Phase 4 | Pending |
