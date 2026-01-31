@@ -8,8 +8,8 @@
 ### Base Setup
 
 - [ ] **SETUP-01**: Clone and run base R3F Sims repo (client + server) with multiplayer verified
-- [ ] **SETUP-02**: Game server supports `isBot` flag on character data
-- [ ] **SETUP-03**: Game server handles emote events beyond existing dance (wave, sit, nod)
+- [x] **SETUP-02**: Game server supports `isBot` flag on character data
+- [x] **SETUP-03**: Game server handles emote events beyond existing dance (wave, sit, nod)
 
 ### Bot Core
 
@@ -45,7 +45,7 @@
 
 ### Infrastructure
 
-- [ ] **INFRA-01**: Health endpoint returns status of game server, Gateway connection, and active bots
+- [x] **INFRA-01**: Health endpoint returns status of game server, Gateway connection, and active bots
 - [ ] **INFRA-02**: Structured JSON logging with Pino (bot decisions, actions, errors, latency)
 - [ ] **INFRA-03**: Deploy on Railway (game server + OpenClaw Gateway + Bot Bridge colocated)
 - [ ] **INFRA-04**: Graceful shutdown on SIGTERM (disconnect all bots, close Gateway WS, clean up sessions)
@@ -89,8 +89,8 @@
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | SETUP-01 | Phase 1 | Complete |
-| SETUP-02 | Phase 2 | Pending |
-| SETUP-03 | Phase 2 | Pending |
+| SETUP-02 | Phase 2 | Complete |
+| SETUP-03 | Phase 2 | Complete |
 | CORE-01 | Phase 3 | Pending |
 | CORE-02 | Phase 3 | Pending |
 | CORE-03 | Phase 5 | Pending |
@@ -111,7 +111,7 @@
 | CHAR-04 | Phase 7 | Pending |
 | UI-01 | Phase 6 | Pending |
 | UI-02 | Phase 6 | Pending |
-| INFRA-01 | Phase 2 | Pending |
+| INFRA-01 | Phase 2 | Complete |
 | INFRA-02 | Phase 5 | Pending |
 | INFRA-03 | Phase 8 | Pending |
 | INFRA-04 | Phase 8 | Pending |
