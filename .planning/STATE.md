@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-31)
 
 **Core value:** Bots autonomously inhabit the world and feel alive -- even one bot joining, moving, and speaking through the LLM proves the full loop works.
-**Current focus:** Phase 2 - Server Modifications
+**Current focus:** Phase 3 - Headless Bot Client
 
 ## Current Position
 
-Phase: 2 of 8 (Server Modifications)
-Plan: 1 of 1 in current phase
-Status: Phase complete
-Last activity: 2026-01-31 -- Completed 02-01-PLAN.md
+Phase: 3 of 8 (Headless Bot Client)
+Plan: 1 of ? in current phase
+Status: In progress
+Last activity: 2026-01-31 -- Completed 03-01-PLAN.md
 
-Progress: [██░░░░░░░░] 12%
+Progress: [███░░░░░░░] 18%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: 7 min
-- Total execution time: 0.2 hours
+- Total plans completed: 3
+- Average duration: 6 min
+- Total execution time: 0.3 hours
 
 **By Phase:**
 
@@ -29,10 +29,11 @@ Progress: [██░░░░░░░░] 12%
 |-------|-------|-------|----------|
 | 1 | 1 | 13 min | 13 min |
 | 2 | 1 | 1 min | 1 min |
+| 3 | 1 | 4 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 13 min, 1 min
-- Trend: improving
+- Last 5 plans: 13 min, 1 min, 4 min
+- Trend: fast
 
 *Updated after each plan completion*
 
@@ -49,6 +50,9 @@ Recent decisions affecting current work:
 - [02-01]: ALLOWED_EMOTES array-based validation for emote:play events
 - [02-01]: http.createServer callback approach for health endpoint (not separate .on("request"))
 - [02-01]: Legacy dance handler kept for backward compatibility (migration in Phase 6)
+- [03-01]: BotClient extends EventEmitter for event forwarding from socket to consumer
+- [03-01]: websocket-only transport to bypass CORS (no HTTP polling fallback)
+- [03-01]: 5-second join timeout for fast failure detection
 
 ### Pending Todos
 
@@ -63,5 +67,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-01-31
-Stopped at: Completed 02-01-PLAN.md, Phase 2 complete
+Stopped at: Completed 03-01-PLAN.md, Phase 3 in progress
 Resume file: None
