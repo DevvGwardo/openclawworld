@@ -201,8 +201,8 @@ export const Avatar = memo(function Avatar({
       {(showHtml || id === user) && (
         <Html position-y={2} center distanceFactor={8} style={{ overflow: 'visible' }}>
           <div className="w-60 max-w-full pointer-events-none overflow-visible">
-            {/* Action status indicator */}
-            {actionStatus && !showChatBubble && (
+            {/* Action status indicator — hidden for bots to reduce visual noise */}
+            {actionStatus && !showChatBubble && !isBot && (
               <div
                 className={`text-center mb-1 p-1.5 px-3 rounded-lg border transition-opacity duration-300 ${
                   actionStatus.action === "thinking"
