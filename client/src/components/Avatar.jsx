@@ -23,6 +23,7 @@ export function Avatar({
   ...props
 }) {
   const [chatMessage, setChatMessage] = useState("");
+  const [actionStatus, setActionStatus] = useState(null); // { action, detail }
   const position = useMemo(() => props.position, []);
 
   const avatar = useRef();
@@ -99,13 +100,25 @@ export function Avatar({
       }
     }
 
+    function onPlayerAction(value) {
+      if (value.id === id) {
+        if (value.action === null) {
+          setActionStatus(null);
+        } else {
+          setActionStatus({ action: value.action, detail: value.detail });
+        }
+      }
+    }
+
     socket.on("playerMove", onPlayerMove);
     socket.on("playerDance", onPlayerDance);
     socket.on("playerChatMessage", onPlayerChatMessage);
+    socket.on("playerAction", onPlayerAction);
     return () => {
       socket.off("playerDance", onPlayerDance);
       socket.off("playerMove", onPlayerMove);
       socket.off("playerChatMessage", onPlayerChatMessage);
+      socket.off("playerAction", onPlayerAction);
     };
   }, [id]);
 
@@ -145,6 +158,32 @@ export function Avatar({
     >
       <Html position-y={2} center distanceFactor={8} style={{ overflow: 'visible' }}>
         <div className="w-60 max-w-full pointer-events-none overflow-visible">
+          {/* Action status indicator */}
+          {actionStatus && !showChatBubble && (
+            <div
+              className={`text-center mb-1 p-1.5 px-3 rounded-lg border transition-opacity duration-300 ${
+                actionStatus.action === "thinking"
+                  ? "bg-yellow-100/60 border-yellow-300/40 backdrop-blur-sm"
+                  : actionStatus.action === "building"
+                  ? "bg-orange-100/60 border-orange-300/40 backdrop-blur-sm"
+                  : actionStatus.action === "done"
+                  ? "bg-green-100/60 border-green-300/40 backdrop-blur-sm"
+                  : "bg-blue-100/60 border-blue-300/40 backdrop-blur-sm"
+              }`}
+            >
+              <p className="text-xs text-gray-700 leading-snug whitespace-nowrap">
+                {actionStatus.action === "thinking" && "🤔 "}
+                {actionStatus.action === "building" && "🔨 "}
+                {actionStatus.action === "done" && "✅ "}
+                {actionStatus.action === "walking" && "🚶 "}
+                {actionStatus.action === "chatting" && "💬 "}
+                {actionStatus.action === "dancing" && "💃 "}
+                {actionStatus.action === "emoting" && "😊 "}
+                {actionStatus.detail}
+              </p>
+            </div>
+          )}
+          {/* Chat bubble */}
           <div
             className={`text-center break-words p-2 px-4 rounded-xl bg-white/40 backdrop-blur-sm border border-white/20 transition-opacity duration-500 ${
               showChatBubble ? "opacity-100" : "opacity-0"

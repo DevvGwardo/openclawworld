@@ -46,7 +46,7 @@ loadBotRegistry();
 // --- Moltbook Virtual Bots: fetch posts and spawn them as live characters ---
 const MOLTBOOK_API = "https://www.moltbook.com/api/v1/posts";
 const MOLTBOOK_BOT_COUNT = 100;
-const MOLTBOOK_REFRESH_INTERVAL = 120_000; // swap 2 bots every 2 minutes
+const MOLTBOOK_REFRESH_INTERVAL = 30_000; // fetch new data & cull stale bots every 30s
 const MOLTBOOK_TICK_INTERVAL = 4_000; // bots act every 4 seconds
 
 const extractBotName = (title) => {
@@ -226,12 +226,126 @@ const tryPlaceItemInRoom = (room, itemName, area) => {
   return false;
 };
 
+// Pending build tasks for bots — tracks multi-step building flow
+const pendingBuilds = new Map(); // botId → { stage, itemName, zone, targetPos, startedAt }
+
+const THINKING_PHRASES = [
+  "Hmm, what should go here...",
+  "Let me think about this...",
+  "Looking around for ideas...",
+  "What would look good here?",
+  "Considering the layout...",
+  "Maybe something for this area...",
+  "I have an idea...",
+  "Let me figure this out...",
+];
+
+const BUILDING_PHRASES = (itemName) => {
+  const pretty = itemName.replace(/([A-Z])/g, " $1").toLowerCase().trim();
+  return [
+    `Placing a ${pretty}...`,
+    `Setting up the ${pretty}...`,
+    `This ${pretty} should work here`,
+    `Adding a ${pretty} to the room`,
+    `Let me put this ${pretty} right here`,
+  ];
+};
+
 // Bot behavior tick — each bot randomly moves, chats, or emotes
 const moltbookBotTick = (room) => {
   if (!room) return;
   const now = Date.now();
 
+  // Process pending builds first (multi-step building flow)
+  for (const [botId, build] of pendingBuilds) {
+    const bot = moltbookVirtualBots.get(botId);
+    if (!bot) { pendingBuilds.delete(botId); continue; }
+
+    if (build.stage === "thinking" && now - build.startedAt > 2500) {
+      // Stage 2: Choose item and walk toward zone
+      const zone = build.zone;
+      const needed = zone.items.filter(name => {
+        const count = room.items.filter(i => i.name === name).length;
+        if (["chair", "chairCushion", "chairModernCushion", "stoolBar", "stoolBarSquare", "plantSmall", "plant", "lampRoundFloor", "lampSquareFloor"].includes(name)) {
+          return count < 3;
+        }
+        return count < 1;
+      });
+
+      if (needed.length === 0) {
+        // Nothing to build — cancel
+        broadcastToRoom(room.id, "playerAction", { id: botId, action: null });
+        pendingBuilds.delete(botId);
+        continue;
+      }
+
+      const itemName = needed[Math.floor(Math.random() * needed.length)];
+      // Walk toward the zone center
+      const targetX = Math.floor((zone.area.x[0] + zone.area.x[1]) / 2);
+      const targetY = Math.floor((zone.area.y[0] + zone.area.y[1]) / 2);
+      const pos = bot.character.position || [0, 0];
+
+      // Clamp to grid and find walkable target near zone center
+      const maxGrid = room.size[0] * room.gridDivision - 1;
+      const tx = Math.max(0, Math.min(maxGrid, targetX));
+      const ty = Math.max(0, Math.min(maxGrid, targetY));
+
+      if (room.grid.isWalkableAt(tx, ty)) {
+        const path = findPath(room, pos, [tx, ty]);
+        if (path) {
+          bot.character.position = pos;
+          bot.character.path = path;
+          broadcastToRoom(room.id, "playerMove", bot.character);
+        }
+      }
+
+      const phrases = BUILDING_PHRASES(itemName);
+      broadcastToRoom(room.id, "playerAction", {
+        id: botId,
+        action: "building",
+        detail: phrases[Math.floor(Math.random() * phrases.length)],
+      });
+
+      build.stage = "building";
+      build.itemName = itemName;
+      build.startedAt = now;
+    } else if (build.stage === "building" && now - build.startedAt > 3000) {
+      // Stage 3: Actually place the item
+      const placed = tryPlaceItemInRoom(room, build.itemName, build.zone.area);
+      if (placed) {
+        io.to(room.id).emit("mapUpdate", {
+          map: {
+            gridDivision: room.gridDivision,
+            size: room.size,
+            items: room.items,
+          },
+          characters: room.characters,
+        });
+        fs.writeFileSync("rooms.json", JSON.stringify(rooms, null, 2));
+
+        // Brief "done" flash
+        const pretty = build.itemName.replace(/([A-Z])/g, " $1").toLowerCase().trim();
+        broadcastToRoom(room.id, "playerAction", {
+          id: botId,
+          action: "done",
+          detail: `Finished placing the ${pretty}!`,
+        });
+      }
+
+      // Clear the pending build after a short display
+      setTimeout(() => {
+        broadcastToRoom(room.id, "playerAction", { id: botId, action: null });
+      }, 2000);
+      pendingBuilds.delete(botId);
+      bot.lastAction = now;
+    }
+    // While in a build flow, skip normal actions for this bot
+  }
+
   for (const [botId, bot] of moltbookVirtualBots) {
+    // Skip bots currently in a build flow
+    if (pendingBuilds.has(botId)) continue;
+
     // Only act every 4-8 seconds per bot (stagger)
     if (now - bot.lastAction < 4000 + Math.random() * 4000) continue;
     bot.lastAction = now;
@@ -240,6 +354,7 @@ const moltbookBotTick = (room) => {
 
     if (action < 0.4) {
       // Move to a random nearby position
+      broadcastToRoom(room.id, "playerAction", { id: botId, action: "walking", detail: "Walking around..." });
       const pos = bot.character.position || [0, 0];
       const range = 8;
       const newX = Math.max(0, Math.min(room.size[0] * room.gridDivision - 1,
@@ -255,70 +370,98 @@ const moltbookBotTick = (room) => {
           broadcastToRoom(room.id, "playerMove", bot.character);
         }
       }
+      // Clear walking status after movement
+      setTimeout(() => {
+        broadcastToRoom(room.id, "playerAction", { id: botId, action: null });
+      }, 3000);
     } else if (action < 0.55) {
       // Say something from their post content
+      broadcastToRoom(room.id, "playerAction", { id: botId, action: "chatting", detail: "Typing..." });
       const content = bot.postData.content || bot.postData.title || "";
       // Pick a sentence or chunk to say
       const sentences = content.match(/[^.!?]+[.!?]*/g) || [content];
       const msg = (sentences[Math.floor(Math.random() * sentences.length)] || "").trim().slice(0, 200);
       if (msg.length > 0) {
-        broadcastToRoom(room.id, "playerChatMessage", { id: botId, message: msg });
+        setTimeout(() => {
+          broadcastToRoom(room.id, "playerChatMessage", { id: botId, message: msg });
+          broadcastToRoom(room.id, "playerAction", { id: botId, action: null });
+        }, 1000 + Math.random() * 1500);
       }
     } else if (action < 0.65) {
       // Emote
       const emote = ALLOWED_EMOTES[Math.floor(Math.random() * ALLOWED_EMOTES.length)];
+      broadcastToRoom(room.id, "playerAction", { id: botId, action: "emoting", detail: `${emote}` });
       broadcastToRoom(room.id, "emote:play", { id: botId, emote });
+      setTimeout(() => {
+        broadcastToRoom(room.id, "playerAction", { id: botId, action: null });
+      }, 2000);
     } else if (action < 0.75) {
       // Dance
+      broadcastToRoom(room.id, "playerAction", { id: botId, action: "dancing", detail: "Dancing!" });
       broadcastToRoom(room.id, "playerDance", { id: botId });
+      setTimeout(() => {
+        broadcastToRoom(room.id, "playerAction", { id: botId, action: null });
+      }, 4000);
     } else {
-      // Build — place a furniture item from a random zone
+      // Build — start multi-step building flow
       const zone = ROOM_ZONES[Math.floor(Math.random() * ROOM_ZONES.length)];
-      // Check which items from this zone are not yet placed
-      const placedNames = new Set(room.items.map(i => i.name));
+
+      // Check if there's anything to build first
       const needed = zone.items.filter(name => {
-        // Allow duplicates for chairs/stools, but limit to 2 of each
         const count = room.items.filter(i => i.name === name).length;
         if (["chair", "chairCushion", "chairModernCushion", "stoolBar", "stoolBarSquare", "plantSmall", "plant", "lampRoundFloor", "lampSquareFloor"].includes(name)) {
           return count < 3;
         }
         return count < 1;
       });
+
       if (needed.length > 0) {
-        const itemName = needed[Math.floor(Math.random() * needed.length)];
-        const placed = tryPlaceItemInRoom(room, itemName, zone.area);
-        if (placed) {
-          // Broadcast updated map
-          io.to(room.id).emit("mapUpdate", {
-            map: {
-              gridDivision: room.gridDivision,
-              size: room.size,
-              items: room.items,
-            },
-            characters: room.characters,
-          });
-          fs.writeFileSync("rooms.json", JSON.stringify(rooms, null, 2));
-        }
+        // Stage 1: Show thinking status
+        const phrase = THINKING_PHRASES[Math.floor(Math.random() * THINKING_PHRASES.length)];
+        broadcastToRoom(room.id, "playerAction", {
+          id: botId,
+          action: "thinking",
+          detail: phrase,
+        });
+        pendingBuilds.set(botId, {
+          stage: "thinking",
+          zone,
+          startedAt: now,
+        });
       }
     }
   }
 };
 
-// Refresh: swap out 2 oldest bots for new ones every cycle
-const moltbookRefresh = (room) => {
+// Refresh: fetch new posts, cull bots over 100 (oldest first), respawn to fill back to 100
+const moltbookRefresh = async (room) => {
   if (!room) return;
+
+  // Fetch fresh data from the API
+  await fetchMoltbookPosts();
+  broadcastMoltbookPosts();
+
+  // Remove stale bots if count exceeds limit (oldest first)
   const bots = [...moltbookVirtualBots.entries()].sort((a, b) => a[1].joinedAt - b[1].joinedAt);
-  const toRemove = Math.min(2, bots.length);
-  for (let i = 0; i < toRemove; i++) {
-    removeMoltbookBot(bots[i][0], room);
+  const excess = bots.length - MOLTBOOK_BOT_COUNT;
+  if (excess > 0) {
+    for (let i = 0; i < excess; i++) {
+      removeMoltbookBot(bots[i][0], room);
+    }
+    console.log(`[moltbook] Culled ${excess} stale bots`);
   }
-  // Spawn replacements
-  for (let i = 0; i < toRemove; i++) {
-    spawnMoltbookBot(room);
+
+  // Spawn replacements up to the target count
+  let spawned = 0;
+  while (moltbookVirtualBots.size < MOLTBOOK_BOT_COUNT) {
+    const bot = spawnMoltbookBot(room);
+    if (!bot) break; // no more available posts
+    spawned++;
   }
+
   // Broadcast updated character list
   io.to(room.id).emit("characters", room.characters);
-  console.log(`[moltbook] Refreshed ${toRemove} bots (active: ${moltbookVirtualBots.size})`);
+  console.log(`[moltbook] Refresh complete — spawned ${spawned}, active: ${moltbookVirtualBots.size}`);
 };
 
 // Initialize moltbook bots after rooms are loaded
@@ -340,13 +483,7 @@ const initMoltbookBots = async () => {
     // Bot behavior tick
     setInterval(() => moltbookBotTick(room), MOLTBOOK_TICK_INTERVAL);
 
-    // Refresh pool from API every 5 minutes, then broadcast updated posts
-    setInterval(async () => {
-      await fetchMoltbookPosts();
-      broadcastMoltbookPosts();
-    }, 300_000);
-
-    // Swap out 2 bots every refresh cycle
+    // Fetch new data + cull stale bots every 30 seconds
     setInterval(() => moltbookRefresh(room), MOLTBOOK_REFRESH_INTERVAL);
   };
   waitForRooms();
@@ -1335,7 +1472,7 @@ io.on("connection", (socket) => {
       fs.writeFileSync("rooms.json", JSON.stringify(rooms, null, 2));
     });
 
-    // Bot-initiated single item placement
+    // Bot-initiated single item placement (LLM bots)
     socket.on("placeItem", (placement) => {
       if (!room) return;
       if (!character.isBot) return; // only bots can use this endpoint
@@ -1372,6 +1509,14 @@ io.on("connection", (socket) => {
         }
       }
 
+      // Show building action status
+      const pretty = itemName.replace(/([A-Z])/g, " $1").toLowerCase().trim();
+      io.to(room.id).emit("playerAction", {
+        id: socket.id,
+        action: "building",
+        detail: `Placing a ${pretty}...`,
+      });
+
       // Build the new item entry
       const newItem = {
         name: itemDef.name,
@@ -1395,6 +1540,16 @@ io.on("connection", (socket) => {
         },
         characters: room.characters,
       });
+
+      // Show completion and clear after delay
+      io.to(room.id).emit("playerAction", {
+        id: socket.id,
+        action: "done",
+        detail: `Finished placing the ${pretty}!`,
+      });
+      setTimeout(() => {
+        io.to(room.id).emit("playerAction", { id: socket.id, action: null });
+      }, 2500);
 
       // Persist
       fs.writeFileSync("rooms.json", JSON.stringify(rooms, null, 2));
