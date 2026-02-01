@@ -13,6 +13,23 @@ import { UI } from "./components/UI";
 import { NewsTicker } from "./components/NewsTicker";
 import { ActivityFeed } from "./components/ActivityFeed";
 import { WelcomeModal } from "./components/WelcomeModal";
+import { CharacterMenu, followedCharacterAtom } from "./components/Avatar";
+
+const FollowIndicator = () => {
+  const [followedCharacter, setFollowedCharacter] = useAtom(followedCharacterAtom);
+  if (!followedCharacter) return null;
+  return (
+    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[15] flex items-center gap-2 bg-blue-600/90 backdrop-blur-sm text-white px-4 py-2 rounded-full shadow-lg border border-blue-400/30">
+      <span className="text-sm font-medium">Following {followedCharacter.name}</span>
+      <button
+        onClick={() => setFollowedCharacter(null)}
+        className="ml-1 bg-white/20 hover:bg-white/30 rounded-full w-6 h-6 flex items-center justify-center text-xs transition-colors"
+      >
+        ✕
+      </button>
+    </div>
+  );
+};
 
 function App() {
   const { progress } = useProgress();
@@ -45,6 +62,8 @@ function App() {
       <Loader loaded={loaded} />
       {loaded && <NewsTicker />}
       {loaded && <ActivityFeed />}
+      {loaded && <CharacterMenu />}
+      {loaded && <FollowIndicator />}
       {loaded && <UI />}
       {loaded && showWelcome && (
         <WelcomeModal

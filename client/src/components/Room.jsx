@@ -24,7 +24,6 @@ export const roomItemsAtom = atom([]);
 
 const CharacterList = React.memo(() => {
   const [characters] = useAtom(charactersAtom);
-  const { gridToVector3 } = useGrid();
 
   return (
     <>
@@ -32,7 +31,7 @@ const CharacterList = React.memo(() => {
         <Suspense key={character.id}>
           <Avatar
             id={character.id}
-            position={gridToVector3(character.position)}
+            gridPosition={character.position}
             hairColor={character.hairColor}
             topColor={character.topColor}
             bottomColor={character.bottomColor}

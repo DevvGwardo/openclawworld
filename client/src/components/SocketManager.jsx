@@ -94,19 +94,6 @@ export const SocketManager = () => {
     function mergeCharacters(next) {
       const prev = charactersRef.current || [];
       const prevMap = new Map(prev.map((c) => [c.id, c]));
-      const nextIds = new Set(next.map((c) => c.id));
-
-      // Detect spawns/despawns for the activity feed
-      next.forEach((c) => {
-        if (!prevMap.has(c.id)) {
-          addActivity("spawn", c.name || "Player", c.isBot);
-        }
-      });
-      prev.forEach((c) => {
-        if (!nextIds.has(c.id)) {
-          addActivity("despawn", c.name || "Player", c.isBot);
-        }
-      });
 
       // Build merged array — reuse old object when position is unchanged
       let changed = prev.length !== next.length;
@@ -174,6 +161,14 @@ export const SocketManager = () => {
       addActivity(type, sender.name || "Player", sender.isBot, value.detail);
     }
 
+    function onPlayerWaveAt(value) {
+      const chars = charactersRef.current || [];
+      const sender = chars.find((c) => c.id === value.id);
+      const target = chars.find((c) => c.id === value.targetId);
+      if (!sender || !target) return;
+      addActivity("wave_at", sender.name || "Player", sender.isBot, `waved at ${target.name || "someone"}`);
+    }
+
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
     socket.on("roomJoined", onRoomJoined);
@@ -184,6 +179,7 @@ export const SocketManager = () => {
     socket.on("playerChatMessage", onPlayerChatMessage);
     socket.on("moltbookPosts", onMoltbookPosts);
     socket.on("playerAction", onPlayerAction);
+    socket.on("playerWaveAt", onPlayerWaveAt);
     return () => {
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
@@ -195,6 +191,7 @@ export const SocketManager = () => {
       socket.off("playerChatMessage", onPlayerChatMessage);
       socket.off("moltbookPosts", onMoltbookPosts);
       socket.off("playerAction", onPlayerAction);
+      socket.off("playerWaveAt", onPlayerWaveAt);
     };
   }, []);
 };

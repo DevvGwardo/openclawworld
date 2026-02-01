@@ -285,17 +285,29 @@ const transferMoltbookBot = (botId, fromRoom, toRoom) => {
   const bot = moltbookVirtualBots.get(botId);
   if (!bot || !fromRoom || !toRoom) return;
 
+  // Capture info before removal
+  const charName = bot.character.name || "Bot";
+  const charIsBot = bot.character.isBot || true;
+
   // Remove from old room
   const idx = fromRoom.characters.findIndex(c => c.id === botId);
   if (idx !== -1) fromRoom.characters.splice(idx, 1);
-  io.to(fromRoom.id).emit("characters", stripCharacters(fromRoom.characters));
+  io.to(fromRoom.id).emit("characterLeft", {
+    id: botId,
+    name: charName,
+    isBot: charIsBot,
+    roomName: fromRoom.name,
+  });
 
   // Add to new room with random position
   bot.character.position = generateRandomPosition(toRoom);
   bot.character.path = undefined;
   toRoom.characters.push(bot.character);
   moltbookBotRooms.set(botId, toRoom.id);
-  io.to(toRoom.id).emit("characters", stripCharacters(toRoom.characters));
+  io.to(toRoom.id).emit("characterJoined", {
+    character: stripCharacters([bot.character])[0],
+    roomName: toRoom.name,
+  });
 
   // Broadcast room counts
   io.emit("rooms", rooms.map(r => ({ id: r.id, name: r.name, nbCharacters: r.characters.length })));
@@ -504,7 +516,53 @@ const moltbookBotTick = () => {
       setTimeout(() => {
         broadcastToRoom(room.id, "playerAction", { id: botId, action: null });
       }, 3000);
-    } else if (action < 0.6) {
+    } else if (action < 0.55) {
+      // Interact with a nearby bot/player — wave at them, walk toward them
+      const nearbyChars = room.characters.filter(c => c.id !== botId);
+      if (nearbyChars.length > 0) {
+        const target = nearbyChars[Math.floor(Math.random() * nearbyChars.length)];
+        const targetName = target.name || "someone";
+
+        // Walk toward the target first
+        const pos = bot.character.position || [0, 0];
+        const targetPos = target.position || [0, 0];
+        // Move to a position near the target (not exactly on them)
+        const offsetX = Math.floor(Math.random() * 3) - 1;
+        const offsetY = Math.floor(Math.random() * 3) - 1;
+        const nearX = Math.max(0, Math.min(room.size[0] * room.gridDivision - 1, targetPos[0] + offsetX));
+        const nearY = Math.max(0, Math.min(room.size[1] * room.gridDivision - 1, targetPos[1] + offsetY));
+
+        if (room.grid.isWalkableAt(nearX, nearY)) {
+          const path = findPath(room, pos, [nearX, nearY]);
+          if (path && path.length > 0) {
+            bot.character.position = pos;
+            bot.character.path = path;
+            broadcastToRoom(room.id, "playerMove", bot.character);
+            bot.character.position = path[path.length - 1];
+          }
+        }
+
+        // Wave at the target after a short delay (simulating walking then waving)
+        const interactionType = Math.random();
+        if (interactionType < 0.5) {
+          // Wave at them
+          broadcastToRoom(room.id, "playerAction", { id: botId, action: "emoting", detail: `Waving at ${targetName}` });
+          broadcastToRoom(room.id, "playerWaveAt", { id: botId, targetId: target.id });
+          broadcastToRoom(room.id, "emote:play", { id: botId, emote: "wave" });
+        } else if (interactionType < 0.8) {
+          // Nod at them
+          broadcastToRoom(room.id, "playerAction", { id: botId, action: "emoting", detail: `Nodding at ${targetName}` });
+          broadcastToRoom(room.id, "emote:play", { id: botId, emote: "nod" });
+        } else {
+          // Dance near them
+          broadcastToRoom(room.id, "playerAction", { id: botId, action: "dancing", detail: `Dancing with ${targetName}` });
+          broadcastToRoom(room.id, "playerDance", { id: botId });
+        }
+        setTimeout(() => {
+          broadcastToRoom(room.id, "playerAction", { id: botId, action: null });
+        }, 3000);
+      }
+    } else if (action < 0.65) {
       // Say something from their post content
       broadcastToRoom(room.id, "playerAction", { id: botId, action: "chatting", detail: "Typing..." });
       const content = bot.postData.content || bot.postData.title || "";
@@ -517,7 +575,7 @@ const moltbookBotTick = () => {
           broadcastToRoom(room.id, "playerAction", { id: botId, action: null });
         }, 1000 + Math.random() * 1500);
       }
-    } else if (action < 0.7) {
+    } else if (action < 0.75) {
       // Emote
       const emote = ALLOWED_EMOTES[Math.floor(Math.random() * ALLOWED_EMOTES.length)];
       broadcastToRoom(room.id, "playerAction", { id: botId, action: "emoting", detail: `${emote}` });
@@ -525,7 +583,7 @@ const moltbookBotTick = () => {
       setTimeout(() => {
         broadcastToRoom(room.id, "playerAction", { id: botId, action: null });
       }, 2000);
-    } else if (action < 0.8) {
+    } else if (action < 0.82) {
       // Dance
       broadcastToRoom(room.id, "playerAction", { id: botId, action: "dancing", detail: "Dancing!" });
       broadcastToRoom(room.id, "playerDance", { id: botId });
@@ -1548,6 +1606,11 @@ io.on("connection", (socket) => {
         characters: stripCharacters(room.characters),
         id: socket.id,
       });
+      // Notify other players in the room about the new character (excludes the joiner)
+      socket.broadcast.to(room.id).emit("characterJoined", {
+        character: stripCharacters([character])[0],
+        roomName: room.name,
+      });
       onRoomUpdate();
     });
 
@@ -1558,8 +1621,6 @@ io.on("connection", (socket) => {
       if (roomUpdateTimer) return; // already scheduled
       roomUpdateTimer = setTimeout(() => {
         roomUpdateTimer = null;
-        if (!room) return;
-        io.to(room.id).emit("characters", stripCharacters(room.characters));
         io.emit(
           "rooms",
           rooms.map((room) => ({
@@ -1575,11 +1636,21 @@ io.on("connection", (socket) => {
       if (!room) {
         return;
       }
+      const leavingName = character?.name || "Player";
+      const leavingIsBot = character?.isBot || false;
+      const leavingId = socket.id;
+      const roomName = room.name;
       socket.leave(room.id);
       room.characters.splice(
         room.characters.findIndex((character) => character.id === socket.id),
         1
       );
+      io.to(room.id).emit("characterLeft", {
+        id: leavingId,
+        name: leavingName,
+        isBot: leavingIsBot,
+        roomName: roomName,
+      });
       onRoomUpdate();
       room = null;
     });
@@ -1587,9 +1658,20 @@ io.on("connection", (socket) => {
     socket.on("switchRoom", (targetRoomId) => {
       // Leave current room
       if (room) {
+        const leavingName = character?.name || "Player";
+        const leavingIsBot = character?.isBot || false;
+        const leavingId = socket.id;
+        const oldRoomName = room.name;
+        const oldRoomId = room.id;
         socket.leave(room.id);
         const idx = room.characters.findIndex((c) => c.id === socket.id);
         if (idx !== -1) room.characters.splice(idx, 1);
+        io.to(oldRoomId).emit("characterLeft", {
+          id: leavingId,
+          name: leavingName,
+          isBot: leavingIsBot,
+          roomName: oldRoomName,
+        });
         onRoomUpdate();
       }
 
@@ -1612,6 +1694,11 @@ io.on("connection", (socket) => {
         },
         characters: stripCharacters(room.characters),
         id: socket.id,
+      });
+      // Notify other players in the room about the new character (excludes the joiner)
+      socket.broadcast.to(room.id).emit("characterJoined", {
+        character: stripCharacters([character])[0],
+        roomName: room.name,
       });
       onRoomUpdate();
     });
@@ -1653,6 +1740,24 @@ io.on("connection", (socket) => {
       io.to(room.id).emit("emote:play", {
         id: socket.id,
         emote: emoteName,
+      });
+    });
+
+    socket.on("wave:at", (targetId) => {
+      if (!room) return;
+      if (typeof targetId !== "string") return;
+      // Find target character in room
+      const target = room.characters.find((c) => c.id === targetId);
+      if (!target) return;
+      // Broadcast the directed wave
+      io.to(room.id).emit("playerWaveAt", {
+        id: socket.id,
+        targetId: targetId,
+      });
+      // Also play the wave emote animation
+      io.to(room.id).emit("emote:play", {
+        id: socket.id,
+        emote: "wave",
       });
     });
 
@@ -1796,10 +1901,20 @@ io.on("connection", (socket) => {
     socket.on("disconnect", () => {
       console.log("User disconnected");
       if (room) {
+        const leavingName = character?.name || "Player";
+        const leavingIsBot = character?.isBot || false;
+        const leavingId = socket.id;
+        const roomName = room.name;
         room.characters.splice(
           room.characters.findIndex((character) => character.id === socket.id),
           1
         );
+        io.to(room.id).emit("characterLeft", {
+          id: leavingId,
+          name: leavingName,
+          isBot: leavingIsBot,
+          roomName: roomName,
+        });
         onRoomUpdate();
         room = null;
       }

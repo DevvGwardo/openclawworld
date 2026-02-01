@@ -16,6 +16,7 @@ import { motion } from "framer-motion-3d";
 
 // Atom to track which character's profile popup is open
 export const selectedCharacterAtom = atom(null);
+export const followedCharacterAtom = atom(null);
 
 const MOVEMENT_SPEED = 4;
 // How fast the character rotates to face movement direction (radians/sec)
@@ -39,12 +40,14 @@ export const Avatar = memo(function Avatar({
   avatarUrl = "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
   name = "Player",
   isBot = false,
-  ...props
+  gridPosition,
 }) {
   const [chatMessage, setChatMessage] = useState("");
   const [actionStatus, setActionStatus] = useState(null); // { action, detail }
   const [, setSelectedCharacter] = useAtom(selectedCharacterAtom);
-  const position = useMemo(() => props.position, []);
+  const [followedCharacter, setFollowedCharacter] = useAtom(followedCharacterAtom);
+  const { gridToVector3 } = useGrid();
+  const position = useMemo(() => gridToVector3(gridPosition), []);
   // Use refs for culling state to avoid re-renders from useFrame distance checks
   const isNearbyRef = useRef(true);
   const showHtmlRef = useRef(true);
@@ -55,22 +58,22 @@ export const Avatar = memo(function Avatar({
   const pathIndexRef = useRef(0); // index pointer instead of shift()
 
   // When the server sends a new position (e.g. after reconnect), snap to it
-  const lastServerPos = useRef(props.position);
+  const lastServerGridPos = useRef(gridPosition);
   useEffect(() => {
     if (
       group.current &&
-      props.position &&
-      (props.position.x !== lastServerPos.current?.x ||
-        props.position.z !== lastServerPos.current?.z)
+      gridPosition &&
+      (gridPosition[0] !== lastServerGridPos.current?.[0] ||
+        gridPosition[1] !== lastServerGridPos.current?.[1])
     ) {
-      group.current.position.copy(props.position);
+      const newPos = gridToVector3(gridPosition);
+      group.current.position.copy(newPos);
       // Clear any stale path so the avatar doesn't walk from old position
       pathRef.current = [];
       pathIndexRef.current = 0;
     }
-    lastServerPos.current = props.position;
-  }, [props.position]);
-  const { gridToVector3 } = useGrid();
+    lastServerGridPos.current = gridPosition;
+  }, [gridPosition]);
 
   const group = useRef();
   const { scene } = useGLTF(avatarUrl);
@@ -142,11 +145,11 @@ export const Avatar = memo(function Avatar({
         });
         pathRef.current = newPath;
         pathIndexRef.current = 0;
-        // Update lastServerPos to the path endpoint so that subsequent
+        // Update lastServerGridPos to the path endpoint so that subsequent
         // characters/mapUpdate broadcasts (which carry the endpoint position)
         // don't trigger a snap-back while the character is walking.
-        if (newPath.length > 0) {
-          lastServerPos.current = newPath[newPath.length - 1];
+        if (value.path && value.path.length > 0) {
+          lastServerGridPos.current = value.path[value.path.length - 1];
         }
       }
     }
@@ -263,13 +266,12 @@ export const Avatar = memo(function Avatar({
 
   const handleCharacterClick = useCallback((e) => {
     e.stopPropagation();
-    setSelectedCharacter({ id, name, avatarUrl, isBot });
+    setSelectedCharacter({ id, name, avatarUrl, isBot, position: group.current?.position });
   }, [id, name, avatarUrl, isBot, setSelectedCharacter]);
 
   return (
     <group
       ref={group}
-      {...props}
       position={position}
       dispose={null}
       name={`character-${id}`}
@@ -281,7 +283,7 @@ export const Avatar = memo(function Avatar({
       {(showHtmlRef.current || id === user) && (
         <>
           {/* Always-visible name label */}
-          <Html position-y={2.3} center distanceFactor={8} style={{ overflow: 'visible' }}>
+          <Html position-y={2.3} center distanceFactor={8} zIndexRange={[1, 0]} style={{ overflow: 'visible' }}>
             <div
               className="pointer-events-auto cursor-pointer select-none"
               onClick={handleCharacterClick}
@@ -302,7 +304,7 @@ export const Avatar = memo(function Avatar({
             </div>
           </Html>
           {/* Chat bubble + action status */}
-          <Html position-y={2} center distanceFactor={8} style={{ overflow: 'visible' }}>
+          <Html position-y={2} center distanceFactor={8} zIndexRange={[1, 0]} style={{ overflow: 'visible' }}>
             <div className="w-60 max-w-full pointer-events-none overflow-visible">
               {/* Action status indicator — hidden for bots to reduce visual noise */}
               {actionStatus && !showChatBubble && !isBot && (
@@ -367,6 +369,86 @@ export const Avatar = memo(function Avatar({
     </group>
   );
 });
+
+export const CharacterMenu = () => {
+  const [selectedCharacter, setSelectedCharacter] = useAtom(selectedCharacterAtom);
+  const [followedCharacter, setFollowedCharacter] = useAtom(followedCharacterAtom);
+  const [user] = useAtom(userAtom);
+
+  if (!selectedCharacter || selectedCharacter.id === user) return null;
+
+  const isFollowing = followedCharacter?.id === selectedCharacter.id;
+
+  const handleWave = () => {
+    socket.emit("wave:at", selectedCharacter.id);
+    setSelectedCharacter(null);
+  };
+
+  const handleFollow = () => {
+    if (isFollowing) {
+      setFollowedCharacter(null);
+    } else {
+      setFollowedCharacter({ id: selectedCharacter.id, name: selectedCharacter.name });
+    }
+    setSelectedCharacter(null);
+  };
+
+  const handleClose = () => {
+    setSelectedCharacter(null);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[20] flex items-center justify-center pointer-events-none">
+      <div className="pointer-events-auto bg-gray-900/90 backdrop-blur-md rounded-xl p-4 border border-white/10 shadow-2xl min-w-[220px]">
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-3 pb-3 border-b border-white/10">
+          <div className="w-10 h-10 rounded-full bg-gray-700 overflow-hidden flex-shrink-0">
+            <img
+              src={selectedCharacter.avatarUrl?.replace(".glb", ".png") || ""}
+              alt=""
+              className="w-full h-full object-cover"
+              onError={(e) => { e.target.style.display = "none"; }}
+            />
+          </div>
+          <div>
+            <p className="text-white font-semibold text-sm">{selectedCharacter.name || "Player"}</p>
+            <p className="text-xs text-gray-400">
+              {selectedCharacter.isBot ? "Bot" : "Player"}
+            </p>
+          </div>
+          <button
+            onClick={handleClose}
+            className="ml-auto text-gray-400 hover:text-white transition-colors text-lg leading-none"
+          >
+            &times;
+          </button>
+        </div>
+
+        {/* Actions */}
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={handleWave}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white text-sm transition-colors text-left"
+          >
+            <span className="text-base">{"\u{1F44B}"}</span>
+            <span>Wave at {selectedCharacter.name || "them"}</span>
+          </button>
+          <button
+            onClick={handleFollow}
+            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-left ${
+              isFollowing
+                ? "bg-blue-500/20 hover:bg-blue-500/30 text-blue-300"
+                : "bg-white/5 hover:bg-white/10 text-white"
+            }`}
+          >
+            <span className="text-base">{isFollowing ? "\u{1F441}\uFE0F" : "\u{1F4F7}"}</span>
+            <span>{isFollowing ? "Unfollow camera" : `Follow ${selectedCharacter.name || "them"}`}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // Preload is handled dynamically per-avatar, no static preload needed
 useGLTF.preload("/animations/M_Walk_001.glb");

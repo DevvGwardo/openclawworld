@@ -14,6 +14,7 @@ const typeConfig = {
   item_placed: { icon: "📦", color: "text-blue-400", label: "placed" },
   building: { icon: "🔨", color: "text-orange-400", label: "" },
   done: { icon: "✅", color: "text-green-400", label: "" },
+  wave_at: { icon: "👋", color: "text-yellow-400", label: "waved" },
 };
 
 export const ActivityFeed = () => {

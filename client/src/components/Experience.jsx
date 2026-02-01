@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { Room } from "./Room";
 import { mapAtom, roomIDAtom, userAtom } from "./SocketManager";
 import { buildModeAtom, shopModeAtom } from "./UI";
+import { followedCharacterAtom } from "./Avatar";
 
 const MIN_ZOOM = 8;
 const MAX_ZOOM = 40;
@@ -21,13 +22,20 @@ export const Experience = ({ loaded }) => {
   const [roomID] = useAtom(roomIDAtom);
   const [map] = useAtom(mapAtom);
   const [user] = useAtom(userAtom);
+  const [followedCharacter] = useAtom(followedCharacterAtom);
   const characterRef = useRef(null);
+  const followedRef = useRef(null);
   const frameCount = useRef(0);
 
   // Clear cached character ref when user changes
   useEffect(() => {
     characterRef.current = null;
   }, [user]);
+
+  // Clear cached followed character ref when follow target changes
+  useEffect(() => {
+    followedRef.current = null;
+  }, [followedCharacter?.id]);
 
   // Handle scroll wheel for zoom
   const { gl } = useThree();
@@ -79,12 +87,24 @@ export const Experience = ({ loaded }) => {
 
     frameCount.current++;
 
+    // Determine which character to follow
+    const targetId = followedCharacter?.id || user;
+    const isFollowingOther = !!followedCharacter;
+
+    // Use the appropriate ref based on follow mode
+    const refToUse = isFollowingOther ? followedRef : characterRef;
+
     // Only search the scene graph if we don't have a cached ref, or every 60 frames
-    if (!characterRef.current || frameCount.current % 60 === 0) {
+    if (!refToUse.current || frameCount.current % 60 === 0) {
+      refToUse.current = scene.getObjectByName(`character-${targetId}`);
+    }
+
+    // Also keep user's own character ref updated for when we unfollow
+    if (isFollowingOther && (!characterRef.current || frameCount.current % 60 === 0)) {
       characterRef.current = scene.getObjectByName(`character-${user}`);
     }
 
-    const character = characterRef.current;
+    const character = refToUse.current;
     if (!character) {
       return;
     }
