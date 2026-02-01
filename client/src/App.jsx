@@ -1,6 +1,6 @@
 import { Canvas } from "@react-three/fiber";
 // import { EffectComposer, N8AO } from "@react-three/postprocessing";
-import { ScrollControls, useProgress } from "@react-three/drei";
+import { useProgress } from "@react-three/drei";
 import { useAtom } from "jotai";
 import { useEffect, useState } from "react";
 import { Experience } from "./components/Experience";
@@ -32,9 +32,7 @@ function App() {
         }}
       >
         <color attach="background" args={["#ffffff"]} />
-        <ScrollControls pages={4}>
-          <Experience loaded={loaded} />
-        </ScrollControls>
+        <Experience loaded={loaded} />
         {/* Impact badly performances without a noticeable good result */}
         {/* <EffectComposer>
           <N8AO intensity={0.42} />

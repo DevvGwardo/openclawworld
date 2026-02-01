@@ -1,5 +1,6 @@
 import {
   Grid,
+  ScrollControls,
   useCursor,
 } from "@react-three/drei";
 
@@ -170,7 +171,11 @@ export const Room = () => {
 
   return (
     <>
-      {shopMode && <Shop onItemSelected={onItemSelected} />}
+      {shopMode && (
+        <ScrollControls pages={4}>
+          <Shop onItemSelected={onItemSelected} />
+        </ScrollControls>
+      )}
       {!shopMode &&
         buildMode &&
         items.map((item, idx) => (

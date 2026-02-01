@@ -10,6 +10,18 @@ const SERVER_URL = process.env.SERVER_URL || "https://openclawworld-production.u
 
 const ALLOWED_EMOTES = ["dance", "wave", "sit", "nod"];
 
+const AVATAR_URLS = [
+  "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
+  "https://models.readyplayer.me/6185a4acfb622cf1cdc49348.glb",
+  "https://models.readyplayer.me/65893b0514f9f5f28e61d783.glb",
+  "https://models.readyplayer.me/62ea7bc28a6d28ec134bbcce.glb",
+  "https://models.readyplayer.me/65059d4f7a4b5e00b4d9ea82.glb",
+  "https://models.readyplayer.me/64bfa15f0e72c63d7c3934a6.glb",
+  "https://models.readyplayer.me/663833cf6c79010563b91e1b.glb",
+  "https://models.readyplayer.me/64a3f54c1d64e9f3dbc832ac.glb",
+];
+const randomAvatarUrl = () => AVATAR_URLS[Math.floor(Math.random() * AVATAR_URLS.length)];
+
 // BOT REGISTRY -- in-memory store of registered bots (keyed by api_key)
 const botRegistry = new Map();
 
@@ -117,7 +129,7 @@ const spawnMoltbookBot = (room) => {
     id: botId,
     session: parseInt(Math.random() * 1000),
     position: generateRandomPosition(room),
-    avatarUrl: "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
+    avatarUrl: randomAvatarUrl(),
     isBot: true,
     name: finalName,
   };
@@ -718,7 +730,7 @@ const httpServer = http.createServer(async (req, res) => {
         name,
         apiKey,
         createdAt: new Date().toISOString(),
-        avatarUrl: body.avatarUrl || "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
+        avatarUrl: body.avatarUrl || randomAvatarUrl(),
       };
       botRegistry.set(apiKey, bot);
       saveBotRegistry();

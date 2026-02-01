@@ -5,6 +5,17 @@ import { AvatarCreator } from "@readyplayerme/react-avatar-creator";
 import { motion } from "framer-motion";
 import { roomItemsAtom } from "./Room";
 import { roomIDAtom, socket } from "./SocketManager";
+
+const AVATAR_URLS = [
+  "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
+  "https://models.readyplayer.me/6185a4acfb622cf1cdc49348.glb",
+  "https://models.readyplayer.me/65893b0514f9f5f28e61d783.glb",
+  "https://models.readyplayer.me/62ea7bc28a6d28ec134bbcce.glb",
+  "https://models.readyplayer.me/65059d4f7a4b5e00b4d9ea82.glb",
+  "https://models.readyplayer.me/64bfa15f0e72c63d7c3934a6.glb",
+  "https://models.readyplayer.me/663833cf6c79010563b91e1b.glb",
+  "https://models.readyplayer.me/64a3f54c1d64e9f3dbc832ac.glb",
+];
 export const buildModeAtom = atom(false);
 export const shopModeAtom = atom(false);
 export const draggedItemAtom = atom(null);
@@ -12,7 +23,7 @@ export const draggedItemRotationAtom = atom(0);
 
 export const avatarUrlAtom = atom(
   localStorage.getItem("avatarURL") ||
-    "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb?meshlod=1&quality=medium"
+    AVATAR_URLS[Math.floor(Math.random() * AVATAR_URLS.length)]
 );
 
 const PasswordInput = ({ onClose, onSuccess }) => {

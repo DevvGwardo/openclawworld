@@ -14,6 +14,18 @@ export const roomIDAtom = atom(null);
 export const roomsAtom = atom([]);
 export const chatMessagesAtom = atom([]);
 
+const AVATAR_URLS = [
+  "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
+  "https://models.readyplayer.me/6185a4acfb622cf1cdc49348.glb",
+  "https://models.readyplayer.me/65893b0514f9f5f28e61d783.glb",
+  "https://models.readyplayer.me/62ea7bc28a6d28ec134bbcce.glb",
+  "https://models.readyplayer.me/65059d4f7a4b5e00b4d9ea82.glb",
+  "https://models.readyplayer.me/64bfa15f0e72c63d7c3934a6.glb",
+  "https://models.readyplayer.me/663833cf6c79010563b91e1b.glb",
+  "https://models.readyplayer.me/64a3f54c1d64e9f3dbc832ac.glb",
+];
+const randomAvatarUrl = () => AVATAR_URLS[Math.floor(Math.random() * AVATAR_URLS.length)];
+
 export const SocketManager = () => {
   const [_characters, setCharacters] = useAtom(charactersAtom);
   const [_chatMessages, setChatMessages] = useAtom(chatMessagesAtom);
@@ -49,7 +61,7 @@ export const SocketManager = () => {
       if (value.rooms && value.rooms.length > 0) {
         const avatarUrl =
           localStorage.getItem("avatarURL") ||
-          "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb?meshlod=1&quality=medium";
+          randomAvatarUrl();
         socket.emit("joinRoom", value.rooms[0].id, { avatarUrl });
         setRoomID(value.rooms[0].id);
       }

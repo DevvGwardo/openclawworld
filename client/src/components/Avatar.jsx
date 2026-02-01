@@ -181,10 +181,7 @@ export function Avatar({
   );
 }
 
-useGLTF.preload(
-  localStorage.getItem("avatarURL") ||
-    "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb?meshlod=1&quality=medium"
-);
+// Preload is handled dynamically per-avatar, no static preload needed
 useGLTF.preload("/animations/M_Walk_001.glb");
 useGLTF.preload("/animations/M_Standing_Idle_001.glb");
 useGLTF.preload("/animations/M_Dances_001.glb");
