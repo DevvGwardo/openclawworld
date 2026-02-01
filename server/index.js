@@ -158,6 +158,15 @@ const broadcastToRoom = (roomId, event, data) => {
   io.to(roomId).emit(event, data);
 };
 
+const broadcastMoltbookPosts = () => {
+  const posts = moltbookPostPool.map((p) => ({
+    id: p.id,
+    title: p.title || "",
+    content: (p.content || "").slice(0, 300),
+  }));
+  io.emit("moltbookPosts", posts);
+};
+
 // Bot behavior tick — each bot randomly moves, chats, or emotes
 const moltbookBotTick = (room) => {
   if (!room) return;
@@ -237,13 +246,17 @@ const initMoltbookBots = async () => {
       spawnMoltbookBot(room);
     }
     io.to(room.id).emit("characters", room.characters);
+    broadcastMoltbookPosts();
     console.log(`[moltbook] Spawned ${moltbookVirtualBots.size} virtual bots in "${room.name}"`);
 
     // Bot behavior tick
     setInterval(() => moltbookBotTick(room), MOLTBOOK_TICK_INTERVAL);
 
-    // Refresh pool from API every 5 minutes
-    setInterval(fetchMoltbookPosts, 300_000);
+    // Refresh pool from API every 5 minutes, then broadcast updated posts
+    setInterval(async () => {
+      await fetchMoltbookPosts();
+      broadcastMoltbookPosts();
+    }, 300_000);
 
     // Swap out 2 bots every refresh cycle
     setInterval(() => moltbookRefresh(room), MOLTBOOK_REFRESH_INTERVAL);

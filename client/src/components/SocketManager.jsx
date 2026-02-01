@@ -107,6 +107,10 @@ export const SocketManager = () => {
       });
     }
 
+    function onMoltbookPosts(value) {
+      setMoltbookPosts(value);
+    }
+
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
     socket.on("roomJoined", onRoomJoined);
@@ -115,6 +119,7 @@ export const SocketManager = () => {
     socket.on("characters", onCharacters);
     socket.on("mapUpdate", onMapUpdate);
     socket.on("playerChatMessage", onPlayerChatMessage);
+    socket.on("moltbookPosts", onMoltbookPosts);
     return () => {
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
@@ -124,6 +129,7 @@ export const SocketManager = () => {
       socket.off("characters", onCharacters);
       socket.off("mapUpdate", onMapUpdate);
       socket.off("playerChatMessage", onPlayerChatMessage);
+      socket.off("moltbookPosts", onMoltbookPosts);
     };
   }, []);
 };
