@@ -77,6 +77,14 @@ export class BotBridge {
     this._gateway.on("reconnecting", ({ attempt, delay }) => {
       this._log.info({ attempt, delay }, "Gateway reconnecting");
     });
+
+    this._gateway.on("error", (err) => {
+      this._log.error({ err }, "Gateway error");
+    });
+
+    this._gateway.on("reconnectFailed", () => {
+      this._log.error("Gateway reconnection failed -- exhausted all attempts");
+    });
   }
 
   /** Current lifecycle state. */

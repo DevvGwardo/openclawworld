@@ -1,61 +1,27 @@
-import { BotClient } from "./BotClient.js";
+import { BotBridge } from "./BotBridge.js";
+import { createLogger } from "./logger.js";
 
-const serverUrl = process.env.SERVER_URL || "http://localhost:3000";
+const log = createLogger({ name: "bot-main" });
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const bot = new BotClient({ serverUrl, name: "ClawBot" });
-
-// Log incoming chat messages from other players
-bot.on("chatMessage", ({ id, message }) => {
-  if (id !== bot.id) {
-    console.log(`[Chat] Player ${id}: ${message}`);
-  }
+const bridge = new BotBridge({
+  botName: process.env.BOT_NAME || "ClawBot",
 });
 
+// Graceful shutdown
+const shutdown = async (signal) => {
+  log.info({ signal }, "Shutting down...");
+  await bridge.stop();
+  log.info("Shutdown complete");
+  process.exit(0);
+};
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+
 try {
-  console.log(`Connecting to ${serverUrl}...`);
-  const welcomeData = await bot.connect();
-  console.log(
-    `Connected! Available rooms: ${welcomeData.rooms.map((r) => r.name).join(", ")}`
-  );
-
-  const room = welcomeData.rooms[0];
-  if (!room) {
-    throw new Error("No rooms available on the server");
-  }
-
-  const joinData = await bot.join(room.id);
-  console.log(
-    `Joined room "${room.name}", position: [${bot.position}]`
-  );
-
-  bot.say("Hello! I'm ClawBot, a headless bot.");
-  console.log("Sent greeting");
-
-  await sleep(2000);
-
-  bot.move([5, 5]);
-  console.log("Moving to [5, 5]");
-
-  await sleep(2000);
-
-  bot.emote("wave");
-  console.log("Waving");
-
-  await sleep(2000);
-
-  console.log(
-    "Demo complete. Bot will stay connected. Press Ctrl+C to disconnect."
-  );
-
-  process.on("SIGINT", () => {
-    bot.disconnect();
-    console.log("Bot disconnected");
-    process.exit(0);
-  });
+  const info = await bridge.start();
+  log.info(info, "Bot is live");
 } catch (err) {
-  console.error(`Error: ${err.message}`);
-  console.error(`Is the game server running on ${serverUrl}?`);
+  log.error({ err }, "Failed to start bot");
   process.exit(1);
 }
