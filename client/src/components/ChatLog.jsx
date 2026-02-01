@@ -37,8 +37,9 @@ export const ChatLog = () => {
         >
           <div
             ref={scrollRef}
+            style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
             className="h-full bg-gray-900/90 rounded-xl p-3 overflow-y-auto pointer-events-auto
-              scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent"
+              [&::-webkit-scrollbar]:hidden"
           >
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
               Chat
