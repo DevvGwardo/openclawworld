@@ -9,7 +9,7 @@ import {
 } from "./DeviceIdentity.js";
 
 /**
- * WebSocket client for the OpenClaw Gateway.
+ * WebSocket client for the Claw Land Gateway.
  * Handles challenge-based Ed25519 auth handshake, request/response RPC,
  * automatic reconnection with exponential backoff, and ping/pong heartbeat.
  */
@@ -23,8 +23,8 @@ export class GatewayClient extends EventEmitter {
    */
   constructor(options = {}) {
     super();
-    this._url = options.url ?? process.env.OPENCLAW_GATEWAY_URL ?? "ws://localhost:8080";
-    this._token = options.token ?? process.env.OPENCLAW_GATEWAY_TOKEN ?? undefined;
+    this._url = options.url ?? process.env.CLAWLAND_GATEWAY_URL ?? "ws://localhost:8080";
+    this._token = options.token ?? process.env.CLAWLAND_GATEWAY_TOKEN ?? undefined;
     this._identityPath =
       options.identityPath ?? new URL(".device-keys.json", import.meta.url).pathname;
 

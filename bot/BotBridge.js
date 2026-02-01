@@ -28,8 +28,8 @@ export class BotBridge {
    */
   constructor(options = {}) {
     const serverUrl = options.serverUrl ?? process.env.SERVER_URL ?? "http://localhost:3000";
-    const gatewayUrl = options.gatewayUrl ?? process.env.OPENCLAW_GATEWAY_URL ?? "ws://localhost:8080";
-    const gatewayToken = options.gatewayToken ?? process.env.OPENCLAW_GATEWAY_TOKEN ?? undefined;
+    const gatewayUrl = options.gatewayUrl ?? process.env.CLAWLAND_GATEWAY_URL ?? "ws://localhost:8080";
+    const gatewayToken = options.gatewayToken ?? process.env.CLAWLAND_GATEWAY_TOKEN ?? undefined;
     const botName = options.botName ?? "ClawBot";
     const AVATAR_URLS = [
       "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",

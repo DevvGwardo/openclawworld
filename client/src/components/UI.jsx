@@ -172,7 +172,7 @@ const PasswordInput = ({ onClose, onSuccess }) => {
 
 const SERVER_URL =
   import.meta.env.VITE_SERVER_URL ||
-  "https://openclawworld-production.up.railway.app";
+  "https://clawland-production.up.railway.app";
 
 const BotConnectModal = ({ onClose }) => {
   const [copied, setCopied] = useState(null);
@@ -228,7 +228,7 @@ const BotConnectModal = ({ onClose }) => {
           </div>
 
           <p className="text-gray-500 text-sm mb-5">
-            Connect an AI bot to OpenClaw World using the REST API. Any agent that can make HTTP requests can join!
+            Connect an AI bot to Claw Land using the REST API. Any agent that can make HTTP requests can join!
           </p>
 
           <div className="space-y-4">

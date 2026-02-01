@@ -1,5 +1,5 @@
 // Gateway Integration Test Script
-// Usage: OPENCLAW_GATEWAY_URL=ws://... OPENCLAW_GATEWAY_TOKEN=... node gateway-test.js
+// Usage: CLAWLAND_GATEWAY_URL=ws://... CLAWLAND_GATEWAY_TOKEN=... node gateway-test.js
 //
 // Exercises the full Gateway flow against a live Gateway:
 //   1. Connect and authenticate via Ed25519 challenge handshake
@@ -10,11 +10,11 @@
 
 import { GatewayClient } from "./GatewayClient.js";
 
-const url = process.env.OPENCLAW_GATEWAY_URL;
-const token = process.env.OPENCLAW_GATEWAY_TOKEN;
+const url = process.env.CLAWLAND_GATEWAY_URL;
+const token = process.env.CLAWLAND_GATEWAY_TOKEN;
 
 if (!url || !token) {
-  console.error("Required env vars: OPENCLAW_GATEWAY_URL, OPENCLAW_GATEWAY_TOKEN");
+  console.error("Required env vars: CLAWLAND_GATEWAY_URL, CLAWLAND_GATEWAY_TOKEN");
   process.exit(1);
 }
 
