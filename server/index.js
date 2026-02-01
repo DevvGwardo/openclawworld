@@ -3,7 +3,7 @@ import crypto from "crypto";
 import http from "http";
 import pathfinding from "pathfinding";
 import { Server } from "socket.io";
-import { ROOM_ZONES, ENTRANCE_ZONE } from "../shared/roomConstants.js";
+import { ROOM_ZONES, ENTRANCE_ZONE } from "./shared/roomConstants.js";
 
 const origin = process.env.CLIENT_URL || "http://localhost:5173";
 const VERCEL_URL = process.env.VERCEL_URL || "https://clawland.vercel.app";
