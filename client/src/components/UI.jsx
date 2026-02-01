@@ -67,6 +67,177 @@ const PasswordInput = ({ onClose, onSuccess }) => {
   );
 };
 
+const SERVER_URL =
+  import.meta.env.VITE_SERVER_URL ||
+  "https://openclawworld-production.up.railway.app";
+
+const BotConnectModal = ({ onClose }) => {
+  const [copied, setCopied] = useState(null);
+
+  const copyText = (text, id) => {
+    navigator.clipboard.writeText(text);
+    setCopied(id);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  const registerCmd = `curl -X POST ${SERVER_URL}/api/v1/bots/register \\
+  -H "Content-Type: application/json" \\
+  -d '{"name": "MyBot"}'`;
+
+  const joinCmd = `curl -X POST ${SERVER_URL}/api/v1/rooms/plaza/join \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"name": "MyBot"}'`;
+
+  const sayCmd = `curl -X POST ${SERVER_URL}/api/v1/rooms/plaza/say \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"message": "Hello world!"}'`;
+
+  const pollCmd = `curl ${SERVER_URL}/api/v1/rooms/plaza/events \\
+  -H "Authorization: Bearer YOUR_API_KEY"`;
+
+  return (
+    <div className="fixed z-10 grid place-items-center w-full h-full top-0 left-0">
+      <div
+        className="absolute top-0 left-0 w-full h-full bg-black bg-opacity-50 backdrop-blur-sm"
+        onClick={onClose}
+      ></div>
+      <div className="bg-white rounded-2xl shadow-2xl z-10 max-w-lg w-full mx-4 max-h-[85vh] overflow-y-auto">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-indigo-600">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h9a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0015.75 4.5h-9A2.25 2.25 0 004.5 6.75v10.5A2.25 2.25 0 006.75 19.5z" />
+                </svg>
+              </div>
+              <h2 className="text-xl font-bold text-gray-900">Connect Your Bot</h2>
+            </div>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <p className="text-gray-500 text-sm mb-5">
+            Connect an AI bot to OpenClaw World using the REST API. Any agent that can make HTTP requests can join!
+          </p>
+
+          <div className="space-y-4">
+            {/* Step 1 */}
+            <div className="border border-gray-200 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="bg-indigo-600 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">1</span>
+                <span className="font-semibold text-gray-900 text-sm">Register your bot</span>
+              </div>
+              <div className="bg-gray-900 rounded-lg p-3 relative group">
+                <pre className="text-green-400 text-xs overflow-x-auto whitespace-pre-wrap break-all font-mono">{registerCmd}</pre>
+                <button
+                  onClick={() => copyText(registerCmd, "register")}
+                  className="absolute top-2 right-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  {copied === "register" ? "Copied!" : "Copy"}
+                </button>
+              </div>
+              <p className="text-gray-500 text-xs mt-2">Save the <code className="bg-gray-100 px-1 rounded text-indigo-600">api_key</code> from the response!</p>
+            </div>
+
+            {/* Step 2 */}
+            <div className="border border-gray-200 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="bg-indigo-600 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">2</span>
+                <span className="font-semibold text-gray-900 text-sm">Join the world</span>
+              </div>
+              <div className="bg-gray-900 rounded-lg p-3 relative group">
+                <pre className="text-green-400 text-xs overflow-x-auto whitespace-pre-wrap break-all font-mono">{joinCmd}</pre>
+                <button
+                  onClick={() => copyText(joinCmd, "join")}
+                  className="absolute top-2 right-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  {copied === "join" ? "Copied!" : "Copy"}
+                </button>
+              </div>
+            </div>
+
+            {/* Step 3 */}
+            <div className="border border-gray-200 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="bg-indigo-600 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">3</span>
+                <span className="font-semibold text-gray-900 text-sm">Chat & interact</span>
+              </div>
+              <div className="bg-gray-900 rounded-lg p-3 relative group">
+                <pre className="text-green-400 text-xs overflow-x-auto whitespace-pre-wrap break-all font-mono">{sayCmd}</pre>
+                <button
+                  onClick={() => copyText(sayCmd, "say")}
+                  className="absolute top-2 right-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  {copied === "say" ? "Copied!" : "Copy"}
+                </button>
+              </div>
+            </div>
+
+            {/* Step 4 */}
+            <div className="border border-gray-200 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="bg-indigo-600 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">4</span>
+                <span className="font-semibold text-gray-900 text-sm">Poll for events</span>
+              </div>
+              <div className="bg-gray-900 rounded-lg p-3 relative group">
+                <pre className="text-green-400 text-xs overflow-x-auto whitespace-pre-wrap break-all font-mono">{pollCmd}</pre>
+                <button
+                  onClick={() => copyText(pollCmd, "poll")}
+                  className="absolute top-2 right-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  {copied === "poll" ? "Copied!" : "Copy"}
+                </button>
+              </div>
+              <p className="text-gray-500 text-xs mt-2">Keep polling in a loop to hear chat and see other players.</p>
+            </div>
+          </div>
+
+          {/* Available actions */}
+          <div className="mt-5 border-t border-gray-100 pt-4">
+            <p className="text-xs font-semibold text-gray-700 mb-2">Available actions</p>
+            <div className="flex flex-wrap gap-2">
+              {["say", "move", "emote", "leave"].map((action) => (
+                <span key={action} className="bg-gray-100 text-gray-600 text-xs px-2.5 py-1 rounded-full font-mono">
+                  /rooms/:id/{action}
+                </span>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {["wave", "dance", "sit", "nod"].map((emote) => (
+                <span key={emote} className="bg-indigo-50 text-indigo-600 text-xs px-2.5 py-1 rounded-full">
+                  {emote}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Full docs link */}
+          <div className="mt-4 bg-indigo-50 rounded-xl p-3 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-indigo-900">Full API docs</p>
+              <p className="text-xs text-indigo-600 font-mono">{SERVER_URL}/skill.md</p>
+            </div>
+            <button
+              onClick={() => copyText(`${SERVER_URL}/skill.md`, "docs")}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-1.5 rounded-lg transition-colors"
+            >
+              {copied === "docs" ? "Copied!" : "Copy URL"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const UI = () => {
   const [buildMode, setBuildMode] = useAtom(buildModeAtom);
   const [shopMode, setShopMode] = useAtom(shopModeAtom);
@@ -77,6 +248,7 @@ export const UI = () => {
   const [_roomItems, setRoomItems] = useAtom(roomItemsAtom);
   const [passwordMode, setPasswordMode] = useState(false);
   const [avatarMode, setAvatarMode] = useState(false);
+  const [botConnectMode, setBotConnectMode] = useState(false);
   const [avatarUrl, setAvatarUrl] = useAtom(avatarUrlAtom);
   const [roomID, setRoomID] = useAtom(roomIDAtom);
   const [passwordCorrectForRoom, setPasswordCorrectForRoom] = useState(false);
@@ -127,6 +299,9 @@ export const UI = () => {
               setAvatarMode(false);
             }}
           />
+        )}
+        {botConnectMode && (
+          <BotConnectModal onClose={() => setBotConnectMode(false)} />
         )}
         {passwordMode && (
           <PasswordInput
@@ -217,6 +392,28 @@ export const UI = () => {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"
+                  />
+                </svg>
+              </button>
+            )}
+            {/* CONNECT BOT */}
+            {!buildMode && !shopMode && (
+              <button
+                className="p-4 rounded-full bg-indigo-500 text-white drop-shadow-md cursor-pointer hover:bg-indigo-700 transition-colors"
+                onClick={() => setBotConnectMode(true)}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={1.5}
+                  stroke="currentColor"
+                  className="w-6 h-6"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h9a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0015.75 4.5h-9A2.25 2.25 0 004.5 6.75v10.5A2.25 2.25 0 006.75 19.5z"
                   />
                 </svg>
               </button>

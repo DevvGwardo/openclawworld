@@ -32,6 +32,158 @@ const saveBotRegistry = () => {
 };
 loadBotRegistry();
 
+// --- Moltbook Auto-Sync: fetch new posts every 20s and register as bots ---
+const MOLTBOOK_API = "https://www.moltbook.com/api/v1/posts";
+const MOLTBOOK_SYNC_INTERVAL = 20_000; // 20 seconds
+const MOLTBOOK_FETCH_LIMIT = 100;
+const MOLTBOOK_MAX_BOTS = 100;
+const MOLTBOOK_MIN_BOTS = 60;
+const MOLTBOOK_RECYCLE_BATCH = 5; // remove this many oldest bots each cycle
+let moltbookPageOffset = 0; // rotate through pages to find fresh posts
+
+const extractBotName = (title) => {
+  // Try @mentions
+  const mention = title.match(/@(\w+)/);
+  if (mention) return mention[1];
+  // Try $TOKEN names
+  const token = title.match(/\$(\w+)/);
+  if (token) return token[1];
+  // Try "I am X", "Meet X", "Introducing X", "X is online/live"
+  for (const re of [
+    /(?:I am|I'm|Meet|Introducing)\s+(\w+)/i,
+    /^(\w+)\s+is\s+(?:online|live|here|born)/i,
+    /(\w+)\s+Has Arrived/i,
+  ]) {
+    const m = title.match(re);
+    if (m) return m[1];
+  }
+  // Use first 1-2 meaningful words
+  const skip = new Set(["the","a","an","i","is","am","are","was","were","be","been",
+    "to","of","in","for","on","with","at","by","from","and","or","not","no","but",
+    "that","this","it","its","my","your","his","her","our","just","about","what",
+    "how","why","when","all","new","will","can","has","have","had"]);
+  const words = (title.match(/[A-Za-z]+/g) || []).filter(w => !skip.has(w.toLowerCase()) && w.length > 2);
+  if (words.length > 0) {
+    const name = words.slice(0, 2).map(w => w[0].toUpperCase() + w.slice(1)).join("");
+    if (name.length >= 3) return name;
+  }
+  return null;
+};
+
+const moltbookSeenPostIds = new Set();
+// Seed with already-registered moltbook bots
+for (const [, bot] of botRegistry) {
+  if (bot.postId) moltbookSeenPostIds.add(bot.postId);
+}
+
+const countMoltbookBots = () => {
+  let count = 0;
+  for (const [, bot] of botRegistry) {
+    if (bot.source === "moltbook") count++;
+  }
+  return count;
+};
+
+const syncMoltbookBots = async () => {
+  try {
+    // --- Phase 1: Recycle oldest moltbook bots ---
+    const moltbookEntries = [];
+    for (const [key, bot] of botRegistry) {
+      if (bot.source === "moltbook") moltbookEntries.push({ key, bot });
+    }
+
+    // Sort oldest first by createdAt
+    moltbookEntries.sort((a, b) => (a.bot.createdAt || "").localeCompare(b.bot.createdAt || ""));
+
+    // Only recycle if we're above the minimum so the pool never empties
+    const recycleCount = moltbookEntries.length > MOLTBOOK_MIN_BOTS
+      ? Math.min(MOLTBOOK_RECYCLE_BATCH, moltbookEntries.length - MOLTBOOK_MIN_BOTS)
+      : 0;
+
+    for (let i = 0; i < recycleCount; i++) {
+      const { key, bot } = moltbookEntries[i];
+      // Remove from registry and unsee the post so it can come back later
+      botRegistry.delete(key);
+      if (bot.postId) moltbookSeenPostIds.delete(bot.postId);
+    }
+
+    // --- Phase 2: Fetch new posts to fill slots ---
+    let moltbookCount = countMoltbookBots();
+    const slotsAvailable = MOLTBOOK_MAX_BOTS - moltbookCount;
+
+    const existingNames = new Set();
+    for (const [, bot] of botRegistry) {
+      existingNames.add(bot.name.toLowerCase());
+    }
+
+    let added = 0;
+
+    // Try fetching from current page offset, then wrap around
+    for (let attempts = 0; attempts < 4 && added < slotsAvailable; attempts++) {
+      const url = `${MOLTBOOK_API}?limit=50&offset=${moltbookPageOffset}`;
+      const resp = await fetch(url);
+      if (!resp.ok) break;
+      const data = await resp.json();
+      const posts = data.posts || [];
+      if (posts.length === 0) {
+        // Wrapped past the end, reset to start
+        moltbookPageOffset = 0;
+        continue;
+      }
+
+      for (const post of posts) {
+        if (added >= slotsAvailable) break;
+        if (moltbookSeenPostIds.has(post.id)) continue;
+        moltbookSeenPostIds.add(post.id);
+
+        const title = post.title || "";
+        let name = extractBotName(title);
+
+        if (!name || name.length < 2 || existingNames.has(name.toLowerCase())) {
+          const hash = crypto.createHash("md5").update(post.id).digest("hex").slice(0, 4);
+          name = `Molt-${hash}`;
+        }
+
+        let finalName = name.slice(0, 28);
+        let counter = 2;
+        while (existingNames.has(finalName.toLowerCase())) {
+          finalName = `${name.slice(0, 26)}${counter}`;
+          counter++;
+        }
+        existingNames.add(finalName.toLowerCase());
+
+        const apiKey = `ocw_${crypto.randomBytes(24).toString("hex")}`;
+        const bot = {
+          name: finalName,
+          apiKey,
+          createdAt: new Date().toISOString(),
+          avatarUrl: "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
+          source: "moltbook",
+          postId: post.id,
+          postTitle: title.slice(0, 80),
+        };
+        botRegistry.set(apiKey, bot);
+        added++;
+      }
+
+      // Advance page for next cycle
+      moltbookPageOffset += 50;
+      if (!data.has_more) moltbookPageOffset = 0;
+    }
+
+    if (recycleCount > 0 || added > 0) {
+      saveBotRegistry();
+      console.log(`[moltbook-sync] recycled ${recycleCount}, added ${added} (moltbook: ${countMoltbookBots()}, total: ${botRegistry.size})`);
+    }
+  } catch (err) {
+    console.error("[moltbook-sync] Error:", err.message);
+  }
+};
+
+// Run initial sync then repeat every 20s
+syncMoltbookBots();
+setInterval(syncMoltbookBots, MOLTBOOK_SYNC_INTERVAL);
+
 // Helper to read JSON body from a request
 const readBody = (req) =>
   new Promise((resolve, reject) => {
@@ -408,7 +560,7 @@ curl -s ${SERVER_URL}/api/v1/rooms/plaza/events -H "Authorization: Bearer \$KEY"
 
 - 60 requests/minute per API key
 - 1 chat message per 2 seconds
-- 10 bots max per server (subject to change)
+- 200 bots max per server (subject to change)
 
 ---
 

@@ -1,19 +1,40 @@
 import { CameraControls, Environment, Sky } from "@react-three/drei";
 
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useAtom } from "jotai";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Room } from "./Room";
 import { mapAtom, roomIDAtom, userAtom } from "./SocketManager";
 import { buildModeAtom, shopModeAtom } from "./UI";
+
+const MIN_ZOOM = 8;
+const MAX_ZOOM = 40;
+const ZOOM_SPEED = 2;
+const DEFAULT_ZOOM = 12;
+
 export const Experience = ({ loaded }) => {
   const [buildMode] = useAtom(buildModeAtom);
   const [shopMode] = useAtom(shopModeAtom);
 
   const controls = useRef();
+  const zoomLevel = useRef(DEFAULT_ZOOM);
   const [roomID] = useAtom(roomIDAtom);
   const [map] = useAtom(mapAtom);
   const [user] = useAtom(userAtom);
+
+  // Handle scroll wheel for zoom
+  const { gl } = useThree();
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const handleWheel = (e) => {
+      if (buildMode || shopMode || !roomID) return;
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? ZOOM_SPEED : -ZOOM_SPEED;
+      zoomLevel.current = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomLevel.current + delta));
+    };
+    canvas.addEventListener("wheel", handleWheel, { passive: false });
+    return () => canvas.removeEventListener("wheel", handleWheel);
+  }, [gl, buildMode, shopMode, roomID]);
 
   useEffect(() => {
     // INITIAL POSITION
@@ -53,6 +74,7 @@ export const Experience = ({ loaded }) => {
     if (!character) {
       return;
     }
+    const z = zoomLevel.current;
     controls.current.setTarget(
       character.position.x,
       0,
@@ -60,9 +82,9 @@ export const Experience = ({ loaded }) => {
       true
     );
     controls.current.setPosition(
-      character.position.x + 12,
-      character.position.y + 12,
-      character.position.z + 12,
+      character.position.x + z,
+      character.position.y + z,
+      character.position.z + z,
       true
     );
   });
