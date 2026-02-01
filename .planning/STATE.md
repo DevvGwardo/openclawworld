@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-31)
 
 **Core value:** Bots autonomously inhabit the world and feel alive -- even one bot joining, moving, and speaking through the LLM proves the full loop works.
-**Current focus:** Phase 4 complete -- ready for Phase 5 (Bot Bridge)
+**Current focus:** Phase 5 in progress (Bot Bridge) -- action validation and idle patrol complete
 
 ## Current Position
 
-Phase: 4 of 8 (Gateway Integration)
-Plan: 2 of 2 in current phase
-Status: Phase complete
-Last activity: 2026-01-31 -- Completed 04-02-PLAN.md
+Phase: 5 of 8 (Bot Bridge)
+Plan: 2 of 3 in current phase
+Status: In progress
+Last activity: 2026-01-31 -- Completed 05-02-PLAN.md
 
-Progress: [██████░░░░] 38%
+Progress: [████████░░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: 4 min
-- Total execution time: 0.4 hours
+- Total plans completed: 8
+- Average duration: 3 min
+- Total execution time: 0.5 hours
 
 **By Phase:**
 
@@ -31,9 +31,10 @@ Progress: [██████░░░░] 38%
 | 2 | 1 | 1 min | 1 min |
 | 3 | 2 | 9 min | 4.5 min |
 | 4 | 2 | 2 min | 1 min |
+| 5 | 2 | 2 min | 1 min |
 
 **Recent Trend:**
-- Last 5 plans: 1 min, 4 min, 5 min, 1 min, 1 min
+- Last 5 plans: 5 min, 1 min, 1 min, 1 min, 1 min
 - Trend: fast
 
 *Updated after each plan completion*
@@ -62,6 +63,9 @@ Recent decisions affecting current work:
 - [04-02]: Reconnect promise resolves immediately for reconnects (event-driven, not caller-blocking)
 - [04-02]: Heartbeat interval configurable via constructor (default 15s)
 - [04-02]: 20% jitter on backoff delay to prevent thundering herd
+- [05-02]: Dance emote dispatches to botClient.dance() separately from other emotes
+- [05-02]: Look action is a no-op in v1 (logged at debug level only)
+- [05-02]: Array LLM responses take first element only
 
 ### Pending Todos
 
@@ -75,5 +79,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-01-31
-Stopped at: Completed 04-02-PLAN.md (Phase 4 complete)
+Stopped at: Completed 05-02-PLAN.md (Phase 5 in progress, 2/3 plans done)
 Resume file: None
