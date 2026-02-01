@@ -2,7 +2,7 @@ import { CameraControls, Environment, Sky } from "@react-three/drei";
 
 import { useFrame, useThree } from "@react-three/fiber";
 import { useAtom } from "jotai";
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Room } from "./Room";
 import { mapAtom, roomIDAtom, userAtom } from "./SocketManager";
 import { buildModeAtom, shopModeAtom } from "./UI";
@@ -12,6 +12,9 @@ const MIN_ZOOM = 8;
 const MAX_ZOOM = 40;
 const ZOOM_SPEED = 2;
 const DEFAULT_ZOOM = 12;
+const ROTATE_SPEED = 0.005; // radians per pixel of mouse drag
+const ROTATE_KEY_SPEED = 2; // radians per second for Q/E keys
+const DEFAULT_ANGLE = Math.PI / 4; // 45 degrees — isometric default
 
 export const Experience = ({ loaded }) => {
   const [buildMode] = useAtom(buildModeAtom);
@@ -19,6 +22,9 @@ export const Experience = ({ loaded }) => {
 
   const controls = useRef();
   const zoomLevel = useRef(DEFAULT_ZOOM);
+  const cameraAngle = useRef(DEFAULT_ANGLE);
+  const isDragging = useRef(false);
+  const keysPressed = useRef({});
   const [roomID] = useAtom(roomIDAtom);
   const [map] = useAtom(mapAtom);
   const [user] = useAtom(userAtom);
@@ -47,8 +53,49 @@ export const Experience = ({ loaded }) => {
       const delta = e.deltaY > 0 ? ZOOM_SPEED : -ZOOM_SPEED;
       zoomLevel.current = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomLevel.current + delta));
     };
+    const handleMouseDown = (e) => {
+      if (e.button === 2) { // Right-click
+        isDragging.current = true;
+      }
+    };
+    const handleMouseMove = (e) => {
+      if (isDragging.current) {
+        cameraAngle.current -= e.movementX * ROTATE_SPEED;
+      }
+    };
+    const handleMouseUp = (e) => {
+      if (e.button === 2) {
+        isDragging.current = false;
+      }
+    };
+    const handleContextMenu = (e) => {
+      e.preventDefault();
+    };
+
     canvas.addEventListener("wheel", handleWheel, { passive: false });
-    return () => canvas.removeEventListener("wheel", handleWheel);
+    canvas.addEventListener("mousedown", handleMouseDown);
+    canvas.addEventListener("mousemove", handleMouseMove);
+    canvas.addEventListener("mouseup", handleMouseUp);
+    canvas.addEventListener("contextmenu", handleContextMenu);
+
+    const handleKeyDown = (e) => {
+      keysPressed.current[e.key.toLowerCase()] = true;
+    };
+    const handleKeyUp = (e) => {
+      keysPressed.current[e.key.toLowerCase()] = false;
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+
+    return () => {
+      canvas.removeEventListener("wheel", handleWheel);
+      canvas.removeEventListener("mousedown", handleMouseDown);
+      canvas.removeEventListener("mousemove", handleMouseMove);
+      canvas.removeEventListener("mouseup", handleMouseUp);
+      canvas.removeEventListener("contextmenu", handleContextMenu);
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
   }, [gl, buildMode, shopMode, roomID]);
 
   useEffect(() => {
@@ -80,12 +127,20 @@ export const Experience = ({ loaded }) => {
     }
   }, [buildMode, roomID, shopMode, loaded]);
 
-  useFrame(({ scene }) => {
+  useFrame(({ scene }, delta) => {
     if (!user) {
       return;
     }
 
     frameCount.current++;
+
+    // Handle Q/E keyboard rotation
+    if (keysPressed.current["q"]) {
+      cameraAngle.current += ROTATE_KEY_SPEED * delta;
+    }
+    if (keysPressed.current["e"]) {
+      cameraAngle.current -= ROTATE_KEY_SPEED * delta;
+    }
 
     // Determine which character to follow
     const targetId = followedCharacter?.id || user;
@@ -109,6 +164,8 @@ export const Experience = ({ loaded }) => {
       return;
     }
     const z = zoomLevel.current;
+    const angle = cameraAngle.current;
+    const radius = z * Math.SQRT2; // maintain similar distance as before
     controls.current.setTarget(
       character.position.x,
       0,
@@ -116,9 +173,9 @@ export const Experience = ({ loaded }) => {
       true
     );
     controls.current.setPosition(
-      character.position.x + z,
+      character.position.x + radius * Math.cos(angle),
       character.position.y + z,
-      character.position.z + z,
+      character.position.z + radius * Math.sin(angle),
       true
     );
   });

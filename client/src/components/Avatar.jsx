@@ -344,7 +344,12 @@ export const Avatar = memo(function Avatar({
                 setSelectedCharacter({ id, name, avatarUrl, isBot, position: group.current?.position });
               }}
             >
-              <div className="flex items-center justify-center gap-1 whitespace-nowrap">
+              <div className="flex flex-col items-center justify-center gap-0.5 whitespace-nowrap">
+                {isBot && (
+                  <span className="text-lg leading-none" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.5))" }}>
+                    🦀
+                  </span>
+                )}
                 <span
                   className="text-[11px] font-bold px-2 py-0.5 rounded-full"
                   style={{
@@ -354,7 +359,7 @@ export const Avatar = memo(function Avatar({
                     textShadow: "0 1px 2px rgba(0,0,0,0.5)",
                   }}
                 >
-                  {name}{isBot ? " [BOT]" : ""}
+                  {name}
                 </span>
               </div>
             </div>
