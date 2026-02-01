@@ -3,7 +3,8 @@ import crypto from "node:crypto";
 import WebSocket from "ws";
 import {
   loadOrCreateIdentity,
-  signChallenge,
+  buildAuthPayload,
+  signPayload,
   saveDeviceToken,
 } from "./DeviceIdentity.js";
 
@@ -268,32 +269,57 @@ export class GatewayClient extends EventEmitter {
    * @param {{ nonce: string, ts: number }} param0
    */
   _respondToChallenge({ nonce, ts }) {
-    const signature = signChallenge(nonce, this._identity.privateKey);
     const publicKeyPem = this._identity.publicKey.export({
       type: "spki",
       format: "pem",
     });
 
+    const clientId = "gateway-client";
+    const clientMode = "backend";
+    const role = "operator";
+    const signedAt = Date.now();
+
+    // Build the structured payload the Gateway expects to verify
+    const payload = buildAuthPayload({
+      deviceId: this._identity.fingerprint,
+      clientId,
+      clientMode,
+      role,
+      scopes: [],
+      signedAtMs: signedAt,
+      token: this._token ?? null,
+      nonce,
+    });
+
+    const signature = signPayload(payload, this._identity.privateKey);
+
+    const params = {
+      minProtocol: 3,
+      maxProtocol: 3,
+      client: {
+        id: clientId,
+        version: "0.1.0",
+        platform: process.platform,
+        mode: clientMode,
+      },
+      role,
+      auth: {
+        token: this._token,
+      },
+      device: {
+        id: this._identity.fingerprint,
+        publicKey: publicKeyPem,
+        signature,
+        signedAt,
+        nonce,
+      },
+    };
+
     const frame = {
       type: "req",
       id: "0",
       method: "connect",
-      params: {
-        protocol: 3,
-        client: { name: "openclawworld-bot", version: "0.1.0" },
-        role: "node",
-        auth: {
-          token: this._token,
-          deviceToken: this._identity.deviceToken ?? undefined,
-        },
-        device: {
-          id: this._identity.fingerprint,
-          publicKey: publicKeyPem,
-          signature,
-          signedAt: Date.now(),
-          nonce,
-        },
-      },
+      params,
     };
 
     this._ws.send(JSON.stringify(frame));

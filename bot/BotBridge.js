@@ -99,9 +99,12 @@ export class BotBridge {
   async start() {
     this._state = "spawning";
 
-    // Connect to Gateway first
-    await this._gateway.connect();
-    this._gatewayConnected = true;
+    // Connect to Gateway (non-blocking -- bot runs in idle mode without it)
+    this._gateway.connect().then(() => {
+      this._gatewayConnected = true;
+    }).catch((err) => {
+      this._log.warn({ err: err.message }, "Gateway unavailable -- running in idle-only mode");
+    });
 
     // Connect to game server
     const welcome = await this._botClient.connect();
