@@ -42,6 +42,23 @@ export const Avatar = memo(function Avatar({
   const avatar = useRef();
   const pathRef = useRef([]);
   const pathIndexRef = useRef(0); // index pointer instead of shift()
+
+  // When the server sends a new position (e.g. after reconnect), snap to it
+  const lastServerPos = useRef(props.position);
+  useEffect(() => {
+    if (
+      group.current &&
+      props.position &&
+      (props.position.x !== lastServerPos.current?.x ||
+        props.position.z !== lastServerPos.current?.z)
+    ) {
+      group.current.position.copy(props.position);
+      // Clear any stale path so the avatar doesn't walk from old position
+      pathRef.current = [];
+      pathIndexRef.current = 0;
+    }
+    lastServerPos.current = props.position;
+  }, [props.position]);
   const { gridToVector3 } = useGrid();
 
   const group = useRef();
@@ -198,6 +215,12 @@ export const Avatar = memo(function Avatar({
           showHtmlRef.current = newShowHtml;
           forceUpdate((n) => n + 1);
         }
+      } else if (!character && !isNearbyRef.current) {
+        // User's own character not in scene yet (e.g. loading after reconnect)
+        // Default to visible so avatars aren't stuck hidden
+        isNearbyRef.current = true;
+        showHtmlRef.current = true;
+        forceUpdate((n) => n + 1);
       }
     }
   });
