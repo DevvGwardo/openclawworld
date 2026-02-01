@@ -11,6 +11,7 @@ import { SkeletonUtils } from "three-stdlib";
 import { useGrid } from "../hooks/useGrid";
 import { socket, userAtom } from "./SocketManager";
 
+import * as THREE from "three";
 import { motion } from "framer-motion-3d";
 
 const MOVEMENT_SPEED = 4;
@@ -19,6 +20,9 @@ const MOVEMENT_SPEED = 4;
 const RENDER_DISTANCE_SQ = 30 * 30;
 // Closer distance for showing HTML overlays (chat bubbles, action indicators)
 const HTML_DISTANCE_SQ = 18 * 18;
+
+// Reusable vector to avoid allocations in the hot loop
+const _direction = new THREE.Vector3();
 
 export const Avatar = memo(function Avatar({
   id,
@@ -30,11 +34,14 @@ export const Avatar = memo(function Avatar({
   const [chatMessage, setChatMessage] = useState("");
   const [actionStatus, setActionStatus] = useState(null); // { action, detail }
   const position = useMemo(() => props.position, []);
-  const [isNearby, setIsNearby] = useState(true);
-  const [showHtml, setShowHtml] = useState(true);
+  // Use refs for culling state to avoid re-renders from useFrame distance checks
+  const isNearbyRef = useRef(true);
+  const showHtmlRef = useRef(true);
+  const [, forceUpdate] = useState(0);
 
   const avatar = useRef();
   const pathRef = useRef([]);
+  const pathIndexRef = useRef(0); // index pointer instead of shift()
   const { gridToVector3 } = useGrid();
 
   const group = useRef();
@@ -106,6 +113,7 @@ export const Avatar = memo(function Avatar({
           newPath.push(gridToVector3(gridPosition));
         });
         pathRef.current = newPath;
+        pathIndexRef.current = 0;
       }
     }
 
@@ -155,18 +163,17 @@ export const Avatar = memo(function Avatar({
     if (hips) hips.position.set(0, hips.position.y, 0);
 
     const path = pathRef.current;
-    if (path.length && group.current.position.distanceTo(path[0]) > 0.1) {
-      const direction = group.current.position
-        .clone()
-        .sub(path[0])
-        .normalize()
-        .multiplyScalar(MOVEMENT_SPEED * delta);
-      group.current.position.sub(direction);
-      group.current.lookAt(path[0]);
+    const idx = pathIndexRef.current;
+    if (idx < path.length && group.current.position.distanceTo(path[idx]) > 0.1) {
+      // Reuse _direction vector to avoid allocation per frame
+      _direction.copy(group.current.position).sub(path[idx]).normalize().multiplyScalar(MOVEMENT_SPEED * delta);
+      group.current.position.sub(_direction);
+      group.current.lookAt(path[idx]);
       applyAnimation("M_Walk_001");
       isDancingRef.current = false;
-    } else if (path.length) {
-      path.shift();
+    } else if (idx < path.length) {
+      // Advance index pointer instead of array.shift()
+      pathIndexRef.current++;
     } else {
       if (isDancingRef.current) {
         applyAnimation("M_Dances_001");
@@ -183,8 +190,14 @@ export const Avatar = memo(function Avatar({
         const dx = character.position.x - group.current.position.x;
         const dz = character.position.z - group.current.position.z;
         const distSq = dx * dx + dz * dz;
-        setIsNearby(distSq < RENDER_DISTANCE_SQ);
-        setShowHtml(distSq < HTML_DISTANCE_SQ);
+        const newNearby = distSq < RENDER_DISTANCE_SQ;
+        const newShowHtml = distSq < HTML_DISTANCE_SQ;
+        // Only trigger re-render when visibility actually changes
+        if (newNearby !== isNearbyRef.current || newShowHtml !== showHtmlRef.current) {
+          isNearbyRef.current = newNearby;
+          showHtmlRef.current = newShowHtml;
+          forceUpdate((n) => n + 1);
+        }
       }
     }
   });
@@ -196,9 +209,9 @@ export const Avatar = memo(function Avatar({
       position={position}
       dispose={null}
       name={`character-${id}`}
-      visible={isNearby || id === user}
+      visible={isNearbyRef.current || id === user}
     >
-      {(showHtml || id === user) && (
+      {(showHtmlRef.current || id === user) && (
         <Html position-y={2} center distanceFactor={8} style={{ overflow: 'visible' }}>
           <div className="w-60 max-w-full pointer-events-none overflow-visible">
             {/* Action status indicator — hidden for bots to reduce visual noise */}

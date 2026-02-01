@@ -219,7 +219,7 @@ const tryPlaceItemInRoom = (room, itemName, area) => {
     if (itemDef.wall) newItem.wall = true;
 
     room.items.push(newItem);
-    updateGrid(room);
+    addItemToGrid(room, newItem);
     return true;
   }
   return false;
@@ -1240,7 +1240,22 @@ const finder = new pathfinding.AStarFinder({
 const findPath = (room, start, end) => {
   const gridClone = room.grid.clone();
   const path = finder.findPath(start[0], start[1], end[0], end[1], gridClone);
-  return path;
+  // Simplify path using line-of-sight: remove intermediate waypoints that are
+  // in a straight unobstructed line, reducing the number of points the client
+  // needs to lerp through and producing smoother movement.
+  return pathfinding.Util.compressPath(path);
+};
+
+// Helper: mark a single item's cells as non-walkable on the grid
+const markItemOnGrid = (room, item, walkable) => {
+  if (item.walkable || item.wall) return;
+  const w = item.rotation === 1 || item.rotation === 3 ? item.size[1] : item.size[0];
+  const h = item.rotation === 1 || item.rotation === 3 ? item.size[0] : item.size[1];
+  for (let x = 0; x < w; x++) {
+    for (let y = 0; y < h; y++) {
+      room.grid.setWalkableAt(item.gridPosition[0] + x, item.gridPosition[1] + y, walkable);
+    }
+  }
 };
 
 const updateGrid = (room) => {
@@ -1252,21 +1267,33 @@ const updateGrid = (room) => {
   }
 
   room.items.forEach((item) => {
-    if (item.walkable || item.wall) {
-      return;
-    }
-    const width =
-      item.rotation === 1 || item.rotation === 3 ? item.size[1] : item.size[0];
-    const height =
-      item.rotation === 1 || item.rotation === 3 ? item.size[0] : item.size[1];
-    for (let x = 0; x < width; x++) {
-      for (let y = 0; y < height; y++) {
-        room.grid.setWalkableAt(
-          item.gridPosition[0] + x,
-          item.gridPosition[1] + y,
-          false
-        );
-      }
+    markItemOnGrid(room, item, false);
+  });
+};
+
+// Incremental grid update: only update cells affected by a single item change
+// Use this instead of full updateGrid when adding/removing a single item.
+const addItemToGrid = (room, item) => {
+  markItemOnGrid(room, item, false);
+};
+
+const removeItemFromGrid = (room, item) => {
+  markItemOnGrid(room, item, true);
+  // Re-block any overlapping items at the freed cells
+  room.items.forEach((other) => {
+    if (other === item || other.walkable || other.wall) return;
+    const ow = other.rotation === 1 || other.rotation === 3 ? other.size[1] : other.size[0];
+    const oh = other.rotation === 1 || other.rotation === 3 ? other.size[0] : other.size[1];
+    // Quick AABB overlap check
+    const iw = item.rotation === 1 || item.rotation === 3 ? item.size[1] : item.size[0];
+    const ih = item.rotation === 1 || item.rotation === 3 ? item.size[0] : item.size[1];
+    if (
+      other.gridPosition[0] < item.gridPosition[0] + iw &&
+      other.gridPosition[0] + ow > item.gridPosition[0] &&
+      other.gridPosition[1] < item.gridPosition[1] + ih &&
+      other.gridPosition[1] + oh > item.gridPosition[1]
+    ) {
+      markItemOnGrid(room, other, false);
     }
   });
 };
@@ -1526,9 +1553,9 @@ io.on("connection", (socket) => {
       if (itemDef.walkable) newItem.walkable = true;
       if (itemDef.wall) newItem.wall = true;
 
-      // Add to room and update grid
+      // Add to room and update grid incrementally
       room.items.push(newItem);
-      updateGrid(room);
+      addItemToGrid(room, newItem);
 
       // Broadcast update
       io.to(room.id).emit("mapUpdate", {
