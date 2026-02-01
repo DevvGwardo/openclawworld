@@ -3,7 +3,6 @@ import { CameraControls, Environment, Sky } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useAtom } from "jotai";
 import { useEffect, useRef } from "react";
-import { Lobby } from "./Lobby";
 import { Room } from "./Room";
 import { mapAtom, roomIDAtom, userAtom } from "./SocketManager";
 import { buildModeAtom, shopModeAtom } from "./UI";
@@ -23,12 +22,7 @@ export const Experience = ({ loaded }) => {
       controls.current.setTarget(0, 8, 0);
       return;
     }
-    // LOBBY
     if (!roomID) {
-      controls.current.setPosition(0, 8, 2);
-      controls.current.setTarget(0, 8, 0);
-      controls.current.setPosition(0, 0, 2, true);
-      controls.current.setTarget(0, 0, 0, true);
       return;
     }
     if (shopMode) {
@@ -37,8 +31,8 @@ export const Experience = ({ loaded }) => {
       return;
     }
     if (buildMode) {
-      controls.current.setPosition(14, 10, 14, true);
-      controls.current.setTarget(3.5, 0, 3.5, true);
+      controls.current.setPosition(50, 40, 50, true);
+      controls.current.setTarget(25, 0, 25, true);
       return;
     }
 
@@ -66,9 +60,9 @@ export const Experience = ({ loaded }) => {
       true
     );
     controls.current.setPosition(
-      character.position.x + 8,
-      character.position.y + 8,
-      character.position.z + 8,
+      character.position.x + 12,
+      character.position.y + 12,
+      character.position.z + 12,
       true
     );
   });
@@ -86,15 +80,15 @@ export const Experience = ({ loaded }) => {
 
       <ambientLight intensity={0.1} />
       <directionalLight
-        position={[4, 4, -4]}
+        position={[15, 20, -15]}
         castShadow
         intensity={0.35}
-        shadow-mapSize={[1024, 1024]}
+        shadow-mapSize={[2048, 2048]}
       >
         <orthographicCamera
           attach={"shadow-camera"}
-          args={[-10, 10, 10, -10]}
-          far={20 + 2}
+          args={[-30, 30, 30, -30]}
+          far={60}
         />
       </directionalLight>
       <CameraControls
@@ -114,7 +108,6 @@ export const Experience = ({ loaded }) => {
         }}
       />
       {roomID && map && <Room />}
-      {loaded && !roomID && <Lobby />}
     </>
   );
 };

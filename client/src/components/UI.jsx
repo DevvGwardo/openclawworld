@@ -174,14 +174,7 @@ export const UI = () => {
             </div>
           )}
           <div className="flex items-center space-x-4 pointer-events-auto">
-            {roomID && !shopMode && !buildMode && (
-              <button
-                className="p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
-                onClick={leaveRoom}
-              >
-                LOBBY
-              </button>
-            )}
+            {/* Lobby button removed - single shared world */}
             {/* BACK */}
             {(buildMode || shopMode) && draggedItem === null && (
               <button

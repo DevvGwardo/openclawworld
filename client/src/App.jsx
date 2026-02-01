@@ -8,13 +8,10 @@ import { Loader } from "./components/Loader";
 import {
   SocketManager,
   itemsAtom,
-  roomIDAtom,
 } from "./components/SocketManager";
 import { UI } from "./components/UI";
 
 function App() {
-  const [roomID] = useAtom(roomIDAtom);
-
   const { progress } = useProgress();
   const [loaded, setLoaded] = useState(false);
   const [items] = useAtom(itemsAtom);
@@ -35,7 +32,7 @@ function App() {
         }}
       >
         <color attach="background" args={["#ffffff"]} />
-        <ScrollControls pages={roomID ? 4 : 0}>
+        <ScrollControls pages={4}>
           <Experience loaded={loaded} />
         </ScrollControls>
         {/* Impact badly performances without a noticeable good result */}

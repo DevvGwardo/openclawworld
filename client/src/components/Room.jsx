@@ -1,13 +1,11 @@
 import {
-  AccumulativeShadows,
   Grid,
-  RandomizedLight,
   useCursor,
 } from "@react-three/drei";
 
 import { useThree } from "@react-three/fiber";
 import { atom, useAtom } from "jotai";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useGrid } from "../hooks/useGrid";
 import { Avatar } from "./Avatar";
 import { Item } from "./Item";
@@ -169,39 +167,9 @@ export const Room = () => {
     setDraggedItemRotation(item.rotation || 0);
   };
 
-  const accumulativeShadows = useMemo(
-    () => (
-      <AccumulativeShadows
-        temporal
-        frames={42}
-        alphaTest={0.85}
-        scale={30}
-        position={[0, 0, 0]}
-        color="pink"
-      >
-        <RandomizedLight
-          amount={4}
-          radius={9}
-          intensity={0.38}
-          ambient={0.25}
-          position={[15, 5, -20]}
-        />
-        <RandomizedLight
-          amount={4}
-          radius={5}
-          intensity={0.25}
-          ambient={0.55}
-          position={[-5, 5, -20]}
-        />
-      </AccumulativeShadows>
-    ),
-    [items]
-  );
-
   return (
     <>
       {shopMode && <Shop onItemSelected={onItemSelected} />}
-      {!buildMode && !shopMode && accumulativeShadows}
       {!shopMode &&
         (buildMode ? items : map.items).map((item, idx) => (
           <Item
@@ -245,7 +213,7 @@ export const Room = () => {
           receiveShadow
         >
           <planeGeometry args={map.size} />
-          <meshStandardMaterial color="#f0f0f0" />
+          <meshStandardMaterial color="#c2b280" />
         </mesh>
       )}
       {(buildMode || shopMode) && (

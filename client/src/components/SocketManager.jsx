@@ -21,6 +21,7 @@ export const SocketManager = () => {
   const [_user, setUser] = useAtom(userAtom);
   const [items, setItems] = useAtom(itemsAtom);
   const [_rooms, setRooms] = useAtom(roomsAtom);
+  const [_roomID, setRoomID] = useAtom(roomIDAtom);
 
   const charactersRef = useRef([]);
   useEffect(() => { charactersRef.current = _characters; }, [_characters]);
@@ -44,6 +45,14 @@ export const SocketManager = () => {
     function onWelcome(value) {
       setRooms(value.rooms);
       setItems(value.items);
+      // Auto-join the first (only) room
+      if (value.rooms && value.rooms.length > 0) {
+        const avatarUrl =
+          localStorage.getItem("avatarURL") ||
+          "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb?meshlod=1&quality=medium";
+        socket.emit("joinRoom", value.rooms[0].id, { avatarUrl });
+        setRoomID(value.rooms[0].id);
+      }
     }
 
     function onRoomJoined(value) {
