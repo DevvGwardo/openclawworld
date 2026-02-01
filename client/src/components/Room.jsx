@@ -6,9 +6,23 @@ import {
 
 import { useThree } from "@react-three/fiber";
 import { atom, useAtom } from "jotai";
-import React, { Suspense, useEffect, useState } from "react";
+import React, { Suspense, useEffect, useState, Component } from "react";
 import { useGrid } from "../hooks/useGrid";
 import { Avatar } from "./Avatar";
+
+class AvatarErrorBoundary extends Component {
+  state = { hasError: false };
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(err) {
+    console.warn("Avatar failed to load:", err?.message);
+  }
+  render() {
+    if (this.state.hasError) return null;
+    return this.props.children;
+  }
+}
 import { Item } from "./Item";
 import { ProximityItem } from "./ProximityItem";
 import { Shop } from "./Shop";
@@ -28,18 +42,20 @@ const CharacterList = React.memo(() => {
   return (
     <>
       {characters.map((character) => (
-        <Suspense key={character.id}>
-          <Avatar
-            id={character.id}
-            gridPosition={character.position}
-            hairColor={character.hairColor}
-            topColor={character.topColor}
-            bottomColor={character.bottomColor}
-            avatarUrl={character.avatarUrl}
-            name={character.name}
-            isBot={character.isBot}
-          />
-        </Suspense>
+        <AvatarErrorBoundary key={character.id}>
+          <Suspense>
+            <Avatar
+              id={character.id}
+              gridPosition={character.position}
+              hairColor={character.hairColor}
+              topColor={character.topColor}
+              bottomColor={character.bottomColor}
+              avatarUrl={character.avatarUrl}
+              name={character.name}
+              isBot={character.isBot}
+            />
+          </Suspense>
+        </AvatarErrorBoundary>
       ))}
     </>
   );

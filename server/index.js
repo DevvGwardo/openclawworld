@@ -12,10 +12,8 @@ const ALLOWED_EMOTES = ["dance", "wave", "sit", "nod"];
 
 const AVATAR_URLS = [
   "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
-  "https://models.readyplayer.me/65893b0514f9f5f28e61d783.glb",
   "https://models.readyplayer.me/663833cf6c79010563b91e1b.glb",
   "https://models.readyplayer.me/64bfa15f0e72c63d7c3934a6.glb",
-  "https://models.readyplayer.me/663833cf6c79010563b91e1b.glb",
   "https://models.readyplayer.me/64a3f54c1d64e9f3dbc832ac.glb",
 ];
 const randomAvatarUrl = () => AVATAR_URLS[Math.floor(Math.random() * AVATAR_URLS.length)];
@@ -1417,7 +1415,7 @@ const httpServer = http.createServer(async (req, res) => {
 });
 
 const io = new Server(httpServer, {
-  cors: { origin: [origin, VERCEL_URL, SERVER_URL, "http://localhost:3000"] },
+  cors: { origin: [origin, VERCEL_URL, SERVER_URL, "http://localhost:3000", "https://www.clawland.xyz", "https://clawland.xyz"] },
 });
 
 const PORT = process.env.PORT || 3000;
