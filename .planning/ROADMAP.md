@@ -88,12 +88,12 @@ Plans:
   3. Invalid LLM responses (hallucinated actions, malformed JSON) fall back to idle without crashing or freezing
   4. Bot actions are rate-limited (burst of 3 then sustained 1/sec) and excess actions are queued or dropped
   5. Structured JSON logs (Pino) capture each perception-decision-action cycle with latency metrics
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 05-01: Perception module (world state snapshot, serialization to compact text)
-- [ ] 05-02: Decision module (Gateway request, Zod validation, rate limiter)
-- [ ] 05-03: Action execution and bot lifecycle manager (spawn, idle, disconnect, cleanup)
+- [ ] 05-01-PLAN.md -- Logger, perception module, and rate limiter (foundational modules)
+- [ ] 05-02-PLAN.md -- Action validation (Zod schema) and idle patrol controller
+- [ ] 05-03-PLAN.md -- BotBridge orchestrator, lifecycle manager, and entry point
 
 ### Phase 6: Client UI
 **Goal**: Human players can see what bots are saying through visible chat in the 3D scene
