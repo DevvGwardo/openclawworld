@@ -542,12 +542,12 @@ export const UI = () => {
             }}
           />
         )}
-        <div className="fixed inset-4 flex items-center justify-end flex-col pointer-events-none select-none z-10">
+        <div className="fixed inset-2 sm:inset-4 flex items-center justify-end flex-col pointer-events-none select-none z-10">
           {roomID && !shopMode && !buildMode && (
-            <div className="pointer-events-auto p-4 flex items-center space-x-4" onWheel={(e) => e.stopPropagation()}>
+            <div className="pointer-events-auto p-2 sm:p-4 flex items-center space-x-2 sm:space-x-4" onWheel={(e) => e.stopPropagation()}>
               <input
                 type="text"
-                className="w-56 border px-5 p-4 h-full rounded-full"
+                className="w-40 sm:w-56 border px-3 sm:px-5 p-3 sm:p-4 h-full rounded-full text-sm sm:text-base"
                 placeholder="Message..."
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
@@ -558,7 +558,7 @@ export const UI = () => {
                 onChange={(e) => setChatMessage(e.target.value)}
               />
               <button
-                className="p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
+                className="p-3 sm:p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
                 onClick={sendChatMessage}
               >
                 <svg
@@ -567,7 +567,7 @@ export const UI = () => {
                   viewBox="0 0 24 24"
                   strokeWidth={1.5}
                   stroke="currentColor"
-                  className="w-6 h-6"
+                  className="w-5 h-5 sm:w-6 sm:h-6"
                 >
                   <path
                     strokeLinecap="round"
@@ -578,12 +578,12 @@ export const UI = () => {
               </button>
             </div>
           )}
-          <div className="flex items-center space-x-4 pointer-events-auto">
+          <div className="flex items-center flex-wrap justify-center gap-2 sm:gap-4 pointer-events-auto">
             {/* Lobby button removed - single shared world */}
             {/* BACK */}
             {(buildMode || shopMode) && draggedItem === null && (
               <button
-                className="p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
+                className="p-3 sm:p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
                 onClick={() => {
                   shopMode ? setShopMode(false) : setBuildMode(false);
                 }}
@@ -594,7 +594,7 @@ export const UI = () => {
                   viewBox="0 0 24 24"
                   strokeWidth={1.5}
                   stroke="currentColor"
-                  className="w-6 h-6"
+                  className="w-5 h-5 sm:w-6 sm:h-6"
                 >
                   <path
                     strokeLinecap="round"
@@ -607,7 +607,7 @@ export const UI = () => {
             {/* CHARACTER SELECTOR */}
             {!buildMode && !shopMode && (
               <button
-                className="p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
+                className="p-3 sm:p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
                 onClick={() => setCharacterSelectorMode(true)}
               >
                 <svg
@@ -616,7 +616,7 @@ export const UI = () => {
                   viewBox="0 0 24 24"
                   strokeWidth={1.5}
                   stroke="currentColor"
-                  className="w-6 h-6"
+                  className="w-5 h-5 sm:w-6 sm:h-6"
                 >
                   <path
                     strokeLinecap="round"
@@ -629,7 +629,7 @@ export const UI = () => {
             {/* CONNECT BOT */}
             {!buildMode && !shopMode && (
               <button
-                className="p-4 rounded-full bg-indigo-500 text-white drop-shadow-md cursor-pointer hover:bg-indigo-700 transition-colors"
+                className="p-3 sm:p-4 rounded-full bg-indigo-500 text-white drop-shadow-md cursor-pointer hover:bg-indigo-700 transition-colors"
                 onClick={() => setBotConnectMode(true)}
               >
                 <svg
@@ -638,7 +638,7 @@ export const UI = () => {
                   viewBox="0 0 24 24"
                   strokeWidth={1.5}
                   stroke="currentColor"
-                  className="w-6 h-6"
+                  className="w-5 h-5 sm:w-6 sm:h-6"
                 >
                   <path
                     strokeLinecap="round"
@@ -651,7 +651,7 @@ export const UI = () => {
             {/* ROOMS */}
             {roomID && !buildMode && !shopMode && (
               <button
-                className="p-4 rounded-full bg-amber-500 text-white drop-shadow-md cursor-pointer hover:bg-amber-700 transition-colors"
+                className="p-3 sm:p-4 rounded-full bg-amber-500 text-white drop-shadow-md cursor-pointer hover:bg-amber-700 transition-colors"
                 onClick={() => setRoomSelectorMode(true)}
               >
                 <svg
@@ -660,7 +660,7 @@ export const UI = () => {
                   viewBox="0 0 24 24"
                   strokeWidth={1.5}
                   stroke="currentColor"
-                  className="w-6 h-6"
+                  className="w-5 h-5 sm:w-6 sm:h-6"
                 >
                   <path
                     strokeLinecap="round"
@@ -673,7 +673,7 @@ export const UI = () => {
             {/* DANCE */}
             {roomID && !buildMode && !shopMode && (
               <button
-                className="p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
+                className="p-3 sm:p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
                 onClick={() => socket.emit("dance")}
               >
                 <svg
@@ -682,7 +682,7 @@ export const UI = () => {
                   viewBox="0 0 24 24"
                   strokeWidth={1.5}
                   stroke="currentColor"
-                  className="w-6 h-6"
+                  className="w-5 h-5 sm:w-6 sm:h-6"
                 >
                   <path
                     strokeLinecap="round"
@@ -695,7 +695,7 @@ export const UI = () => {
             {/* BUILD */}
             {roomID && !buildMode && !shopMode && (
               <button
-                className="p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
+                className="p-3 sm:p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
                 onClick={() => {
                   if (!passwordCorrectForRoom) {
                     setPasswordMode(true);
@@ -710,7 +710,7 @@ export const UI = () => {
                   viewBox="0 0 24 24"
                   strokeWidth={1.5}
                   stroke="currentColor"
-                  className="w-6 h-6"
+                  className="w-5 h-5 sm:w-6 sm:h-6"
                 >
                   <path
                     strokeLinecap="round"
@@ -723,7 +723,7 @@ export const UI = () => {
             {/* SHOP */}
             {buildMode && !shopMode && draggedItem === null && (
               <button
-                className="p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
+                className="p-3 sm:p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
                 onClick={() => setShopMode(true)}
               >
                 <svg
@@ -732,7 +732,7 @@ export const UI = () => {
                   viewBox="0 0 24 24"
                   strokeWidth={1.5}
                   stroke="currentColor"
-                  className="w-6 h-6"
+                  className="w-5 h-5 sm:w-6 sm:h-6"
                 >
                   <path
                     strokeLinecap="round"
@@ -746,7 +746,7 @@ export const UI = () => {
             {/* ROTATE */}
             {buildMode && !shopMode && draggedItem !== null && (
               <button
-                className="p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
+                className="p-3 sm:p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
                 onClick={() =>
                   setDraggedItemRotation(
                     draggedItemRotation === 3 ? 0 : draggedItemRotation + 1
@@ -759,7 +759,7 @@ export const UI = () => {
                   viewBox="0 0 24 24"
                   strokeWidth={1.5}
                   stroke="currentColor"
-                  className="w-6 h-6"
+                  className="w-5 h-5 sm:w-6 sm:h-6"
                 >
                   <path
                     strokeLinecap="round"
@@ -772,7 +772,7 @@ export const UI = () => {
             {/* CANCEL */}
             {buildMode && !shopMode && draggedItem !== null && (
               <button
-                className="p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
+                className="p-3 sm:p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
                 onClick={() => setDraggedItem(null)}
               >
                 <svg
@@ -781,7 +781,7 @@ export const UI = () => {
                   viewBox="0 0 24 24"
                   strokeWidth={1.5}
                   stroke="currentColor"
-                  className="w-6 h-6"
+                  className="w-5 h-5 sm:w-6 sm:h-6"
                 >
                   <path
                     strokeLinecap="round"
@@ -794,7 +794,7 @@ export const UI = () => {
             {/* REMOVE ITEM */}
             {buildMode && !shopMode && draggedItem !== null && (
               <button
-                className="p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
+                className="p-3 sm:p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
                 onClick={() => {
                   setRoomItems((prev) => {
                     const newItems = [...prev];
@@ -810,7 +810,7 @@ export const UI = () => {
                   viewBox="0 0 24 24"
                   strokeWidth={1.5}
                   stroke="currentColor"
-                  className="w-6 h-6"
+                  className="w-5 h-5 sm:w-6 sm:h-6"
                 >
                   <path
                     strokeLinecap="round"
