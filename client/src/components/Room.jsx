@@ -9,6 +9,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useGrid } from "../hooks/useGrid";
 import { Avatar } from "./Avatar";
 import { Item } from "./Item";
+import { ProximityItem } from "./ProximityItem";
 import { Shop } from "./Shop";
 import { charactersAtom, mapAtom, socket, userAtom } from "./SocketManager";
 import {
@@ -171,21 +172,32 @@ export const Room = () => {
     <>
       {shopMode && <Shop onItemSelected={onItemSelected} />}
       {!shopMode &&
-        (buildMode ? items : map.items).map((item, idx) => (
+        buildMode &&
+        items.map((item, idx) => (
           <Item
             key={`${item.name}-${idx}`}
             item={item}
             onClick={() => {
-              if (buildMode) {
-                setDraggedItem((prev) => (prev === null ? idx : prev));
-                setDraggedItemRotation(item.rotation || 0);
-              }
+              setDraggedItem((prev) => (prev === null ? idx : prev));
+              setDraggedItemRotation(item.rotation || 0);
             }}
             isDragging={draggedItem === idx}
             dragPosition={dragPosition}
             dragRotation={draggedItemRotation}
             canDrop={canDrop}
           />
+        ))}
+      {!shopMode &&
+        !buildMode &&
+        map.items.map((item, idx) => (
+          <ProximityItem
+            key={`${item.name}-${idx}`}
+            gridPosition={item.gridPosition}
+            size={item.size}
+            rotation={item.rotation || 0}
+          >
+            <Item item={item} />
+          </ProximityItem>
         ))}
 
       {!shopMode && (
