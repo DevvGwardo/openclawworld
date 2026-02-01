@@ -19,7 +19,7 @@ const FollowIndicator = () => {
   const [followedCharacter, setFollowedCharacter] = useAtom(followedCharacterAtom);
   if (!followedCharacter) return null;
   return (
-    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[15] flex items-center gap-2 bg-blue-600/90 backdrop-blur-sm text-white px-4 py-2 rounded-full shadow-lg border border-blue-400/30">
+    <div className="fixed top-10 left-1/2 -translate-x-1/2 z-[35] flex items-center gap-2 bg-blue-600/90 backdrop-blur-sm text-white px-4 py-2 rounded-full shadow-lg border border-blue-400/30">
       <span className="text-sm font-medium">Following {followedCharacter.name}</span>
       <button
         onClick={() => setFollowedCharacter(null)}
