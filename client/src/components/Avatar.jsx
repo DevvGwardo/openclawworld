@@ -105,6 +105,8 @@ export const Avatar = memo(function Avatar({
   const waveTargetIdRef = useRef(null);
   const waveTimeoutRef = useRef(null);
   const initRef = useRef(false);
+  // Random offset so characters don't animate in lockstep
+  const animOffsetRef = useRef(Math.random());
   const [showChatBubble, setShowChatBubble] = useState(false);
 
   // Apply animation changes via ref — only triggers React state when animation actually changes
@@ -114,7 +116,11 @@ export const Avatar = memo(function Avatar({
     animationRef.current = newAnim;
     if (actions[oldAnim]) actions[oldAnim].fadeOut(0.32);
     if (actions[newAnim]) {
-      actions[newAnim].reset().fadeIn(initRef.current ? 0.32 : 0).play();
+      const action = actions[newAnim];
+      action.reset().fadeIn(initRef.current ? 0.32 : 0).play();
+      // Offset the starting time so characters aren't in sync
+      const clip = action.getClip();
+      if (clip) action.time = animOffsetRef.current * clip.duration;
       initRef.current = true;
     }
   }, [actions]);
@@ -132,7 +138,11 @@ export const Avatar = memo(function Avatar({
   useEffect(() => {
     const anim = animationRef.current;
     if (actions[anim]) {
-      actions[anim].reset().fadeIn(0).play();
+      const action = actions[anim];
+      action.reset().fadeIn(0).play();
+      // Offset so each character starts at a different point in the cycle
+      const clip = action.getClip();
+      if (clip) action.time = animOffsetRef.current * clip.duration;
       initRef.current = true;
     }
   }, [actions, avatarUrl]);
