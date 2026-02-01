@@ -2,6 +2,7 @@ import { useGLTF } from "@react-three/drei";
 import { atom, useAtom } from "jotai";
 import { useEffect, useRef } from "react";
 import { io } from "socket.io-client";
+import { activityEventsAtom } from "./ActivityFeed";
 
 export const socket = io(
   import.meta.env.VITE_SERVER_URL || "http://localhost:3000"
@@ -37,9 +38,17 @@ export const SocketManager = () => {
   const [_rooms, setRooms] = useAtom(roomsAtom);
   const [_roomID, setRoomID] = useAtom(roomIDAtom);
   const [_moltbookPosts, setMoltbookPosts] = useAtom(moltbookPostsAtom);
+  const [_activityEvents, setActivityEvents] = useAtom(activityEventsAtom);
 
   const charactersRef = useRef([]);
   useEffect(() => { charactersRef.current = _characters; }, [_characters]);
+
+  const addActivity = (type, name, isBot, detail) => {
+    setActivityEvents((prev) => [
+      ...prev.slice(-20),
+      { id: `${Date.now()}-${Math.random()}`, type, name, isBot, detail, timestamp: Date.now() },
+    ]);
+  };
 
   useEffect(() => {
     if (!items) {
@@ -79,6 +88,20 @@ export const SocketManager = () => {
     }
 
     function onCharacters(value) {
+      // Diff to detect spawns/despawns
+      const prev = charactersRef.current || [];
+      const prevIds = new Set(prev.map((c) => c.id));
+      const nextIds = new Set(value.map((c) => c.id));
+      value.forEach((c) => {
+        if (!prevIds.has(c.id)) {
+          addActivity("spawn", c.name || "Player", c.isBot);
+        }
+      });
+      prev.forEach((c) => {
+        if (!nextIds.has(c.id)) {
+          addActivity("despawn", c.name || "Player", c.isBot);
+        }
+      });
       setCharacters(value);
     }
 
@@ -114,6 +137,15 @@ export const SocketManager = () => {
       setMoltbookPosts(value);
     }
 
+    function onPlayerAction(value) {
+      if (!value.action || value.action === "thinking") return;
+      const chars = charactersRef.current || [];
+      const sender = chars.find((c) => c.id === value.id);
+      if (!sender) return;
+      const type = value.action === "done" ? "item_placed" : value.action;
+      addActivity(type, sender.name || "Player", sender.isBot, value.detail);
+    }
+
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
     socket.on("roomJoined", onRoomJoined);
@@ -123,6 +155,7 @@ export const SocketManager = () => {
     socket.on("mapUpdate", onMapUpdate);
     socket.on("playerChatMessage", onPlayerChatMessage);
     socket.on("moltbookPosts", onMoltbookPosts);
+    socket.on("playerAction", onPlayerAction);
     return () => {
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
@@ -133,6 +166,7 @@ export const SocketManager = () => {
       socket.off("mapUpdate", onMapUpdate);
       socket.off("playerChatMessage", onPlayerChatMessage);
       socket.off("moltbookPosts", onMoltbookPosts);
+      socket.off("playerAction", onPlayerAction);
     };
   }, []);
 };

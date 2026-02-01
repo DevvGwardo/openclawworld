@@ -11,10 +11,13 @@ import {
 } from "./components/SocketManager";
 import { UI } from "./components/UI";
 import { NewsTicker } from "./components/NewsTicker";
+import { ActivityFeed } from "./components/ActivityFeed";
+import { WelcomeModal } from "./components/WelcomeModal";
 
 function App() {
   const { progress } = useProgress();
   const [loaded, setLoaded] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(true);
   const [items] = useAtom(itemsAtom);
 
   useEffect(() => {
@@ -41,7 +44,16 @@ function App() {
       </Canvas>
       <Loader loaded={loaded} />
       {loaded && <NewsTicker />}
+      {loaded && <ActivityFeed />}
       {loaded && <UI />}
+      {loaded && showWelcome && (
+        <WelcomeModal
+          onChoice={(choice) => {
+            localStorage.setItem("clawland_role", choice);
+            setShowWelcome(false);
+          }}
+        />
+      )}
     </>
   );
 }
