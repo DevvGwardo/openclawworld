@@ -8,7 +8,6 @@ import { roomIDAtom, socket } from "./SocketManager";
 
 const AVATAR_URLS = [
   "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
-  "https://models.readyplayer.me/6185a4acfb622cf1cdc49348.glb",
   "https://models.readyplayer.me/65893b0514f9f5f28e61d783.glb",
   "https://models.readyplayer.me/62ea7bc28a6d28ec134bbcce.glb",
   "https://models.readyplayer.me/663833cf6c79010563b91e1b.glb",
