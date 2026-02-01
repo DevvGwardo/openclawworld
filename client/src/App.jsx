@@ -10,6 +10,7 @@ import {
   itemsAtom,
 } from "./components/SocketManager";
 import { UI } from "./components/UI";
+import { NewsTicker } from "./components/NewsTicker";
 
 function App() {
   const { progress } = useProgress();
@@ -39,6 +40,7 @@ function App() {
         </EffectComposer> */}
       </Canvas>
       <Loader loaded={loaded} />
+      {loaded && <NewsTicker />}
       {loaded && <UI />}
     </>
   );

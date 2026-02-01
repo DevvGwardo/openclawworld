@@ -33,7 +33,7 @@ export const ChatLog = () => {
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: 20 }}
           transition={{ duration: 0.3 }}
-          className="fixed top-4 right-4 bottom-24 w-72 z-20 pointer-events-none"
+          className="fixed top-10 right-4 bottom-24 w-72 z-20 pointer-events-none"
         >
           <div
             ref={scrollRef}

@@ -15,7 +15,7 @@ const AVATAR_URLS = [
   "https://models.readyplayer.me/6185a4acfb622cf1cdc49348.glb",
   "https://models.readyplayer.me/65893b0514f9f5f28e61d783.glb",
   "https://models.readyplayer.me/62ea7bc28a6d28ec134bbcce.glb",
-  "https://models.readyplayer.me/65059d4f7a4b5e00b4d9ea82.glb",
+  "https://models.readyplayer.me/663833cf6c79010563b91e1b.glb",
   "https://models.readyplayer.me/64bfa15f0e72c63d7c3934a6.glb",
   "https://models.readyplayer.me/663833cf6c79010563b91e1b.glb",
   "https://models.readyplayer.me/64a3f54c1d64e9f3dbc832ac.glb",
@@ -1096,6 +1096,11 @@ io.on("connection", (socket) => {
         nbCharacters: room.characters.length,
       })),
       items,
+      moltbookPosts: moltbookPostPool.map((p) => ({
+        id: p.id,
+        title: p.title || "",
+        content: (p.content || "").slice(0, 300),
+      })),
     });
 
     socket.on("joinRoom", (roomId, opts) => {
