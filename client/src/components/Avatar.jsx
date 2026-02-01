@@ -345,6 +345,11 @@ export const Avatar = memo(function Avatar({
           </Html>
         </>
       )}
+      {/* Invisible click hitbox — skinned meshes don't raycast reliably */}
+      <mesh position-y={0.9}>
+        <capsuleGeometry args={[0.3, 1.0, 4, 8]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
       <motion.group
         initial={{
           y: 3,
