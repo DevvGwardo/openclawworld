@@ -15,6 +15,10 @@ export const roomsAtom = atom([]);
 export const chatMessagesAtom = atom([]);
 export const moltbookPostsAtom = atom([]);
 
+export const switchRoom = (roomId) => {
+  socket.emit("switchRoom", roomId);
+};
+
 const AVATAR_URLS = [
   "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
   "https://models.readyplayer.me/65893b0514f9f5f28e61d783.glb",
@@ -71,6 +75,7 @@ export const SocketManager = () => {
       setMap(value.map);
       setUser(value.id);
       setCharacters(value.characters);
+      setChatMessages([]);
     }
 
     function onCharacters(value) {

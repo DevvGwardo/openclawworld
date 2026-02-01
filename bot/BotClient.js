@@ -135,6 +135,34 @@ export class BotClient extends EventEmitter {
     this.characters = [];
   }
 
+  switchRoom(roomId) {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error("Not connected"));
+        return;
+      }
+
+      const timeout = setTimeout(() => {
+        reject(new Error("Switch room timeout"));
+      }, 5000);
+
+      this.socket.once("roomJoined", (data) => {
+        clearTimeout(timeout);
+        this.id = data.id;
+        this.room = data.map;
+        this.characters = data.characters;
+        const own = data.characters.find((c) => c.id === this.id);
+        if (own) {
+          this.position = own.position;
+        }
+        this.emit("joined", data);
+        resolve(data);
+      });
+
+      this.socket.emit("switchRoom", roomId);
+    });
+  }
+
   move(toGridPos) {
     if (this.position === null) {
       throw new Error("Cannot move: not in a room");

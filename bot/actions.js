@@ -27,12 +27,18 @@ const PlaceAction = z.object({
   rotation: z.number().int().min(0).max(3).optional().default(0),
 });
 
+const EnterRoomAction = z.object({
+  type: z.literal("enterRoom"),
+  roomId: z.string().min(1),
+});
+
 export const ActionSchema = z.discriminatedUnion("type", [
   MoveAction,
   SayAction,
   EmoteAction,
   LookAction,
   PlaceAction,
+  EnterRoomAction,
 ]);
 
 const noopLogger = {
@@ -114,6 +120,11 @@ export async function executeAction(action, botClient, logger) {
       case "place":
         botClient.placeItem(action.itemName, action.gridPosition, action.rotation ?? 0);
         log.info({ type: "place", item: action.itemName, pos: action.gridPosition, rot: action.rotation });
+        break;
+
+      case "enterRoom":
+        await botClient.switchRoom(action.roomId);
+        log.info({ type: "enterRoom", roomId: action.roomId });
         break;
     }
 

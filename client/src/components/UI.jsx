@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { AvatarCreator } from "@readyplayerme/react-avatar-creator";
 import { motion } from "framer-motion";
 import { roomItemsAtom } from "./Room";
-import { roomIDAtom, socket } from "./SocketManager";
+import { roomIDAtom, roomsAtom, socket, switchRoom } from "./SocketManager";
 
 const AVATAR_URLS = [
   "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
@@ -247,6 +247,94 @@ const BotConnectModal = ({ onClose }) => {
   );
 };
 
+const RoomSelectorModal = ({ onClose, currentRoomID, rooms, onSwitchRoom }) => {
+  return (
+    <div className="fixed z-10 grid place-items-center w-full h-full top-0 left-0">
+      <div
+        className="absolute top-0 left-0 w-full h-full bg-black bg-opacity-50 backdrop-blur-sm"
+        onClick={onClose}
+      ></div>
+      <div className="bg-white rounded-2xl shadow-2xl z-10 max-w-md w-full mx-4 max-h-[80vh] flex flex-col">
+        <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-amber-600">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-bold text-gray-900">Rooms</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-3">
+          {/* Plaza / main room at the top */}
+          {rooms.filter(r => !r.id.startsWith("room-")).map((room) => (
+            <button
+              key={room.id}
+              onClick={() => { onSwitchRoom(room.id); onClose(); }}
+              className={`w-full text-left p-3 rounded-xl mb-1 flex items-center justify-between transition-colors ${
+                currentRoomID === room.id
+                  ? "bg-amber-100 border-2 border-amber-400"
+                  : "hover:bg-gray-50 border-2 border-transparent"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 text-green-600">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-900 text-sm">{room.name}</p>
+                  <p className="text-xs text-gray-500">Main plaza</p>
+                </div>
+              </div>
+              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                {room.nbCharacters} online
+              </span>
+            </button>
+          ))}
+
+          <div className="border-t border-gray-100 my-2"></div>
+          <p className="text-xs text-gray-400 px-3 mb-2">100 Rooms</p>
+
+          {rooms.filter(r => r.id.startsWith("room-")).map((room) => (
+            <button
+              key={room.id}
+              onClick={() => { onSwitchRoom(room.id); onClose(); }}
+              className={`w-full text-left p-2.5 rounded-xl mb-0.5 flex items-center justify-between transition-colors ${
+                currentRoomID === room.id
+                  ? "bg-amber-100 border-2 border-amber-400"
+                  : "hover:bg-gray-50 border-2 border-transparent"
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 bg-gray-100 rounded-lg flex items-center justify-center">
+                  <span className="text-xs font-semibold text-gray-500">{room.id.split("-")[1]}</span>
+                </div>
+                <p className="font-medium text-gray-800 text-sm">{room.name}</p>
+              </div>
+              {room.nbCharacters > 0 && (
+                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                  {room.nbCharacters}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const UI = () => {
   const [buildMode, setBuildMode] = useAtom(buildModeAtom);
   const [shopMode, setShopMode] = useAtom(shopModeAtom);
@@ -258,12 +346,22 @@ export const UI = () => {
   const [passwordMode, setPasswordMode] = useState(false);
   const [avatarMode, setAvatarMode] = useState(false);
   const [botConnectMode, setBotConnectMode] = useState(false);
+  const [roomSelectorMode, setRoomSelectorMode] = useState(false);
+  const [allRooms] = useAtom(roomsAtom);
   const [avatarUrl, setAvatarUrl] = useAtom(avatarUrlAtom);
   const [roomID, setRoomID] = useAtom(roomIDAtom);
   const [passwordCorrectForRoom, setPasswordCorrectForRoom] = useState(false);
   const leaveRoom = () => {
     socket.emit("leaveRoom");
     setRoomID(null);
+    setBuildMode(false);
+    setShopMode(false);
+  };
+
+  const handleSwitchRoom = (targetRoomId) => {
+    if (targetRoomId === roomID) return;
+    switchRoom(targetRoomId);
+    setRoomID(targetRoomId);
     setBuildMode(false);
     setShopMode(false);
   };
@@ -311,6 +409,14 @@ export const UI = () => {
         )}
         {botConnectMode && (
           <BotConnectModal onClose={() => setBotConnectMode(false)} />
+        )}
+        {roomSelectorMode && (
+          <RoomSelectorModal
+            onClose={() => setRoomSelectorMode(false)}
+            currentRoomID={roomID}
+            rooms={allRooms}
+            onSwitchRoom={handleSwitchRoom}
+          />
         )}
         {passwordMode && (
           <PasswordInput
@@ -423,6 +529,28 @@ export const UI = () => {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h9a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0015.75 4.5h-9A2.25 2.25 0 004.5 6.75v10.5A2.25 2.25 0 006.75 19.5z"
+                  />
+                </svg>
+              </button>
+            )}
+            {/* ROOMS */}
+            {roomID && !buildMode && !shopMode && (
+              <button
+                className="p-4 rounded-full bg-amber-500 text-white drop-shadow-md cursor-pointer hover:bg-amber-700 transition-colors"
+                onClick={() => setRoomSelectorMode(true)}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={1.5}
+                  stroke="currentColor"
+                  className="w-6 h-6"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21"
                   />
                 </svg>
               </button>
