@@ -28,18 +28,28 @@ export class IdleController {
     return this._active;
   }
 
-  /** Activate idle patrol. Picks first waypoint and starts timer. */
+  /** Activate idle patrol. Picks first waypoint after a random delay and starts timer. */
   start() {
     this._active = true;
     this._currentWaypoint = null;
-    this.tick();
-    this._startTimer();
+
+    // Random initial delay (0–patrolInterval) so bots don't all move at the same time
+    const initialDelay = Math.floor(Math.random() * this._patrolIntervalMs);
+    this._startDelay = setTimeout(() => {
+      if (!this._active) return;
+      this.tick();
+      this._startTimer();
+    }, initialDelay);
   }
 
   /** Deactivate idle patrol. Clears timer. */
   stop() {
     this._active = false;
     this._currentWaypoint = null;
+    if (this._startDelay) {
+      clearTimeout(this._startDelay);
+      this._startDelay = null;
+    }
     this._clearTimer();
   }
 
@@ -117,12 +127,20 @@ export class IdleController {
 
   _startTimer() {
     this._clearTimer();
-    this._patrolTimer = setInterval(() => this.tick(), this._patrolIntervalMs);
+    // Use setTimeout with jitter instead of setInterval so each cycle varies ±30%
+    const scheduleNext = () => {
+      const jitter = this._patrolIntervalMs * (0.7 + Math.random() * 0.6); // 70%–130% of base
+      this._patrolTimer = setTimeout(() => {
+        this.tick();
+        if (this._active) scheduleNext();
+      }, jitter);
+    };
+    scheduleNext();
   }
 
   _clearTimer() {
     if (this._patrolTimer) {
-      clearInterval(this._patrolTimer);
+      clearTimeout(this._patrolTimer);
       this._patrolTimer = null;
     }
   }
