@@ -262,6 +262,8 @@ export const Room = () => {
                 topColor={character.topColor}
                 bottomColor={character.bottomColor}
                 avatarUrl={character.avatarUrl}
+                name={character.name}
+                isBot={character.isBot}
               />
             </group>
           </Suspense>

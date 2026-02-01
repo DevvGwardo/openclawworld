@@ -18,6 +18,8 @@ const MOVEMENT_SPEED = 4;
 export function Avatar({
   id,
   avatarUrl = "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
+  name = "Player",
+  isBot = false,
   ...props
 }) {
   const [chatMessage, setChatMessage] = useState("");
@@ -93,7 +95,7 @@ export function Avatar({
         setShowChatBubble(true);
         chatMessageBubbleTimeout = setTimeout(() => {
           setShowChatBubble(false);
-        }, 3500);
+        }, 5000);
       }
     }
 
@@ -141,15 +143,18 @@ export function Avatar({
       dispose={null}
       name={`character-${id}`}
     >
-      <Html position-y={2}>
-        <div className="w-60 max-w-full">
-          <p
-            className={`absolute max-w-full text-center break-words -translate-y-full p-2 px-4 -translate-x-1/2 rounded-lg bg-white bg-opacity-40 backdrop-blur-sm text-black transition-opacity duration-500 ${
-              showChatBubble ? "" : "opacity-0"
+      <Html position-y={2} center>
+        <div className="w-60 max-w-full pointer-events-none">
+          <div
+            className={`text-center break-words p-2 px-4 rounded-xl bg-white/40 backdrop-blur-sm border border-white/20 transition-opacity duration-500 ${
+              showChatBubble ? "opacity-100" : "opacity-0"
             }`}
           >
-            {chatMessage}
-          </p>
+            <p className="text-[10px] font-bold text-gray-600 mb-0.5 truncate">
+              {name} {isBot && <span className="text-blue-400 font-semibold">[BOT]</span>}
+            </p>
+            <p className="text-sm text-black leading-snug">{chatMessage}</p>
+          </div>
         </div>
       </Html>
       <motion.group
