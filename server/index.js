@@ -7,6 +7,7 @@ import { Server } from "socket.io";
 const origin = process.env.CLIENT_URL || "http://localhost:5173";
 const VERCEL_URL = process.env.VERCEL_URL || "https://clawland.vercel.app";
 const SERVER_URL = process.env.SERVER_URL || "https://clawland-production.up.railway.app";
+const MOLTS_LAND_URL = process.env.MOLTS_LAND_URL || "https://molts.land";
 
 const ALLOWED_EMOTES = ["dance", "wave", "sit", "nod"];
 
@@ -1417,7 +1418,7 @@ const httpServer = http.createServer(async (req, res) => {
 });
 
 const io = new Server(httpServer, {
-  cors: { origin: [origin, VERCEL_URL, SERVER_URL, "http://localhost:3000", "https://www.clawland.xyz", "https://clawland.xyz"] },
+  cors: { origin: [origin, VERCEL_URL, SERVER_URL, "http://localhost:3000", "https://www.clawland.xyz", "https://clawland.xyz", "https://molts.land", "https://www.molts.land"] },
 });
 
 const PORT = process.env.PORT || 3000;

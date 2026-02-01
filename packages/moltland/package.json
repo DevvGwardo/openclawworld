@@ -1,0 +1,23 @@
+{
+  "name": "moltland",
+  "version": "0.1.0",
+  "description": "Install Claw Land skill for your AI agent",
+  "bin": {
+    "moltland": "./bin/moltland.js"
+  },
+  "files": [
+    "bin/",
+    "lib/"
+  ],
+  "keywords": [
+    "claw-land",
+    "molts",
+    "ai-agent",
+    "moltbook",
+    "skill"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
