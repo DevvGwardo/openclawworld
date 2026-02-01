@@ -45,7 +45,7 @@ loadBotRegistry();
 
 // --- Moltbook Virtual Bots: fetch posts and spawn them as live characters ---
 const MOLTBOOK_API = "https://www.moltbook.com/api/v1/posts";
-const MOLTBOOK_BOT_COUNT = 10;
+const MOLTBOOK_BOT_COUNT = 100;
 const MOLTBOOK_REFRESH_INTERVAL = 120_000; // swap 2 bots every 2 minutes
 const MOLTBOOK_TICK_INTERVAL = 4_000; // bots act every 4 seconds
 
@@ -82,7 +82,7 @@ const moltbookVirtualBots = new Map(); // id -> { character, postData, joinedAt 
 const fetchMoltbookPosts = async () => {
   try {
     const allPosts = [];
-    for (let offset = 0; offset < 100; offset += 50) {
+    for (let offset = 0; offset < 300; offset += 50) {
       const resp = await fetch(`${MOLTBOOK_API}?limit=50&offset=${offset}`);
       if (!resp.ok) break;
       const data = await resp.json();
@@ -166,6 +166,66 @@ const broadcastMoltbookPosts = () => {
   io.emit("moltbookPosts", posts);
 };
 
+// --- Moltbook bot building: room layout templates ---
+// Defines functional zones that bots will gradually fill in
+const ROOM_ZONES = [
+  // Living area (center-left)
+  { items: ["rugRounded", "loungeSofa", "tableCoffee", "televisionModern", "loungeChair", "lampRoundFloor", "plant", "speaker"], area: { x: [10, 40], y: [10, 35] } },
+  // Kitchen (top-right)
+  { items: ["kitchenFridge", "kitchenCabinet", "kitchenStove", "kitchenSink", "kitchenBar", "kitchenMicrowave", "toaster", "kitchenBlender", "stoolBar", "stoolBar"], area: { x: [55, 90], y: [5, 30] } },
+  // Bedroom (bottom-left)
+  { items: ["bedDouble", "cabinetBedDrawer", "cabinetBedDrawerTable", "lampSquareTable", "bookcaseClosedWide", "rugRound", "plantSmall", "coatRackStanding"], area: { x: [5, 35], y: [55, 90] } },
+  // Bathroom (bottom-right)
+  { items: ["bathtub", "toiletSquare", "bathroomSink", "bathroomCabinetDrawer", "trashcan", "bathroomMirror"], area: { x: [60, 90], y: [60, 90] } },
+  // Office/desk area (top-left)
+  { items: ["desk", "chairModernCushion", "laptop", "bookcaseOpenLow", "lampSquareFloor", "plantSmall"], area: { x: [5, 30], y: [5, 25] } },
+  // Dining area (center)
+  { items: ["tableCrossCloth", "chair", "chair", "chair", "chair", "lampRoundTable", "rugSquare"], area: { x: [35, 60], y: [35, 55] } },
+];
+
+const tryPlaceItemInRoom = (room, itemName, area) => {
+  const itemDef = items[itemName];
+  if (!itemDef) return false;
+
+  const rot = itemDef.rotation ?? 0;
+  const width = rot === 1 || rot === 3 ? itemDef.size[1] : itemDef.size[0];
+  const height = rot === 1 || rot === 3 ? itemDef.size[0] : itemDef.size[1];
+  const maxGrid = room.size[0] * room.gridDivision;
+
+  // Try random positions within the zone area
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const gx = area.x[0] + Math.floor(Math.random() * (area.x[1] - area.x[0] - width));
+    const gy = area.y[0] + Math.floor(Math.random() * (area.y[1] - area.y[0] - height));
+
+    if (gx < 0 || gy < 0 || gx + width > maxGrid || gy + height > maxGrid) continue;
+
+    // Skip collision check for walkable/wall items
+    if (!itemDef.walkable && !itemDef.wall) {
+      let blocked = false;
+      for (let x = 0; x < width && !blocked; x++) {
+        for (let y = 0; y < height && !blocked; y++) {
+          if (!room.grid.isWalkableAt(gx + x, gy + y)) blocked = true;
+        }
+      }
+      if (blocked) continue;
+    }
+
+    const newItem = {
+      name: itemDef.name,
+      size: itemDef.size,
+      gridPosition: [gx, gy],
+      rotation: rot,
+    };
+    if (itemDef.walkable) newItem.walkable = true;
+    if (itemDef.wall) newItem.wall = true;
+
+    room.items.push(newItem);
+    updateGrid(room);
+    return true;
+  }
+  return false;
+};
+
 // Bot behavior tick — each bot randomly moves, chats, or emotes
 const moltbookBotTick = (room) => {
   if (!room) return;
@@ -178,7 +238,7 @@ const moltbookBotTick = (room) => {
 
     const action = Math.random();
 
-    if (action < 0.5) {
+    if (action < 0.4) {
       // Move to a random nearby position
       const pos = bot.character.position || [0, 0];
       const range = 8;
@@ -195,7 +255,7 @@ const moltbookBotTick = (room) => {
           broadcastToRoom(room.id, "playerMove", bot.character);
         }
       }
-    } else if (action < 0.7) {
+    } else if (action < 0.55) {
       // Say something from their post content
       const content = bot.postData.content || bot.postData.title || "";
       // Pick a sentence or chunk to say
@@ -204,13 +264,42 @@ const moltbookBotTick = (room) => {
       if (msg.length > 0) {
         broadcastToRoom(room.id, "playerChatMessage", { id: botId, message: msg });
       }
-    } else if (action < 0.85) {
+    } else if (action < 0.65) {
       // Emote
       const emote = ALLOWED_EMOTES[Math.floor(Math.random() * ALLOWED_EMOTES.length)];
       broadcastToRoom(room.id, "emote:play", { id: botId, emote });
-    } else {
+    } else if (action < 0.75) {
       // Dance
       broadcastToRoom(room.id, "playerDance", { id: botId });
+    } else {
+      // Build — place a furniture item from a random zone
+      const zone = ROOM_ZONES[Math.floor(Math.random() * ROOM_ZONES.length)];
+      // Check which items from this zone are not yet placed
+      const placedNames = new Set(room.items.map(i => i.name));
+      const needed = zone.items.filter(name => {
+        // Allow duplicates for chairs/stools, but limit to 2 of each
+        const count = room.items.filter(i => i.name === name).length;
+        if (["chair", "chairCushion", "chairModernCushion", "stoolBar", "stoolBarSquare", "plantSmall", "plant", "lampRoundFloor", "lampSquareFloor"].includes(name)) {
+          return count < 3;
+        }
+        return count < 1;
+      });
+      if (needed.length > 0) {
+        const itemName = needed[Math.floor(Math.random() * needed.length)];
+        const placed = tryPlaceItemInRoom(room, itemName, zone.area);
+        if (placed) {
+          // Broadcast updated map
+          io.to(room.id).emit("mapUpdate", {
+            map: {
+              gridDivision: room.gridDivision,
+              size: room.size,
+              items: room.items,
+            },
+            characters: room.characters,
+          });
+          fs.writeFileSync("rooms.json", JSON.stringify(rooms, null, 2));
+        }
+      }
     }
   }
 };
@@ -1243,6 +1332,71 @@ io.on("connection", (socket) => {
         characters: room.characters,
       });
 
+      fs.writeFileSync("rooms.json", JSON.stringify(rooms, null, 2));
+    });
+
+    // Bot-initiated single item placement
+    socket.on("placeItem", (placement) => {
+      if (!room) return;
+      if (!character.isBot) return; // only bots can use this endpoint
+      if (!placement || typeof placement !== "object") return;
+
+      const { itemName, gridPosition, rotation } = placement;
+
+      // Validate item exists in the shop catalogue
+      const itemDef = items[itemName];
+      if (!itemDef) return;
+
+      // Validate grid position
+      if (!Array.isArray(gridPosition) || gridPosition.length !== 2) return;
+      const [gx, gy] = gridPosition.map(Math.floor);
+      if (gx < 0 || gy < 0) return;
+
+      const rot = typeof rotation === "number" ? Math.floor(rotation) % 4 : 0;
+
+      // Calculate effective width/height with rotation
+      const width = rot === 1 || rot === 3 ? (itemDef.size[1]) : (itemDef.size[0]);
+      const height = rot === 1 || rot === 3 ? (itemDef.size[0]) : (itemDef.size[1]);
+
+      // Bounds check
+      const maxX = room.size[0] * room.gridDivision;
+      const maxY = room.size[1] * room.gridDivision;
+      if (gx + width > maxX || gy + height > maxY) return;
+
+      // Collision check — skip for walkable/wall items
+      if (!itemDef.walkable && !itemDef.wall) {
+        for (let x = 0; x < width; x++) {
+          for (let y = 0; y < height; y++) {
+            if (!room.grid.isWalkableAt(gx + x, gy + y)) return;
+          }
+        }
+      }
+
+      // Build the new item entry
+      const newItem = {
+        name: itemDef.name,
+        size: itemDef.size,
+        gridPosition: [gx, gy],
+        rotation: itemDef.rotation != null ? itemDef.rotation : rot,
+      };
+      if (itemDef.walkable) newItem.walkable = true;
+      if (itemDef.wall) newItem.wall = true;
+
+      // Add to room and update grid
+      room.items.push(newItem);
+      updateGrid(room);
+
+      // Broadcast update
+      io.to(room.id).emit("mapUpdate", {
+        map: {
+          gridDivision: room.gridDivision,
+          size: room.size,
+          items: room.items,
+        },
+        characters: room.characters,
+      });
+
+      // Persist
       fs.writeFileSync("rooms.json", JSON.stringify(rooms, null, 2));
     });
 

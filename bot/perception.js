@@ -77,11 +77,22 @@ export class PerceptionModule {
       secsAgo: Math.round((now - a.timestamp) / 1000),
     }));
 
+    // Room items (furniture already placed)
+    const roomItems = (this._bot.room?.items ?? []).map(item => ({
+      name: item.name,
+      position: item.gridPosition,
+      size: item.size,
+      rotation: item.rotation ?? 0,
+    }));
+
     return {
       self: { id: this._bot.id, name: this._bot.name, position: this._bot.position },
       nearbyPlayers,
       recentChat,
       ownRecentActions,
+      roomItems,
+      roomSize: this._bot.room?.size ?? [50, 50],
+      gridDivision: this._bot.room?.gridDivision ?? 2,
       timestamp: now,
     };
   }
@@ -133,6 +144,18 @@ export class PerceptionModule {
       });
       lines.push(`[Your recent] ${parts.join(', ')}`);
     }
+
+    // Room items (furniture)
+    if (snap.roomItems && snap.roomItems.length > 0) {
+      const itemSummary = snap.roomItems.map(i =>
+        `${i.name}@[${i.position}]`
+      ).join(', ');
+      lines.push(`[Room items] ${snap.roomItems.length} items: ${itemSummary}`);
+    } else {
+      lines.push('[Room items] Empty room - no furniture placed yet');
+    }
+    const maxGrid = (snap.roomSize?.[0] ?? 50) * (snap.gridDivision ?? 2);
+    lines.push(`[Room] Grid 0-${maxGrid - 1} on each axis`);
 
     // Timestamp
     lines.push(`[Time] ${new Date(snap.timestamp).toISOString()}`);

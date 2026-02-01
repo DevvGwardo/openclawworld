@@ -20,11 +20,19 @@ const LookAction = z.object({
   target: z.string().min(1),
 });
 
+const PlaceAction = z.object({
+  type: z.literal("place"),
+  itemName: z.string().min(1),
+  gridPosition: z.array(z.number().int().min(0).max(99)).length(2),
+  rotation: z.number().int().min(0).max(3).optional().default(0),
+});
+
 export const ActionSchema = z.discriminatedUnion("type", [
   MoveAction,
   SayAction,
   EmoteAction,
   LookAction,
+  PlaceAction,
 ]);
 
 const noopLogger = {
@@ -101,6 +109,11 @@ export async function executeAction(action, botClient, logger) {
           { type: "look", target: action.target },
           "look action logged (no server support)",
         );
+        break;
+
+      case "place":
+        botClient.placeItem(action.itemName, action.gridPosition, action.rotation ?? 0);
+        log.info({ type: "place", item: action.itemName, pos: action.gridPosition, rot: action.rotation });
         break;
     }
 

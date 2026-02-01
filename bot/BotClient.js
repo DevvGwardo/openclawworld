@@ -171,6 +171,13 @@ export class BotClient extends EventEmitter {
     this.socket.emit("dance");
   }
 
+  placeItem(itemName, gridPosition, rotation = 0) {
+    if (!this.socket || !this.room) {
+      throw new Error("Cannot place item: not in a room");
+    }
+    this.socket.emit("placeItem", { itemName, gridPosition, rotation });
+  }
+
   disconnect() {
     if (this.socket) {
       this.socket.disconnect();

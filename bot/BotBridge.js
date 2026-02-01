@@ -193,11 +193,8 @@ export class BotBridge {
       // 1. Perception snapshot
       const snap = this._perception.snapshot();
 
-      // 2. If no nearby players and gateway connected, just idle
-      if (snap.nearbyPlayers.length === 0 && this._gatewayConnected) {
-        this._idle.tick();
-        return;
-      }
+      // 2. If no nearby players and gateway connected, still run LLM for building
+      //    (bots should build even when alone)
 
       // 3. If gateway not connected, idle only (no talking)
       if (!this._gatewayConnected) {
@@ -274,7 +271,7 @@ export class BotBridge {
    * @returns {string}
    */
   _buildPrompt(perceptionText) {
-    return `You are ${this._botName}, a friendly bot in a multiplayer 3D room. Based on what you perceive, decide your next action.
+    return `You are ${this._botName}, a friendly bot in a multiplayer 3D room. You can socialize AND build/furnish the room.
 
 ${perceptionText}
 
@@ -283,11 +280,24 @@ Respond with exactly ONE JSON action. Available actions:
 - {"type":"say","message":"..."} - Say something (max 200 chars)
 - {"type":"emote","name":"wave|dance|sit|nod"} - Perform emote
 - {"type":"look","target":"playerName"} - Face a player
+- {"type":"place","itemName":"bench","gridPosition":[x,y],"rotation":0} - Place furniture
 
-Rules:
-- Be social and friendly. Greet nearby players.
-- If someone spoke recently, respond to them.
-- If alone, explore or emote.
+Available items to place (name, size [w,h]):
+washer[2,2], toiletSquare[2,2], trashcan[1,1], bathroomCabinetDrawer[2,2], bathtub[4,2], bathroomMirror[2,1](wall), bathroomCabinet[2,1](wall), bathroomSink[2,2], showerRound[2,2], tableCoffee[4,2], loungeSofaCorner[5,5], bear[2,1](wall), loungeSofaOttoman[2,2], tableCoffeeGlassSquare[2,2], loungeDesignSofaCorner[5,5], loungeDesignSofa[5,2], loungeSofa[5,2], bookcaseOpenLow[2,1], bookcaseClosedWide[3,1], bedSingle[3,6], bench[2,1], bedDouble[5,5], benchCushionLow[2,1], loungeChair[2,2], cabinetBedDrawer[1,1], cabinetBedDrawerTable[1,1], table[4,2], tableCrossCloth[4,2], plant[1,1], plantSmall[1,1], rugRounded[6,4](walkable), rugRound[4,4](walkable), rugSquare[4,4](walkable), rugRectangle[8,4](walkable), televisionVintage[4,2], televisionModern[4,2], kitchenFridge[2,1], kitchenFridgeLarge[2,1], kitchenBar[2,1], kitchenCabinetCornerRound[2,2], kitchenCabinetCornerInner[2,2], kitchenCabinet[2,2], kitchenBlender[1,1], dryer[2,2], chairCushion[1,1], chair[1,1], deskComputer[3,2], desk[3,2], chairModernCushion[1,1], chairModernFrameCushion[1,1], kitchenMicrowave[1,1], coatRackStanding[1,1], kitchenSink[2,2], lampRoundFloor[1,1], lampRoundTable[1,1], lampSquareFloor[1,1], lampSquareTable[1,1], toaster[1,1], kitchenStove[2,2], laptop[1,1], radio[1,1], speaker[1,1], speakerSmall[1,1], stoolBar[1,1], stoolBarSquare[1,1]
+
+Building rules:
+- The grid goes from 0 to 99. Items cannot go out of bounds (position + size must be <= 99).
+- Don't overlap with existing items. Check [Room items] for what's already placed.
+- rotation: 0=default, 1=90deg, 2=180deg, 3=270deg. Rotation swaps width and height.
+- Create functional zones: a living area (sofa, coffee table, TV, rug), a kitchen (fridge, cabinets, stove, sink), a bedroom (bed, nightstands, bookcase), a bathroom (bathtub/shower, toilet, sink, mirror). Add plants and lamps for decoration.
+- Place items along walls (edges of the grid: near 0 or near 99) to create a realistic room layout.
+- Leave walking paths between furniture clusters.
+
+Behavior rules:
+- If players are nearby, be social — greet them, respond to chat, emote.
+- When alone or between conversations, focus on building. Place one item at a time.
+- Think about what zones the room still needs and fill gaps gradually.
+- Don't place duplicate items in the same spot. Space things out realistically.
 - Respond ONLY with the JSON object, no explanation.`;
   }
 
