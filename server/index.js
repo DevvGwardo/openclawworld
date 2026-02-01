@@ -353,10 +353,11 @@ const moltbookBotTick = () => {
 
       if (room.grid.isWalkableAt(tx, ty)) {
         const path = findPath(room, pos, [tx, ty]);
-        if (path) {
+        if (path && path.length > 0) {
           bot.character.position = pos;
           bot.character.path = path;
           broadcastToRoom(room.id, "playerMove", bot.character);
+          bot.character.position = path[path.length - 1];
         }
       }
 
@@ -435,10 +436,11 @@ const moltbookBotTick = () => {
 
           if (room.grid.isWalkableAt(ex, ey)) {
             const path = findPath(room, pos, [ex, ey]);
-            if (path) {
+            if (path && path.length > 0) {
               bot.character.position = pos;
               bot.character.path = path;
               broadcastToRoom(room.id, "playerMove", bot.character);
+              bot.character.position = path[path.length - 1];
             }
           }
 
@@ -456,10 +458,11 @@ const moltbookBotTick = () => {
 
         if (room.grid.isWalkableAt(cx, cy)) {
           const path = findPath(room, pos, [cx, cy]);
-          if (path) {
+          if (path && path.length > 0) {
             bot.character.position = pos;
             bot.character.path = path;
             broadcastToRoom(room.id, "playerMove", bot.character);
+            bot.character.position = path[path.length - 1];
           }
         }
 
@@ -483,10 +486,11 @@ const moltbookBotTick = () => {
 
       if (room.grid.isWalkableAt(newX, newY)) {
         const path = findPath(room, pos, [newX, newY]);
-        if (path) {
+        if (path && path.length > 0) {
           bot.character.position = pos;
           bot.character.path = path;
           broadcastToRoom(room.id, "playerMove", bot.character);
+          bot.character.position = path[path.length - 1];
         }
       }
       // Clear walking status after movement
@@ -1660,8 +1664,18 @@ io.on("connection", (socket) => {
       room.items = items;
       updateGrid(room);
       room.characters.forEach((character) => {
-        character.path = [];
-        character.position = generateRandomPosition(room);
+        const [cx, cy] = character.position;
+        if (!room.grid.isWalkableAt(cx, cy)) {
+          // Only reposition if current position is now blocked
+          character.path = [];
+          character.position = generateRandomPosition(room);
+        } else if (character.path && character.path.length > 0) {
+          // Check if any waypoint in the current path is now blocked
+          const blocked = character.path.some(([px, py]) => !room.grid.isWalkableAt(px, py));
+          if (blocked) {
+            character.path = [];
+          }
+        }
       });
       io.to(room.id).emit("mapUpdate", {
         map: {
