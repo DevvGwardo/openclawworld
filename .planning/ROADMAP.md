@@ -102,11 +102,11 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. When a bot (or human) speaks, a chat bubble floats above their avatar in 3D space and fades after ~5 seconds
   2. A 2D overlay panel shows the last 20 chat messages with speaker names attributed
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 06-01: 3D chat bubbles (Billboard text, auto-fade)
-- [ ] 06-02: 2D chat log overlay panel
+- [ ] 06-01-PLAN.md -- Chat data atom + 3D bubble enhancement with speaker names and [BOT] tags
+- [ ] 06-02-PLAN.md -- 2D chat log overlay panel with auto-hide behavior
 
 ### Phase 7: Bot Character
 **Goal**: Bots feel like distinct characters with personalities that react and initiate
