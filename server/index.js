@@ -158,6 +158,13 @@ const removeMoltbookBot = (botId, room) => {
   moltbookVirtualBots.delete(botId);
 };
 
+// Strip volatile fields (path) from character objects before broadcasting.
+// Path data is only relevant in "playerMove" events; including it in the
+// full-list "characters" broadcast wastes bandwidth and can cause stale
+// path data to interfere with client-side interpolation.
+const stripCharacters = (chars) =>
+  chars.map(({ path, ...rest }) => rest);
+
 // Broadcast helpers for virtual bots (they don't have sockets, so we emit directly)
 const broadcastToRoom = (roomId, event, data) => {
   io.to(roomId).emit(event, data);
@@ -281,14 +288,14 @@ const transferMoltbookBot = (botId, fromRoom, toRoom) => {
   // Remove from old room
   const idx = fromRoom.characters.findIndex(c => c.id === botId);
   if (idx !== -1) fromRoom.characters.splice(idx, 1);
-  io.to(fromRoom.id).emit("characters", fromRoom.characters);
+  io.to(fromRoom.id).emit("characters", stripCharacters(fromRoom.characters));
 
   // Add to new room with random position
   bot.character.position = generateRandomPosition(toRoom);
   bot.character.path = undefined;
   toRoom.characters.push(bot.character);
   moltbookBotRooms.set(botId, toRoom.id);
-  io.to(toRoom.id).emit("characters", toRoom.characters);
+  io.to(toRoom.id).emit("characters", stripCharacters(toRoom.characters));
 
   // Broadcast room counts
   io.emit("rooms", rooms.map(r => ({ id: r.id, name: r.name, nbCharacters: r.characters.length })));
@@ -381,7 +388,7 @@ const moltbookBotTick = () => {
             size: room.size,
             items: room.items,
           },
-          characters: room.characters,
+          characters: stripCharacters(room.characters),
         });
         if (!room.generated) {
           fs.writeFileSync("rooms.json", JSON.stringify(rooms.filter(r => !r.generated), null, 2));
@@ -585,7 +592,7 @@ const moltbookRefresh = async (room) => {
   // Broadcast updated character list for all rooms
   rooms.forEach(r => {
     if (r.characters.length > 0 || r.id === room.id) {
-      io.to(r.id).emit("characters", r.characters);
+      io.to(r.id).emit("characters", stripCharacters(r.characters));
     }
   });
   io.emit("rooms", rooms.map(r => ({ id: r.id, name: r.name, nbCharacters: r.characters.length })));
@@ -605,7 +612,7 @@ const initMoltbookBots = async () => {
       const bot = spawnMoltbookBot(room);
       if (bot) moltbookBotRooms.set(bot.id, room.id);
     }
-    io.to(room.id).emit("characters", room.characters);
+    io.to(room.id).emit("characters", stripCharacters(room.characters));
     broadcastMoltbookPosts();
     console.log(`[moltbook] Spawned ${moltbookVirtualBots.size} virtual bots in "${room.name}"`);
 
@@ -1538,22 +1545,30 @@ io.on("connection", (socket) => {
           size: room.size,
           items: room.items,
         },
-        characters: room.characters,
+        characters: stripCharacters(room.characters),
         id: socket.id,
       });
       onRoomUpdate();
     });
 
+    // Debounce room updates so rapid join/leave/disconnect events within the
+    // same tick coalesce into a single broadcast instead of hammering clients.
+    let roomUpdateTimer = null;
     const onRoomUpdate = () => {
-      io.to(room.id).emit("characters", room.characters);
-      io.emit(
-        "rooms",
-        rooms.map((room) => ({
-          id: room.id,
-          name: room.name,
-          nbCharacters: room.characters.length,
-        }))
-      );
+      if (roomUpdateTimer) return; // already scheduled
+      roomUpdateTimer = setTimeout(() => {
+        roomUpdateTimer = null;
+        if (!room) return;
+        io.to(room.id).emit("characters", stripCharacters(room.characters));
+        io.emit(
+          "rooms",
+          rooms.map((room) => ({
+            id: room.id,
+            name: room.name,
+            nbCharacters: room.characters.length,
+          }))
+        );
+      }, 0); // next tick — coalesces synchronous calls within the same event
     };
 
     socket.on("leaveRoom", () => {
@@ -1595,7 +1610,7 @@ io.on("connection", (socket) => {
           size: room.size,
           items: room.items,
         },
-        characters: room.characters,
+        characters: stripCharacters(room.characters),
         id: socket.id,
       });
       onRoomUpdate();
@@ -1604,7 +1619,7 @@ io.on("connection", (socket) => {
     socket.on("characterAvatarUpdate", (avatarUrl) => {
       if (!room) return;
       character.avatarUrl = avatarUrl;
-      io.to(room.id).emit("characters", room.characters);
+      io.to(room.id).emit("characters", stripCharacters(room.characters));
     });
 
     socket.on("move", (from, to) => {
@@ -1689,7 +1704,7 @@ io.on("connection", (socket) => {
           size: room.size,
           items: room.items,
         },
-        characters: room.characters,
+        characters: stripCharacters(room.characters),
       });
 
       fs.writeFileSync("rooms.json", JSON.stringify(rooms.filter(r => !r.generated), null, 2));
@@ -1761,7 +1776,7 @@ io.on("connection", (socket) => {
           size: room.size,
           items: room.items,
         },
-        characters: room.characters,
+        characters: stripCharacters(room.characters),
       });
 
       // Show completion and clear after delay

@@ -87,13 +87,18 @@ export const SocketManager = () => {
       setChatMessages([]);
     }
 
-    function onCharacters(value) {
-      // Diff to detect spawns/despawns
+    // Merge incoming character list with existing state so that characters
+    // whose position hasn't changed keep the SAME object reference.  This
+    // prevents React from re-rendering every Avatar (and triggering the
+    // snap-to-server-position effect) on every join/leave/refresh broadcast.
+    function mergeCharacters(next) {
       const prev = charactersRef.current || [];
-      const prevIds = new Set(prev.map((c) => c.id));
-      const nextIds = new Set(value.map((c) => c.id));
-      value.forEach((c) => {
-        if (!prevIds.has(c.id)) {
+      const prevMap = new Map(prev.map((c) => [c.id, c]));
+      const nextIds = new Set(next.map((c) => c.id));
+
+      // Detect spawns/despawns for the activity feed
+      next.forEach((c) => {
+        if (!prevMap.has(c.id)) {
           addActivity("spawn", c.name || "Player", c.isBot);
         }
       });
@@ -102,12 +107,35 @@ export const SocketManager = () => {
           addActivity("despawn", c.name || "Player", c.isBot);
         }
       });
-      setCharacters(value);
+
+      // Build merged array — reuse old object when position is unchanged
+      let changed = prev.length !== next.length;
+      const merged = next.map((nc) => {
+        const old = prevMap.get(nc.id);
+        if (
+          old &&
+          old.position[0] === nc.position[0] &&
+          old.position[1] === nc.position[1] &&
+          old.avatarUrl === nc.avatarUrl &&
+          old.name === nc.name
+        ) {
+          return old; // same reference — Avatar won't re-render
+        }
+        changed = true;
+        return nc;
+      });
+
+      if (!changed) return; // nothing actually changed — skip atom update entirely
+      setCharacters(merged);
+    }
+
+    function onCharacters(value) {
+      mergeCharacters(value);
     }
 
     function onMapUpdate(value) {
       setMap(value.map);
-      setCharacters(value.characters);
+      mergeCharacters(value.characters);
     }
 
     function onRooms(value) {
