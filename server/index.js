@@ -17,6 +17,8 @@ const AVATAR_URLS = [
   "https://models.readyplayer.me/64a3f54c1d64e9f3dbc832ac.glb",
 ];
 const randomAvatarUrl = () => AVATAR_URLS[Math.floor(Math.random() * AVATAR_URLS.length)];
+const DEFAULT_AVATAR_URL = AVATAR_URLS[0];
+const sanitizeAvatarUrl = (url) => (url && AVATAR_URLS.includes(url.split("?")[0])) ? url : DEFAULT_AVATAR_URL;
 
 // BOT REGISTRY -- in-memory store of registered bots (keyed by api_key)
 const botRegistry = new Map();
@@ -1589,7 +1591,7 @@ io.on("connection", (socket) => {
         id: socket.id,
         session: parseInt(Math.random() * 1000),
         position: generateRandomPosition(room),
-        avatarUrl: opts.avatarUrl,
+        avatarUrl: sanitizeAvatarUrl(opts.avatarUrl),
         isBot: opts.isBot === true,
         name: opts.name || null,
       };
@@ -1703,7 +1705,7 @@ io.on("connection", (socket) => {
 
     socket.on("characterAvatarUpdate", (avatarUrl) => {
       if (!room) return;
-      character.avatarUrl = avatarUrl;
+      character.avatarUrl = sanitizeAvatarUrl(avatarUrl);
       io.to(room.id).emit("characters", stripCharacters(room.characters));
     });
 
