@@ -11,7 +11,6 @@ import {
   roomIDAtom,
 } from "./components/SocketManager";
 import { UI } from "./components/UI";
-import { ChatLog } from "./components/ChatLog";
 
 function App() {
   const [roomID] = useAtom(roomIDAtom);
@@ -46,7 +45,6 @@ function App() {
       </Canvas>
       <Loader loaded={loaded} />
       {loaded && <UI />}
-      {loaded && <ChatLog />}
     </>
   );
 }
