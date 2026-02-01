@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-01-31)
 
 **Core value:** Bots autonomously inhabit the world and feel alive -- even one bot joining, moving, and speaking through the LLM proves the full loop works.
-**Current focus:** Phase 5 in progress (Bot Bridge) -- foundational modules, action validation, and idle patrol complete
+**Current focus:** Phase 5 complete (Bot Bridge) -- autonomous perception-decision-action loop operational
 
 ## Current Position
 
 Phase: 5 of 8 (Bot Bridge)
-Plan: 2 of 3 in current phase
-Status: In progress
-Last activity: 2026-01-31 -- Completed 05-02-PLAN.md
+Plan: 3 of 3 in current phase
+Status: Phase complete
+Last activity: 2026-01-31 -- Completed 05-03-PLAN.md
 
-Progress: [█████████░] 56%
+Progress: [██████████░] 62%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
+- Total plans completed: 10
 - Average duration: 3 min
 - Total execution time: 0.5 hours
 
@@ -31,10 +31,10 @@ Progress: [█████████░] 56%
 | 2 | 1 | 1 min | 1 min |
 | 3 | 2 | 9 min | 4.5 min |
 | 4 | 2 | 2 min | 1 min |
-| 5 | 3 | 4 min | 1.3 min |
+| 5 | 3 | 6 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 5 min, 1 min, 1 min, 1 min, 1 min
+- Last 5 plans: 1 min, 1 min, 1 min, 1 min, 2 min
 - Trend: fast
 
 *Updated after each plan completion*
@@ -68,6 +68,9 @@ Recent decisions affecting current work:
 - [05-02]: Dance emote dispatches to botClient.dance() separately from other emotes
 - [05-02]: Look action is a no-op in v1 (logged at debug level only)
 - [05-02]: Array LLM responses take first element only
+- [05-03]: Gateway error/reconnectFailed events handled to prevent unhandled EventEmitter throws
+- [05-03]: Single retry with simplified prompt on invalid LLM response before idle fallback
+- [05-03]: Reactive trigger on chatMessage cancels timer and runs immediate tick
 
 ### Pending Todos
 
@@ -81,5 +84,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-01-31
-Stopped at: Completed 05-02-PLAN.md (Phase 5 in progress, 2/3 plans done)
+Stopped at: Completed 05-03-PLAN.md (Phase 5 complete, ready for Phase 6)
 Resume file: None
