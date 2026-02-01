@@ -143,7 +143,7 @@ export function Avatar({
       dispose={null}
       name={`character-${id}`}
     >
-      <Html position-y={2} center style={{ overflow: 'visible' }}>
+      <Html position-y={2} center distanceFactor={8} style={{ overflow: 'visible' }}>
         <div className="w-60 max-w-full pointer-events-none overflow-visible">
           <div
             className={`text-center break-words p-2 px-4 rounded-xl bg-white/40 backdrop-blur-sm border border-white/20 transition-opacity duration-500 ${
