@@ -9,7 +9,8 @@ import { atom, useAtom } from "jotai";
 import React, { useEffect, useMemo, useRef, useState, memo, useCallback } from "react";
 import { SkeletonUtils } from "three-stdlib";
 import { useGrid } from "../hooks/useGrid";
-import { socket, userAtom } from "./SocketManager";
+import { socket, userAtom, avatarDispatch } from "./SocketManager";
+import { dmPanelTargetAtom } from "./DirectMessagePanel";
 
 import * as THREE from "three";
 import { motion } from "framer-motion-3d";
@@ -26,14 +27,21 @@ const ARRIVAL_THRESHOLD = 0.1;
 
 // Distance threshold (squared) for rendering avatars — avatars beyond this are culled
 const RENDER_DISTANCE_SQ = 30 * 30;
-// Closer distance for showing HTML overlays (chat bubbles, action indicators)
-const HTML_DISTANCE_SQ = 18 * 18;
+// Hysteresis: use a slightly larger radius before re-culling to prevent flicker
+const RENDER_DISTANCE_HIDE_SQ = 33 * 33;
+
+// Distance tier thresholds with hysteresis to prevent animation throttle flicker
+const NEAR_ENTER_SQ = 15 * 15;
+const NEAR_EXIT_SQ = 17 * 17;
+const MID_ENTER_SQ = RENDER_DISTANCE_SQ;
+const MID_EXIT_SQ = RENDER_DISTANCE_HIDE_SQ;
 
 // Reusable vectors to avoid allocations in the hot loop
 const _direction = new THREE.Vector3();
 const _targetQuat = new THREE.Quaternion();
 const _lookMatrix = new THREE.Matrix4();
 const _up = new THREE.Vector3(0, 1, 0);
+const _zero = new THREE.Vector3();
 
 export const Avatar = memo(function Avatar({
   id,
@@ -41,6 +49,7 @@ export const Avatar = memo(function Avatar({
   name = "Player",
   isBot = false,
   gridPosition,
+  showHtmlOverlay = true,
 }) {
   const [chatMessage, setChatMessage] = useState("");
   const [actionStatus, setActionStatus] = useState(null); // { action, detail }
@@ -50,10 +59,11 @@ export const Avatar = memo(function Avatar({
   const position = useMemo(() => gridToVector3(gridPosition), []);
   // Use refs for culling state to avoid re-renders from useFrame distance checks
   const isNearbyRef = useRef(true);
-  const showHtmlRef = useRef(true);
-  const [, forceUpdate] = useState(0);
+  const distanceTierRef = useRef("near"); // "near" (<15u), "mid" (15-30u), "far" (>30u)
+  const midAnimAccRef = useRef(0);
 
   const avatar = useRef();
+  const hipsRef = useRef(null);
   const pathRef = useRef([]);
   const pathIndexRef = useRef(0); // index pointer instead of shift()
 
@@ -79,6 +89,20 @@ export const Avatar = memo(function Avatar({
   const { scene } = useGLTF(avatarUrl);
   // Skinned meshes cannot be re-used in threejs without cloning them
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
+  // Task 7: Share GPU geometry buffers — only 4 unique avatar URLs exist
+  useMemo(() => {
+    const origMeshes = [];
+    scene.traverse((child) => {
+      if (child.isMesh) origMeshes.push(child);
+    });
+    let i = 0;
+    clone.traverse((child) => {
+      if (child.isMesh && i < origMeshes.length) {
+        child.geometry = origMeshes[i].geometry; // share GPU buffer
+        i++;
+      }
+    });
+  }, [clone, scene]);
   // useGraph creates two flat object collections for nodes and materials
   const { nodes } = useGraph(clone);
 
@@ -93,7 +117,7 @@ export const Avatar = memo(function Avatar({
     "/animations/M_Standing_Expressions_001.glb"
   );
 
-  const { actions } = useAnimations(
+  const { actions, mixer } = useAnimations(
     [walkAnimation[0], idleAnimation[0], danceAnimation[0], waveAnimation[0]],
     avatar
   );
@@ -128,7 +152,7 @@ export const Avatar = memo(function Avatar({
   useEffect(() => {
     clone.traverse((child) => {
       if (child.isMesh) {
-        child.castShadow = true;
+        child.castShadow = false;
         child.receiveShadow = true;
       }
     });
@@ -149,77 +173,75 @@ export const Avatar = memo(function Avatar({
 
   useEffect(() => {
     function onPlayerDance(value) {
-      if (value.id === id) {
-        isDancingRef.current = true;
-      }
+      isDancingRef.current = true;
     }
     function onPlayerMove(value) {
-      if (value.id === id) {
-        const newPath = [];
-        value.path?.forEach((gridPosition) => {
-          newPath.push(gridToVector3(gridPosition));
-        });
-        pathRef.current = newPath;
+      const newPath = [];
+      value.path?.forEach((gridPosition) => {
+        newPath.push(gridToVector3(gridPosition));
+      });
+      // If avatar is currently culled, skip path animation entirely —
+      // just update server position so it snaps correctly when it becomes visible
+      if (!isNearbyRef.current && id !== user) {
+        pathRef.current = [];
         pathIndexRef.current = 0;
-        // Update lastServerGridPos to the path endpoint so that subsequent
-        // characters/mapUpdate broadcasts (which carry the endpoint position)
-        // don't trigger a snap-back while the character is walking.
         if (value.path && value.path.length > 0) {
           lastServerGridPos.current = value.path[value.path.length - 1];
         }
+        return;
+      }
+      pathRef.current = newPath;
+      pathIndexRef.current = 0;
+      if (value.path && value.path.length > 0) {
+        lastServerGridPos.current = value.path[value.path.length - 1];
       }
     }
 
     let chatMessageBubbleTimeout;
     function onPlayerChatMessage(value) {
-      if (value.id === id) {
-        setChatMessage(value.message);
-        clearTimeout(chatMessageBubbleTimeout);
-        setShowChatBubble(true);
-        chatMessageBubbleTimeout = setTimeout(() => {
-          setShowChatBubble(false);
-        }, 5000);
-      }
+      setChatMessage(value.message);
+      clearTimeout(chatMessageBubbleTimeout);
+      setShowChatBubble(true);
+      chatMessageBubbleTimeout = setTimeout(() => {
+        setShowChatBubble(false);
+      }, 5000);
     }
 
     function onPlayerAction(value) {
-      if (value.id === id) {
-        if (value.action === null) {
-          setActionStatus(null);
-        } else {
-          setActionStatus({ action: value.action, detail: value.detail });
-        }
+      if (value.action === null) {
+        setActionStatus(null);
+      } else {
+        setActionStatus({ action: value.action, detail: value.detail });
       }
     }
 
     function onPlayerWaveAt(value) {
-      if (value.id === id) {
-        waveTargetIdRef.current = value.targetId;
-        isWavingRef.current = true;
-        isDancingRef.current = false;
-        // Stop moving so the character stands and waves
-        pathRef.current = [];
-        pathIndexRef.current = 0;
-        // Auto-stop waving after 3 seconds
-        clearTimeout(waveTimeoutRef.current);
-        waveTimeoutRef.current = setTimeout(() => {
-          isWavingRef.current = false;
-          waveTargetIdRef.current = null;
-        }, 3000);
-      }
+      waveTargetIdRef.current = value.targetId;
+      isWavingRef.current = true;
+      isDancingRef.current = false;
+      pathRef.current = [];
+      pathIndexRef.current = 0;
+      clearTimeout(waveTimeoutRef.current);
+      waveTimeoutRef.current = setTimeout(() => {
+        isWavingRef.current = false;
+        waveTargetIdRef.current = null;
+      }, 3000);
     }
 
-    socket.on("playerMove", onPlayerMove);
-    socket.on("playerDance", onPlayerDance);
-    socket.on("playerChatMessage", onPlayerChatMessage);
-    socket.on("playerAction", onPlayerAction);
-    socket.on("playerWaveAt", onPlayerWaveAt);
+    // Register on dispatch maps — O(1) lookup, no per-avatar socket listener
+    avatarDispatch.playerMove.set(id, onPlayerMove);
+    avatarDispatch.playerDance.set(id, onPlayerDance);
+    avatarDispatch.playerChatMessage.set(id, onPlayerChatMessage);
+    avatarDispatch.playerAction.set(id, onPlayerAction);
+    avatarDispatch.playerWaveAt.set(id, onPlayerWaveAt);
+
     return () => {
-      socket.off("playerDance", onPlayerDance);
-      socket.off("playerMove", onPlayerMove);
-      socket.off("playerChatMessage", onPlayerChatMessage);
-      socket.off("playerAction", onPlayerAction);
-      socket.off("playerWaveAt", onPlayerWaveAt);
+      avatarDispatch.playerMove.delete(id);
+      avatarDispatch.playerDance.delete(id);
+      avatarDispatch.playerChatMessage.delete(id);
+      avatarDispatch.playerAction.delete(id);
+      avatarDispatch.playerWaveAt.delete(id);
+      clearTimeout(chatMessageBubbleTimeout);
       clearTimeout(waveTimeoutRef.current);
     };
   }, [id]);
@@ -232,8 +254,74 @@ export const Avatar = memo(function Avatar({
   useFrame(({ scene: threeScene }, delta) => {
     if (!avatar.current || !group.current) return;
 
-    const hips = avatar.current.getObjectByName("Hips");
-    if (hips) hips.position.set(0, hips.position.y, 0);
+    // Distance-based culling — check every 15 frames
+    frameCountRef.current++;
+    if (frameCountRef.current % 15 === 0) {
+      const character = threeScene.getObjectByName(`character-${user}`);
+      if (character && group.current) {
+        const dx = character.position.x - group.current.position.x;
+        const dz = character.position.z - group.current.position.z;
+        const distSq = dx * dx + dz * dz;
+        // Hysteresis: use tighter threshold to show, wider to hide
+        const newNearby = isNearbyRef.current
+          ? distSq < RENDER_DISTANCE_HIDE_SQ
+          : distSq < RENDER_DISTANCE_SQ;
+        if (newNearby !== isNearbyRef.current) {
+          isNearbyRef.current = newNearby;
+          group.current.visible = newNearby || id === user;
+          // When becoming visible after being culled, snap to last known server position
+          // to prevent stale position artifacts
+          if (newNearby && lastServerGridPos.current) {
+            const snapPos = gridToVector3(lastServerGridPos.current);
+            group.current.position.copy(snapPos);
+            // Clear any stale path so avatar doesn't walk from wrong position
+            pathRef.current = [];
+            pathIndexRef.current = 0;
+          }
+        }
+        // Update distance tier with hysteresis to prevent animation throttle flicker
+        if (distanceTierRef.current === "near") {
+          if (distSq >= NEAR_EXIT_SQ) {
+            distanceTierRef.current = distSq < MID_EXIT_SQ ? "mid" : "far";
+          }
+        } else if (distanceTierRef.current === "mid") {
+          if (distSq < NEAR_ENTER_SQ) {
+            distanceTierRef.current = "near";
+          } else if (distSq >= MID_EXIT_SQ) {
+            distanceTierRef.current = "far";
+          }
+        } else {
+          // "far"
+          if (distSq < NEAR_ENTER_SQ) {
+            distanceTierRef.current = "near";
+          } else if (distSq < MID_ENTER_SQ) {
+            distanceTierRef.current = "mid";
+          }
+        }
+      } else if (!character && !isNearbyRef.current) {
+        isNearbyRef.current = true;
+        group.current.visible = true;
+        distanceTierRef.current = "near";
+      }
+    }
+
+    // Skip all movement/animation for non-visible distant avatars
+    if (!isNearbyRef.current && id !== user) return;
+
+    if (!hipsRef.current) {
+      hipsRef.current = avatar.current.getObjectByName("Hips");
+    }
+    const hips = hipsRef.current;
+    // Only reset hips X/Z drift, preserve Y for vertical bob
+    if (hips) {
+      // Clamp rather than zero — prevents walk root motion from drifting
+      // the character away, but allows small hip sway from animation
+      const hx = hips.position.x;
+      const hz = hips.position.z;
+      if (Math.abs(hx) > 0.05 || Math.abs(hz) > 0.05) {
+        hips.position.set(0, hips.position.y, 0);
+      }
+    }
 
     const path = pathRef.current;
     const idx = pathIndexRef.current;
@@ -242,18 +330,14 @@ export const Avatar = memo(function Avatar({
       const dist = group.current.position.distanceTo(target);
 
       if (dist > ARRIVAL_THRESHOLD) {
-        // --- Smooth rotation via quaternion slerp ---
         _direction.copy(target).sub(group.current.position).normalize();
-        _lookMatrix.lookAt(_direction, new THREE.Vector3(), _up);
+        _lookMatrix.lookAt(_direction, _zero, _up);
         _targetQuat.setFromRotationMatrix(_lookMatrix);
         group.current.quaternion.slerp(_targetQuat, Math.min(1, ROTATION_SPEED * delta));
 
-        // --- Movement with deceleration near final waypoint ---
         const isLastWaypoint = idx === path.length - 1;
-        // Slow down when approaching the last waypoint for a gentle stop
         const speedScale = isLastWaypoint ? Math.max(0.3, Math.min(1, dist / 1.0)) : 1;
         const step = MOVEMENT_SPEED * speedScale * delta;
-        // Don't overshoot the waypoint
         const moveDistance = Math.min(step, dist);
 
         _direction.copy(target).sub(group.current.position).normalize().multiplyScalar(moveDistance);
@@ -263,12 +347,10 @@ export const Avatar = memo(function Avatar({
         isDancingRef.current = false;
         isWavingRef.current = false;
       } else {
-        // Snap to waypoint and advance
         group.current.position.copy(target);
         pathIndexRef.current++;
       }
     } else if (isWavingRef.current) {
-      // Face the target character while waving
       if (waveTargetIdRef.current) {
         const targetObj = threeScene.getObjectByName(`character-${waveTargetIdRef.current}`);
         if (targetObj && group.current) {
@@ -276,7 +358,7 @@ export const Avatar = memo(function Avatar({
           _direction.y = 0;
           if (_direction.lengthSq() > 0.001) {
             _direction.normalize();
-            _lookMatrix.lookAt(_direction, new THREE.Vector3(), _up);
+            _lookMatrix.lookAt(_direction, _zero, _up);
             _targetQuat.setFromRotationMatrix(_lookMatrix);
             group.current.quaternion.slerp(_targetQuat, Math.min(1, ROTATION_SPEED * delta));
           }
@@ -291,28 +373,23 @@ export const Avatar = memo(function Avatar({
       }
     }
 
-    // Distance-based culling — check every 15 frames to reduce overhead
-    frameCountRef.current++;
-    if (frameCountRef.current % 15 === 0) {
-      const character = threeScene.getObjectByName(`character-${user}`);
-      if (character && group.current) {
-        const dx = character.position.x - group.current.position.x;
-        const dz = character.position.z - group.current.position.z;
-        const distSq = dx * dx + dz * dz;
-        const newNearby = distSq < RENDER_DISTANCE_SQ;
-        const newShowHtml = distSq < HTML_DISTANCE_SQ;
-        // Only trigger re-render when visibility actually changes
-        if (newNearby !== isNearbyRef.current || newShowHtml !== showHtmlRef.current) {
-          isNearbyRef.current = newNearby;
-          showHtmlRef.current = newShowHtml;
-          forceUpdate((n) => n + 1);
+    // Task 4: Throttle animation mixer for "mid" distance tier (4 fps)
+    if (distanceTierRef.current === "mid" && mixer) {
+      midAnimAccRef.current += delta;
+      if (midAnimAccRef.current >= 0.25) {
+        mixer.update(midAnimAccRef.current);
+        midAnimAccRef.current = 0;
+      }
+      // Prevent drei's automatic mixer.update by setting timeScale to 0
+      if (mixer.timeScale !== 0) mixer.timeScale = 0;
+    } else if (mixer) {
+      // Near tier: normal speed — flush any accumulated mid-tier time first
+      if (mixer.timeScale !== 1) {
+        if (midAnimAccRef.current > 0) {
+          mixer.update(midAnimAccRef.current);
         }
-      } else if (!character && !isNearbyRef.current) {
-        // User's own character not in scene yet (e.g. loading after reconnect)
-        // Default to visible so avatars aren't stuck hidden
-        isNearbyRef.current = true;
-        showHtmlRef.current = true;
-        forceUpdate((n) => n + 1);
+        mixer.timeScale = 1;
+        midAnimAccRef.current = 0;
       }
     }
   });
@@ -328,17 +405,18 @@ export const Avatar = memo(function Avatar({
       position={position}
       dispose={null}
       name={`character-${id}`}
-      visible={isNearbyRef.current || id === user}
+      visible={true}
       onClick={handleCharacterClick}
       onPointerOver={() => { document.body.style.cursor = "pointer"; }}
       onPointerOut={() => { document.body.style.cursor = "auto"; }}
     >
-      {(showHtmlRef.current || id === user) && (
+      {(showHtmlOverlay || id === user) && (
         <>
           {/* Always-visible name label — clickable to open character menu */}
-          <Html position-y={2.3} center distanceFactor={8} zIndexRange={[1, 0]} style={{ overflow: 'visible' }}>
+          <Html position-y={2.3} center distanceFactor={8} zIndexRange={[1, 0]} style={{ overflow: 'visible', pointerEvents: 'none' }}>
             <div
               className="select-none cursor-pointer"
+              style={{ pointerEvents: 'auto' }}
               onClick={(e) => {
                 e.stopPropagation();
                 setSelectedCharacter({ id, name, avatarUrl, isBot, position: group.current?.position });
@@ -365,19 +443,19 @@ export const Avatar = memo(function Avatar({
             </div>
           </Html>
           {/* Chat bubble + action status */}
-          <Html position-y={2} center distanceFactor={8} zIndexRange={[1, 0]} style={{ overflow: 'visible' }}>
+          <Html position-y={2} center distanceFactor={8} zIndexRange={[1, 0]} style={{ overflow: 'visible', pointerEvents: 'none' }}>
             <div className="w-60 max-w-full pointer-events-none overflow-visible">
               {/* Action status indicator — hidden for bots to reduce visual noise */}
               {actionStatus && !showChatBubble && !isBot && (
                 <div
                   className={`text-center mb-1 p-1.5 px-3 rounded-lg border transition-opacity duration-300 ${
                     actionStatus.action === "thinking"
-                      ? "bg-yellow-100/60 border-yellow-300/40 backdrop-blur-sm"
+                      ? "bg-yellow-100/80 border-yellow-300/40"
                       : actionStatus.action === "building"
-                      ? "bg-orange-100/60 border-orange-300/40 backdrop-blur-sm"
+                      ? "bg-orange-100/80 border-orange-300/40"
                       : actionStatus.action === "done"
-                      ? "bg-green-100/60 border-green-300/40 backdrop-blur-sm"
-                      : "bg-blue-100/60 border-blue-300/40 backdrop-blur-sm"
+                      ? "bg-green-100/80 border-green-300/40"
+                      : "bg-blue-100/80 border-blue-300/40"
                   }`}
                 >
                   <p className="text-xs text-gray-700 leading-snug whitespace-nowrap">
@@ -394,7 +472,7 @@ export const Avatar = memo(function Avatar({
               )}
               {/* Chat bubble */}
               <div
-                className={`text-center break-words p-2 px-4 rounded-xl bg-white/40 backdrop-blur-sm border border-white/20 transition-opacity duration-500 ${
+                className={`text-center break-words p-2 px-4 rounded-xl bg-white/80 border border-white/20 transition-opacity duration-500 ${
                   showChatBubble ? "opacity-100" : "opacity-0"
                 }`}
               >
@@ -414,8 +492,8 @@ export const Avatar = memo(function Avatar({
       </mesh>
       <motion.group
         initial={{
-          y: 3,
-          rotateY: Math.PI * 4,
+          y: 1.5,
+          rotateY: Math.PI * 2,
           scale: 0,
         }}
         animate={{
@@ -424,10 +502,10 @@ export const Avatar = memo(function Avatar({
           scale: 1,
         }}
         transition={{
-          delay: 0.8,
-          mass: 5,
-          stiffness: 200,
-          damping: 42,
+          delay: 0.15,
+          mass: 2,
+          stiffness: 300,
+          damping: 30,
         }}
       >
         <primitive object={clone} ref={avatar} />
@@ -439,6 +517,7 @@ export const Avatar = memo(function Avatar({
 export const CharacterMenu = () => {
   const [selectedCharacter, setSelectedCharacter] = useAtom(selectedCharacterAtom);
   const [followedCharacter, setFollowedCharacter] = useAtom(followedCharacterAtom);
+  const [, setDmPanelTarget] = useAtom(dmPanelTargetAtom);
   const [user] = useAtom(userAtom);
   const [imgError, setImgError] = useState(false);
   const prevCharIdRef = useRef(null);
@@ -465,6 +544,23 @@ export const CharacterMenu = () => {
     } else {
       setFollowedCharacter({ id: selectedCharacter.id, name: selectedCharacter.name });
     }
+    setSelectedCharacter(null);
+  };
+
+  const handleTalkTo = () => {
+    setDmPanelTarget({ id: selectedCharacter.id, name: selectedCharacter.name, isBot: selectedCharacter.isBot });
+    setSelectedCharacter(null);
+  };
+
+  const handleShop = () => {
+    setDmPanelTarget({ id: selectedCharacter.id, name: selectedCharacter.name, isBot: selectedCharacter.isBot });
+    // Set a brief delay then switch tab via a custom event
+    setTimeout(() => window.dispatchEvent(new CustomEvent("dm-panel-tab", { detail: "shop" })), 100);
+    setSelectedCharacter(null);
+  };
+
+  const handleBuildRequest = () => {
+    socket.emit("requestBuild", selectedCharacter.id);
     setSelectedCharacter(null);
   };
 
@@ -530,6 +626,31 @@ export const CharacterMenu = () => {
             <span className="text-base">{isFollowing ? "\u{1F441}\uFE0F" : "\u{1F4F7}"}</span>
             <span>{isFollowing ? "Unfollow camera" : `Follow ${selectedCharacter.name || "them"}`}</span>
           </button>
+          {selectedCharacter.isBot && (
+            <>
+              <button
+                onClick={handleTalkTo}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-sm transition-colors text-left"
+              >
+                <span className="text-base">{"\u{1F4AC}"}</span>
+                <span>Talk to {selectedCharacter.name || "them"}</span>
+              </button>
+              <button
+                onClick={handleShop}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 text-sm transition-colors text-left"
+              >
+                <span className="text-base">{"\u{1F6D2}"}</span>
+                <span>Shop</span>
+              </button>
+              <button
+                onClick={handleBuildRequest}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 text-sm transition-colors text-left"
+              >
+                <span className="text-base">{"\u{1F528}"}</span>
+                <span>Help me build</span>
+              </button>
+            </>
+          )}
         </div>
 
         {/* Close button */}
