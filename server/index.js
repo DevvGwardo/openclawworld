@@ -3,6 +3,7 @@ import crypto from "crypto";
 import http from "http";
 import pathfinding from "pathfinding";
 import { Server } from "socket.io";
+import { ROOM_ZONES, ENTRANCE_ZONE } from "../shared/roomConstants.js";
 
 const origin = process.env.CLIENT_URL || "http://localhost:5173";
 const VERCEL_URL = process.env.VERCEL_URL || "https://clawland.vercel.app";
@@ -20,6 +21,45 @@ const AVATAR_URLS = [
 const randomAvatarUrl = () => AVATAR_URLS[Math.floor(Math.random() * AVATAR_URLS.length)];
 const DEFAULT_AVATAR_URL = AVATAR_URLS[0];
 const sanitizeAvatarUrl = (url) => (url && AVATAR_URLS.includes(url.split("?")[0])) ? url : DEFAULT_AVATAR_URL;
+
+// CURRENCY SYSTEM
+const DEFAULT_COINS = 100;
+const playerCoins = new Map(); // socketId -> coin balance
+
+const updateCoins = (socketId, delta, ioRef) => {
+  const current = playerCoins.get(socketId) || DEFAULT_COINS;
+  const updated = Math.max(0, current + delta);
+  playerCoins.set(socketId, updated);
+  if (ioRef) ioRef.to(socketId).emit("coinsUpdate", { coins: updated });
+  return updated;
+};
+
+// QUEST SYSTEM
+const activeQuests = new Map(); // `${socketId}-${questId}` -> assignment data
+
+// WEBHOOK HELPER
+const sendWebhook = async (apiKey, payload) => {
+  const reg = botRegistry.get(apiKey);
+  if (!reg || !reg.webhookUrl) return;
+  try {
+    const body = JSON.stringify(payload);
+    const signature = crypto.createHmac("sha256", apiKey).update(body).digest("hex");
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    await fetch(reg.webhookUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-ClawLand-Signature": signature,
+      },
+      body,
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+  } catch (err) {
+    console.error(`[webhook] Failed for ${reg.name}: ${err.message}`);
+  }
+};
 
 // BOT REGISTRY -- in-memory store of registered bots (keyed by api_key)
 const botRegistry = new Map();
@@ -45,9 +85,10 @@ loadBotRegistry();
 
 // --- Moltbook Virtual Bots: fetch posts and spawn them as live characters ---
 const MOLTBOOK_API = "https://www.moltbook.com/api/v1/posts";
-const MOLTBOOK_BOT_COUNT = 100;
+const MOLTBOOK_BOT_COUNT = 500;
 const MOLTBOOK_REFRESH_INTERVAL = 30_000; // fetch new data & cull stale bots every 30s
 const MOLTBOOK_TICK_INTERVAL = 4_000; // bots act every 4 seconds
+const MOLTBOOK_MAX_ACTIONS_PER_TICK = 20; // cap bot actions per tick to limit broadcast storm
 
 const extractBotName = (title) => {
   const mention = title.match(/@(\w+)/);
@@ -76,6 +117,7 @@ const extractBotName = (title) => {
 
 // Pool of fetched posts and active virtual bots
 let moltbookPostPool = [];
+let prevMoltbookPostIds = new Set();
 let moltbookPageOffset = 0;
 const moltbookVirtualBots = new Map(); // id -> { character, postData, joinedAt }
 
@@ -101,12 +143,12 @@ const fetchMoltbookPosts = async () => {
 const spawnMoltbookBot = (room) => {
   if (moltbookPostPool.length === 0 || !room) return null;
 
-  // Pick a random post not already active
+  // Pick a random post — prefer unused ones, but allow reuse if pool is exhausted
   const activePostIds = new Set([...moltbookVirtualBots.values()].map(b => b.postData.id));
   const available = moltbookPostPool.filter(p => !activePostIds.has(p.id));
-  if (available.length === 0) return null;
-
-  const post = available[Math.floor(Math.random() * available.length)];
+  const post = available.length > 0
+    ? available[Math.floor(Math.random() * available.length)]
+    : moltbookPostPool[Math.floor(Math.random() * moltbookPostPool.length)];
   const title = post.title || "";
 
   // Derive name
@@ -153,6 +195,13 @@ const removeMoltbookBot = (botId, room) => {
   if (targetRoom) {
     const idx = targetRoom.characters.findIndex(c => c.id === botId);
     if (idx !== -1) targetRoom.characters.splice(idx, 1);
+    // Emit incremental removal event instead of full character list
+    io.to(targetRoom.id).emit("characterLeft", {
+      id: botId,
+      name: bot.character.name || "Bot",
+      isBot: true,
+      roomName: targetRoom.name,
+    });
   }
   moltbookBotRooms.delete(botId);
   pendingRoomSwitch.delete(botId);
@@ -172,30 +221,19 @@ const broadcastToRoom = (roomId, event, data) => {
 };
 
 const broadcastMoltbookPosts = () => {
-  const posts = moltbookPostPool.map((p) => ({
-    id: p.id,
-    title: p.title || "",
-    content: (p.content || "").slice(0, 300),
-  }));
-  io.emit("moltbookPosts", posts);
+  const currentIds = new Set(moltbookPostPool.map((p) => p.id));
+  const added = moltbookPostPool
+    .filter((p) => !prevMoltbookPostIds.has(p.id))
+    .map((p) => ({ id: p.id, title: p.title || "", content: (p.content || "").slice(0, 300) }));
+  const removed = [...prevMoltbookPostIds].filter((id) => !currentIds.has(id));
+  prevMoltbookPostIds = currentIds;
+  if (added.length > 0 || removed.length > 0) {
+    io.emit("moltbookPostsDelta", { added, removed });
+  }
 };
 
 // --- Moltbook bot building: room layout templates ---
-// Defines functional zones that bots will gradually fill in
-const ROOM_ZONES = [
-  // Living area (center-left)
-  { items: ["rugRounded", "loungeSofa", "tableCoffee", "televisionModern", "loungeChair", "lampRoundFloor", "plant", "speaker"], area: { x: [10, 40], y: [10, 35] } },
-  // Kitchen (top-right)
-  { items: ["kitchenFridge", "kitchenCabinet", "kitchenStove", "kitchenSink", "kitchenBar", "kitchenMicrowave", "toaster", "kitchenBlender", "stoolBar", "stoolBar"], area: { x: [55, 90], y: [5, 30] } },
-  // Bedroom (bottom-left)
-  { items: ["bedDouble", "cabinetBedDrawer", "cabinetBedDrawerTable", "lampSquareTable", "bookcaseClosedWide", "rugRound", "plantSmall", "coatRackStanding"], area: { x: [5, 35], y: [55, 90] } },
-  // Bathroom (bottom-right)
-  { items: ["bathtub", "toiletSquare", "bathroomSink", "bathroomCabinetDrawer", "trashcan", "bathroomMirror"], area: { x: [60, 90], y: [60, 90] } },
-  // Office/desk area (top-left)
-  { items: ["desk", "chairModernCushion", "laptop", "bookcaseOpenLow", "lampSquareFloor", "plantSmall"], area: { x: [5, 30], y: [5, 25] } },
-  // Dining area (center)
-  { items: ["tableCrossCloth", "chair", "chair", "chair", "chair", "lampRoundTable", "rugSquare"], area: { x: [35, 60], y: [35, 55] } },
-];
+// ROOM_ZONES imported from ../shared/roomConstants.js
 
 const tryPlaceItemInRoom = (room, itemName, area) => {
   const itemDef = items[itemName];
@@ -243,8 +281,7 @@ const tryPlaceItemInRoom = (room, itemName, area) => {
 // Pending build tasks for bots — tracks multi-step building flow
 const pendingBuilds = new Map(); // botId → { stage, itemName, zone, targetPos, startedAt }
 
-// Entrance zone on the plaza — bots walk here before switching rooms
-const ENTRANCE_ZONE = { x: [46, 52], y: [46, 52] };
+// ENTRANCE_ZONE imported from ../shared/roomConstants.js
 
 // Pending room switches for bots walking to entrance zone
 const pendingRoomSwitch = new Map(); // botId → { targetRoomId, walkingToEntrance }
@@ -315,6 +352,8 @@ const transferMoltbookBot = (botId, fromRoom, toRoom) => {
 };
 
 // Bot behavior tick — each bot randomly moves, chats, or emotes
+// Optimized: caps actions per tick, batches movement broadcasts per room,
+// and removes redundant playerAction status messages to reduce socket traffic.
 const moltbookBotTick = () => {
   const now = Date.now();
 
@@ -323,7 +362,6 @@ const moltbookBotTick = () => {
     const bot = moltbookVirtualBots.get(botId);
     if (!bot) { pendingRoomSwitch.delete(botId); continue; }
 
-    // Check if enough time has passed for the walk (3-4 seconds)
     if (now - switchData.startedAt > 3500) {
       const fromRoom = getBotRoom(botId);
       const toRoom = rooms.find(r => r.id === switchData.targetRoomId);
@@ -335,7 +373,7 @@ const moltbookBotTick = () => {
     }
   }
 
-  // Process pending builds first (multi-step building flow)
+  // Process pending builds (multi-step building flow)
   for (const [botId, build] of pendingBuilds) {
     const bot = moltbookVirtualBots.get(botId);
     if (!bot) { pendingBuilds.delete(botId); continue; }
@@ -343,7 +381,6 @@ const moltbookBotTick = () => {
     if (!room) { pendingBuilds.delete(botId); continue; }
 
     if (build.stage === "thinking" && now - build.startedAt > 2500) {
-      // Stage 2: Choose item and walk toward zone
       const zone = build.zone;
       const needed = zone.items.filter(name => {
         const count = room.items.filter(i => i.name === name).length;
@@ -354,19 +391,15 @@ const moltbookBotTick = () => {
       });
 
       if (needed.length === 0) {
-        // Nothing to build — cancel
         broadcastToRoom(room.id, "playerAction", { id: botId, action: null });
         pendingBuilds.delete(botId);
         continue;
       }
 
       const itemName = needed[Math.floor(Math.random() * needed.length)];
-      // Walk toward the zone center
       const targetX = Math.floor((zone.area.x[0] + zone.area.x[1]) / 2);
       const targetY = Math.floor((zone.area.y[0] + zone.area.y[1]) / 2);
       const pos = bot.character.position || [0, 0];
-
-      // Clamp to grid and find walkable target near zone center
       const maxGrid = room.size[0] * room.gridDivision - 1;
       const tx = Math.max(0, Math.min(maxGrid, targetX));
       const ty = Math.max(0, Math.min(maxGrid, targetY));
@@ -392,7 +425,6 @@ const moltbookBotTick = () => {
       build.itemName = itemName;
       build.startedAt = now;
     } else if (build.stage === "building" && now - build.startedAt > 3000) {
-      // Stage 3: Actually place the item
       const placed = tryPlaceItemInRoom(room, build.itemName, build.zone.area);
       if (placed) {
         io.to(room.id).emit("mapUpdate", {
@@ -401,13 +433,10 @@ const moltbookBotTick = () => {
             size: room.size,
             items: room.items,
           },
-          characters: stripCharacters(room.characters),
         });
         if (!room.generated) {
           fs.writeFileSync("rooms.json", JSON.stringify(rooms.filter(r => !r.generated), null, 2));
         }
-
-        // Brief "done" flash
         const pretty = build.itemName.replace(/([A-Z])/g, " $1").toLowerCase().trim();
         broadcastToRoom(room.id, "playerAction", {
           id: botId,
@@ -416,24 +445,34 @@ const moltbookBotTick = () => {
         });
       }
 
-      // Clear the pending build after a short display
       setTimeout(() => {
         broadcastToRoom(room.id, "playerAction", { id: botId, action: null });
       }, 2000);
       pendingBuilds.delete(botId);
       bot.lastAction = now;
     }
-    // While in a build flow, skip normal actions for this bot
   }
 
+  // Collect movement updates per room to batch-broadcast
+  const roomMoves = new Map(); // roomId -> [characterData, ...]
+
+  const queueMove = (roomId, charData) => {
+    if (!roomMoves.has(roomId)) roomMoves.set(roomId, []);
+    roomMoves.get(roomId).push({ ...charData });
+  };
+
+  // Cap the number of bot actions per tick to avoid broadcast storms
+  let actionsThisTick = 0;
+
   for (const [botId, bot] of moltbookVirtualBots) {
-    // Skip bots currently in a build flow or switching rooms
+    if (actionsThisTick >= MOLTBOOK_MAX_ACTIONS_PER_TICK) break;
     if (pendingBuilds.has(botId)) continue;
     if (pendingRoomSwitch.has(botId)) continue;
 
-    // Only act every 4-8 seconds per bot (stagger)
-    if (now - bot.lastAction < 4000 + Math.random() * 4000) continue;
+    // Wider stagger window: 6-14 seconds per bot (was 4-8)
+    if (now - bot.lastAction < 6000 + Math.random() * 8000) continue;
     bot.lastAction = now;
+    actionsThisTick++;
 
     const room = getBotRoom(botId);
     if (!room) continue;
@@ -446,10 +485,8 @@ const moltbookBotTick = () => {
       const isInPlaza = room.id === plaza.id;
 
       if (isInPlaza) {
-        // Pick a random generated room to enter
         const targetRoom = rooms[1 + Math.floor(Math.random() * 100)];
         if (targetRoom) {
-          // Walk to entrance zone first
           const pos = bot.character.position || [0, 0];
           const ex = ENTRANCE_ZONE.x[0] + Math.floor(Math.random() * (ENTRANCE_ZONE.x[1] - ENTRANCE_ZONE.x[0]));
           const ey = ENTRANCE_ZONE.y[0] + Math.floor(Math.random() * (ENTRANCE_ZONE.y[1] - ENTRANCE_ZONE.y[0]));
@@ -459,18 +496,14 @@ const moltbookBotTick = () => {
             if (path && path.length > 0) {
               bot.character.position = pos;
               bot.character.path = path;
-              broadcastToRoom(room.id, "playerMove", bot.character);
+              queueMove(room.id, bot.character);
               bot.character.position = path[path.length - 1];
             }
           }
 
-          pendingRoomSwitch.set(botId, {
-            targetRoomId: targetRoom.id,
-            startedAt: now,
-          });
+          pendingRoomSwitch.set(botId, { targetRoomId: targetRoom.id, startedAt: now });
         }
       } else {
-        // Return to plaza — walk to a random spot then transfer
         const pos = bot.character.position || [0, 0];
         const maxGrid = room.size[0] * room.gridDivision - 1;
         const cx = Math.floor(maxGrid / 2);
@@ -481,53 +514,51 @@ const moltbookBotTick = () => {
           if (path && path.length > 0) {
             bot.character.position = pos;
             bot.character.path = path;
-            broadcastToRoom(room.id, "playerMove", bot.character);
+            queueMove(room.id, bot.character);
             bot.character.position = path[path.length - 1];
           }
         }
 
-        pendingRoomSwitch.set(botId, {
-          targetRoomId: plaza.id,
-          startedAt: now,
-        });
+        pendingRoomSwitch.set(botId, { targetRoomId: plaza.id, startedAt: now });
       }
       continue;
     }
 
-    if (action < 0.45) {
-      // Move to a random nearby position
-      broadcastToRoom(room.id, "playerAction", { id: botId, action: "walking", detail: "Walking around..." });
+    if (action < 0.50) {
+      // Move — no redundant "walking" playerAction broadcast
       const pos = bot.character.position || [0, 0];
-      const range = 8;
-      const newX = Math.max(0, Math.min(room.size[0] * room.gridDivision - 1,
-        pos[0] + Math.floor(Math.random() * range * 2) - range));
-      const newY = Math.max(0, Math.min(room.size[1] * room.gridDivision - 1,
-        pos[1] + Math.floor(Math.random() * range * 2) - range));
+      const maxGrid = room.size[0] * room.gridDivision - 1;
+      let newX, newY;
+
+      if (room.size[0] <= 30 && ROOM_ZONES.length > 0) {
+        const zone = ROOM_ZONES[Math.floor(Math.random() * ROOM_ZONES.length)];
+        const zw = zone.area.x[1] - zone.area.x[0];
+        const zh = zone.area.y[1] - zone.area.y[0];
+        newX = Math.max(0, Math.min(maxGrid, zone.area.x[0] + Math.floor(Math.random() * zw)));
+        newY = Math.max(0, Math.min(maxGrid, zone.area.y[0] + Math.floor(Math.random() * zh)));
+      } else {
+        const range = 8;
+        newX = Math.max(0, Math.min(maxGrid, pos[0] + Math.floor(Math.random() * range * 2) - range));
+        newY = Math.max(0, Math.min(maxGrid, pos[1] + Math.floor(Math.random() * range * 2) - range));
+      }
 
       if (room.grid.isWalkableAt(newX, newY)) {
         const path = findPath(room, pos, [newX, newY]);
         if (path && path.length > 0) {
           bot.character.position = pos;
           bot.character.path = path;
-          broadcastToRoom(room.id, "playerMove", bot.character);
+          queueMove(room.id, bot.character);
           bot.character.position = path[path.length - 1];
         }
       }
-      // Clear walking status after movement
-      setTimeout(() => {
-        broadcastToRoom(room.id, "playerAction", { id: botId, action: null });
-      }, 3000);
-    } else if (action < 0.55) {
-      // Interact with a nearby bot/player — wave at them, walk toward them
+    } else if (action < 0.58) {
+      // Interact with a nearby bot/player
       const nearbyChars = room.characters.filter(c => c.id !== botId);
       if (nearbyChars.length > 0) {
         const target = nearbyChars[Math.floor(Math.random() * nearbyChars.length)];
-        const targetName = target.name || "someone";
 
-        // Walk toward the target first
         const pos = bot.character.position || [0, 0];
         const targetPos = target.position || [0, 0];
-        // Move to a position near the target (not exactly on them)
         const offsetX = Math.floor(Math.random() * 3) - 1;
         const offsetY = Math.floor(Math.random() * 3) - 1;
         const nearX = Math.max(0, Math.min(room.size[0] * room.gridDivision - 1, targetPos[0] + offsetX));
@@ -538,64 +569,39 @@ const moltbookBotTick = () => {
           if (path && path.length > 0) {
             bot.character.position = pos;
             bot.character.path = path;
-            broadcastToRoom(room.id, "playerMove", bot.character);
+            queueMove(room.id, bot.character);
             bot.character.position = path[path.length - 1];
           }
         }
 
-        // Wave at the target after a short delay (simulating walking then waving)
+        // Single emote broadcast instead of multiple
         const interactionType = Math.random();
         if (interactionType < 0.5) {
-          // Wave at them
-          broadcastToRoom(room.id, "playerAction", { id: botId, action: "emoting", detail: `Waving at ${targetName}` });
-          broadcastToRoom(room.id, "playerWaveAt", { id: botId, targetId: target.id });
           broadcastToRoom(room.id, "emote:play", { id: botId, emote: "wave" });
         } else if (interactionType < 0.8) {
-          // Nod at them
-          broadcastToRoom(room.id, "playerAction", { id: botId, action: "emoting", detail: `Nodding at ${targetName}` });
           broadcastToRoom(room.id, "emote:play", { id: botId, emote: "nod" });
         } else {
-          // Dance near them
-          broadcastToRoom(room.id, "playerAction", { id: botId, action: "dancing", detail: `Dancing with ${targetName}` });
           broadcastToRoom(room.id, "playerDance", { id: botId });
         }
-        setTimeout(() => {
-          broadcastToRoom(room.id, "playerAction", { id: botId, action: null });
-        }, 3000);
       }
-    } else if (action < 0.65) {
-      // Say something from their post content
-      broadcastToRoom(room.id, "playerAction", { id: botId, action: "chatting", detail: "Typing..." });
+    } else if (action < 0.68) {
+      // Chat — skip "Typing..." status, just send the message
       const content = bot.postData.content || bot.postData.title || "";
-      // Pick a sentence or chunk to say
       const sentences = content.match(/[^.!?]+[.!?]*/g) || [content];
       const msg = (sentences[Math.floor(Math.random() * sentences.length)] || "").trim().slice(0, 200);
       if (msg.length > 0) {
-        setTimeout(() => {
-          broadcastToRoom(room.id, "playerChatMessage", { id: botId, message: msg });
-          broadcastToRoom(room.id, "playerAction", { id: botId, action: null });
-        }, 1000 + Math.random() * 1500);
+        broadcastToRoom(room.id, "playerChatMessage", { id: botId, message: msg });
       }
-    } else if (action < 0.75) {
-      // Emote
+    } else if (action < 0.78) {
+      // Emote — single broadcast
       const emote = ALLOWED_EMOTES[Math.floor(Math.random() * ALLOWED_EMOTES.length)];
-      broadcastToRoom(room.id, "playerAction", { id: botId, action: "emoting", detail: `${emote}` });
       broadcastToRoom(room.id, "emote:play", { id: botId, emote });
-      setTimeout(() => {
-        broadcastToRoom(room.id, "playerAction", { id: botId, action: null });
-      }, 2000);
-    } else if (action < 0.82) {
-      // Dance
-      broadcastToRoom(room.id, "playerAction", { id: botId, action: "dancing", detail: "Dancing!" });
+    } else if (action < 0.85) {
+      // Dance — single broadcast
       broadcastToRoom(room.id, "playerDance", { id: botId });
-      setTimeout(() => {
-        broadcastToRoom(room.id, "playerAction", { id: botId, action: null });
-      }, 4000);
     } else {
-      // Build — start multi-step building flow
+      // Build
       const zone = ROOM_ZONES[Math.floor(Math.random() * ROOM_ZONES.length)];
-
-      // Check if there's anything to build first
       const needed = zone.items.filter(name => {
         const count = room.items.filter(i => i.name === name).length;
         if (["chair", "chairCushion", "chairModernCushion", "stoolBar", "stoolBarSquare", "plantSmall", "plant", "lampRoundFloor", "lampSquareFloor"].includes(name)) {
@@ -605,19 +611,23 @@ const moltbookBotTick = () => {
       });
 
       if (needed.length > 0) {
-        // Stage 1: Show thinking status
         const phrase = THINKING_PHRASES[Math.floor(Math.random() * THINKING_PHRASES.length)];
         broadcastToRoom(room.id, "playerAction", {
           id: botId,
           action: "thinking",
           detail: phrase,
         });
-        pendingBuilds.set(botId, {
-          stage: "thinking",
-          zone,
-          startedAt: now,
-        });
+        pendingBuilds.set(botId, { stage: "thinking", zone, startedAt: now });
       }
+    }
+  }
+
+  // Batch-broadcast all movement updates per room (single emit per room)
+  for (const [roomId, moves] of roomMoves) {
+    if (moves.length === 1) {
+      io.to(roomId).emit("playerMove", moves[0]);
+    } else {
+      io.to(roomId).emit("playerMoves", moves);
     }
   }
 };
@@ -640,20 +650,19 @@ const moltbookRefresh = async (room) => {
     console.log(`[moltbook] Culled ${excess} stale bots`);
   }
 
-  // Spawn replacements up to the target count
+  // Spawn replacements up to the target count, emitting incremental joins
   let spawned = 0;
   while (moltbookVirtualBots.size < MOLTBOOK_BOT_COUNT) {
     const bot = spawnMoltbookBot(room);
     if (!bot) break; // no more available posts
+    io.to(room.id).emit("characterJoined", {
+      character: stripCharacters([bot])[0],
+      roomName: room.name,
+    });
     spawned++;
   }
 
-  // Broadcast updated character list for all rooms
-  rooms.forEach(r => {
-    if (r.characters.length > 0 || r.id === room.id) {
-      io.to(r.id).emit("characters", stripCharacters(r.characters));
-    }
-  });
+  // Broadcast room counts only (lightweight)
   io.emit("rooms", rooms.map(r => ({ id: r.id, name: r.name, nbCharacters: r.characters.length })));
   console.log(`[moltbook] Refresh complete — spawned ${spawned}, active: ${moltbookVirtualBots.size}`);
 };
@@ -661,25 +670,38 @@ const moltbookRefresh = async (room) => {
 // Initialize moltbook bots after rooms are loaded
 const initMoltbookBots = async () => {
   await fetchMoltbookPosts();
-  // Wait for rooms to be loaded
   const waitForRooms = () => {
     if (rooms.length === 0) return setTimeout(waitForRooms, 500);
-    const room = rooms[0]; // spawn in first room (Town Square)
+    const plaza = rooms[0];
 
-    // Spawn initial bots
-    for (let i = 0; i < MOLTBOOK_BOT_COUNT; i++) {
-      const bot = spawnMoltbookBot(room);
-      if (bot) moltbookBotRooms.set(bot.id, room.id);
-    }
-    io.to(room.id).emit("characters", stripCharacters(room.characters));
-    broadcastMoltbookPosts();
-    console.log(`[moltbook] Spawned ${moltbookVirtualBots.size} virtual bots in "${room.name}"`);
+    const BATCH_SIZE = 25; // spawn 25 bots at a time
+    const BATCH_DELAY = 200; // 200ms between batches
+    let spawned = 0;
 
-    // Bot behavior tick (room-aware — each bot knows its room)
-    setInterval(() => moltbookBotTick(), MOLTBOOK_TICK_INTERVAL);
+    const spawnBatch = () => {
+      const batchEnd = Math.min(spawned + BATCH_SIZE, MOLTBOOK_BOT_COUNT);
+      for (let i = spawned; i < batchEnd; i++) {
+        const bot = spawnMoltbookBot(plaza);
+        if (bot) moltbookBotRooms.set(bot.id, plaza.id);
+      }
+      spawned = batchEnd;
 
-    // Fetch new data + cull stale bots every 30 seconds
-    setInterval(() => moltbookRefresh(room), MOLTBOOK_REFRESH_INTERVAL);
+      // Broadcast current characters after each batch so early joiners see progressive loading
+      io.to(plaza.id).emit("characters", stripCharacters(plaza.characters));
+
+      if (spawned < MOLTBOOK_BOT_COUNT) {
+        setTimeout(spawnBatch, BATCH_DELAY);
+      } else {
+        broadcastMoltbookPosts();
+        console.log(`[moltbook] Spawned ${moltbookVirtualBots.size} virtual bots in "${plaza.name}"`);
+
+        // Start ticks only after all bots are spawned
+        setInterval(() => moltbookBotTick(), MOLTBOOK_TICK_INTERVAL);
+        setInterval(() => moltbookRefresh(plaza), MOLTBOOK_REFRESH_INTERVAL);
+      }
+    };
+
+    spawnBatch();
   };
   waitForRooms();
 };
@@ -713,7 +735,7 @@ const json = (res, status, data) => {
     "Content-Type": "application/json",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   });
   res.end(JSON.stringify(data));
 };
@@ -1100,7 +1122,7 @@ const httpServer = http.createServer(async (req, res) => {
     res.writeHead(204, {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
     });
     res.end();
     return;
@@ -1135,9 +1157,9 @@ const httpServer = http.createServer(async (req, res) => {
     return json(res, 200, health);
   }
 
-  // Eagerly read body for all POST requests
+  // Eagerly read body for POST/PUT/DELETE requests
   let reqBody = null;
-  if (req.method === "POST") {
+  if (req.method === "POST" || req.method === "PUT" || req.method === "DELETE") {
     try { reqBody = await readBody(req); } catch { /* not JSON or empty */ }
   }
 
@@ -1164,6 +1186,9 @@ const httpServer = http.createServer(async (req, res) => {
         apiKey,
         createdAt: new Date().toISOString(),
         avatarUrl: body.avatarUrl || randomAvatarUrl(),
+        webhookUrl: body.webhookUrl || null,
+        quests: [],
+        shop: [],
       };
       botRegistry.set(apiKey, bot);
       saveBotRegistry();
@@ -1278,6 +1303,7 @@ const httpServer = http.createServer(async (req, res) => {
             const room = rooms.find((r) => r.id === targetRoom.id);
             const sender = room?.characters.find((c) => c.id === data.id);
             pushEvent({ type: "chat", from: sender?.name || data.id, message: data.message });
+            sendWebhook(apiKey, { event: "chat", from: sender?.name || data.id, message: data.message, timestamp: Date.now() });
           });
           botSocket.on("characters", (chars) => {
             pushEvent({ type: "characters", characters: chars.map((c) => ({ id: c.id, name: c.name, position: c.position, isBot: !!c.isBot })) });
@@ -1287,6 +1313,18 @@ const httpServer = http.createServer(async (req, res) => {
             const room = rooms.find((r) => r.id === targetRoom.id);
             const sender = room?.characters.find((c) => c.id === data.id);
             pushEvent({ type: "emote", from: sender?.name || data.id, emote: data.emote });
+          });
+          botSocket.on("directMessage", (data) => {
+            pushEvent({ type: "direct_message", from: data.senderName || data.senderId, message: data.message, senderId: data.senderId });
+            sendWebhook(apiKey, { event: "directMessage", from: data.senderName || data.senderId, message: data.message, timestamp: Date.now() });
+          });
+          botSocket.on("playerWaveAt", (data) => {
+            if (data.targetId === joinData.id) {
+              const room = rooms.find((r) => r.id === targetRoom.id);
+              const sender = room?.characters.find((c) => c.id === data.id);
+              pushEvent({ type: "waveAt", from: sender?.name || data.id, senderId: data.id });
+              sendWebhook(apiKey, { event: "waveAt", from: sender?.name || data.id, timestamp: Date.now() });
+            }
           });
 
           botSockets.set(apiKey, {
@@ -1412,6 +1450,150 @@ const httpServer = http.createServer(async (req, res) => {
     return json(res, 200, { success: true, message: `Playing emote: ${reqBody.emote}` });
   }
 
+  // --- Whisper endpoint (bot sends DM to a player) ---
+  const whisperMatch = req.url?.match(/^\/api\/v1\/rooms\/([^/]+)\/whisper$/);
+  if (req.method === "POST" && whisperMatch) {
+    if (!apiKey || !botRegistry.has(apiKey)) {
+      return json(res, 401, { success: false, error: "Invalid or missing API key" });
+    }
+    const conn = botSockets.get(apiKey);
+    if (!conn) {
+      return json(res, 400, { success: false, error: "Bot is not in a room" });
+    }
+    if (!reqBody || !reqBody.targetId || !reqBody.message) {
+      return json(res, 400, { success: false, error: "targetId and message are required" });
+    }
+    const bot = botRegistry.get(apiKey);
+    io.to(reqBody.targetId).emit("directMessage", {
+      senderId: conn.botId,
+      senderName: bot.name,
+      senderIsBot: true,
+      message: String(reqBody.message).slice(0, 500),
+      timestamp: Date.now(),
+    });
+    return json(res, 200, { success: true, message: "Whisper sent" });
+  }
+
+  // --- Webhook update ---
+  if (req.method === "PUT" && req.url === "/api/v1/bots/webhook") {
+    if (!apiKey || !botRegistry.has(apiKey)) {
+      return json(res, 401, { success: false, error: "Invalid or missing API key" });
+    }
+    const bot = botRegistry.get(apiKey);
+    bot.webhookUrl = reqBody?.webhookUrl || null;
+    saveBotRegistry();
+    return json(res, 200, { success: true, webhookUrl: bot.webhookUrl });
+  }
+
+  // --- Quest CRUD ---
+  if (req.method === "POST" && req.url === "/api/v1/bots/quests") {
+    if (!apiKey || !botRegistry.has(apiKey)) {
+      return json(res, 401, { success: false, error: "Invalid or missing API key" });
+    }
+    if (!reqBody || !reqBody.title || !reqBody.description) {
+      return json(res, 400, { success: false, error: "title and description required" });
+    }
+    const bot = botRegistry.get(apiKey);
+    if (!bot.quests) bot.quests = [];
+    const quest = {
+      id: `quest-${crypto.randomBytes(4).toString("hex")}`,
+      title: String(reqBody.title).slice(0, 100),
+      description: String(reqBody.description).slice(0, 500),
+      required_items: Array.isArray(reqBody.required_items) ? reqBody.required_items.slice(0, 10) : [],
+      reward_coins: typeof reqBody.reward_coins === "number" ? Math.max(0, Math.min(1000, reqBody.reward_coins)) : 50,
+      createdAt: new Date().toISOString(),
+    };
+    bot.quests.push(quest);
+    saveBotRegistry();
+    return json(res, 201, { success: true, quest });
+  }
+
+  if (req.method === "GET" && req.url === "/api/v1/bots/quests") {
+    if (!apiKey || !botRegistry.has(apiKey)) {
+      return json(res, 401, { success: false, error: "Invalid or missing API key" });
+    }
+    const bot = botRegistry.get(apiKey);
+    return json(res, 200, { success: true, quests: bot.quests || [] });
+  }
+
+  const questDeleteMatch = req.url?.match(/^\/api\/v1\/bots\/quests\/([^/]+)$/);
+  if (req.method === "DELETE" && questDeleteMatch) {
+    if (!apiKey || !botRegistry.has(apiKey)) {
+      return json(res, 401, { success: false, error: "Invalid or missing API key" });
+    }
+    const bot = botRegistry.get(apiKey);
+    const questId = decodeURIComponent(questDeleteMatch[1]);
+    const idx = (bot.quests || []).findIndex(q => q.id === questId);
+    if (idx === -1) return json(res, 404, { success: false, error: "Quest not found" });
+    bot.quests.splice(idx, 1);
+    saveBotRegistry();
+    return json(res, 200, { success: true, message: "Quest deleted" });
+  }
+
+  // --- Bot Shop ---
+  if (req.method === "POST" && req.url === "/api/v1/bots/shop") {
+    if (!apiKey || !botRegistry.has(apiKey)) {
+      return json(res, 401, { success: false, error: "Invalid or missing API key" });
+    }
+    if (!reqBody || !Array.isArray(reqBody.items)) {
+      return json(res, 400, { success: false, error: "items array required" });
+    }
+    const bot = botRegistry.get(apiKey);
+    bot.shop = reqBody.items.slice(0, 50).map(i => ({
+      item: String(i.item || ""),
+      price: typeof i.price === "number" ? Math.max(0, i.price) : 10,
+    })).filter(i => items[i.item]); // only valid items
+    saveBotRegistry();
+    return json(res, 200, { success: true, shop: bot.shop });
+  }
+
+  // --- Collaborative Build (bot-initiated) ---
+  const buildMatch = req.url?.match(/^\/api\/v1\/rooms\/([^/]+)\/build$/);
+  if (req.method === "POST" && buildMatch) {
+    if (!apiKey || !botRegistry.has(apiKey)) {
+      return json(res, 401, { success: false, error: "Invalid or missing API key" });
+    }
+    const conn = botSockets.get(apiKey);
+    if (!conn) {
+      return json(res, 400, { success: false, error: "Bot is not in a room" });
+    }
+    const room = rooms.find(r => r.id === conn.roomId);
+    if (!room) return json(res, 404, { success: false, error: "Room not found" });
+
+    const zoneIndex = reqBody?.zone ?? Math.floor(Math.random() * ROOM_ZONES.length);
+    const zone = ROOM_ZONES[zoneIndex % ROOM_ZONES.length];
+
+    if (reqBody?.items && Array.isArray(reqBody.items)) {
+      // Place specific items
+      let placed = 0;
+      for (const itemName of reqBody.items.slice(0, 5)) {
+        if (tryPlaceItemInRoom(room, itemName, zone.area)) placed++;
+      }
+      if (placed > 0) {
+        io.to(room.id).emit("mapUpdate", {
+          map: { gridDivision: room.gridDivision, size: room.size, items: room.items },
+        });
+        io.to(room.id).emit("buildStarted", { botId: conn.botId, zone: zoneIndex });
+      }
+      return json(res, 200, { success: true, placed });
+    }
+
+    // Auto-build one item from zone
+    const needed = zone.items.filter(name => room.items.filter(i => i.name === name).length < 1);
+    if (needed.length > 0) {
+      const itemName = needed[Math.floor(Math.random() * needed.length)];
+      const placed = tryPlaceItemInRoom(room, itemName, zone.area);
+      if (placed) {
+        io.to(room.id).emit("mapUpdate", {
+          map: { gridDivision: room.gridDivision, size: room.size, items: room.items },
+        });
+        io.to(room.id).emit("buildStarted", { botId: conn.botId, zone: zoneIndex });
+      }
+      return json(res, 200, { success: true, placed: placed ? 1 : 0, item: itemName });
+    }
+    return json(res, 200, { success: true, placed: 0, message: "Zone is already furnished" });
+  }
+
   // Non-matched requests: return 404 (Socket.IO attaches its own listener)
   res.writeHead(404);
   res.end();
@@ -1434,8 +1616,13 @@ const finder = new pathfinding.AStarFinder({
 });
 
 const findPath = (room, start, end) => {
+  const maxX = room.size[0] * room.gridDivision - 1;
+  const maxY = room.size[1] * room.gridDivision - 1;
+  const clamp = (v, max) => Math.max(0, Math.min(max, Math.round(v)));
+  const s = [clamp(start[0], maxX), clamp(start[1], maxY)];
+  const e = [clamp(end[0], maxX), clamp(end[1], maxY)];
   const gridClone = room.grid.clone();
-  const path = finder.findPath(start[0], start[1], end[0], end[1], gridClone);
+  const path = finder.findPath(s[0], s[1], e[0], e[1], gridClone);
   // Simplify path using line-of-sight: remove intermediate waypoints that are
   // in a straight unobstructed line, reducing the number of points the client
   // needs to lerp through and producing smoother movement.
@@ -1454,6 +1641,30 @@ const markItemOnGrid = (room, item, walkable) => {
   }
 };
 
+// Building footprints for large plaza rooms (world coordinates: [x, z, width, depth])
+const getBuildingFootprints = (sz) => [
+  // TownHall at [sz[0]/2, 4] — large footprint
+  { x: sz[0] / 2 - 6, z: 0, w: 12, d: 10 },
+  // Apartment at [4, sz[1]/2]
+  { x: 0, z: sz[1] / 2 - 5, w: 8, d: 10 },
+  // ShopBuilding at [sz[0]-4, sz[1]/2]
+  { x: sz[0] - 8, z: sz[1] / 2 - 5, w: 8, d: 10 },
+  // SmallBuilding at [6, 6]
+  { x: 2, z: 2, w: 8, d: 8 },
+  // SmallBuilding at [sz[0]-6, 6]
+  { x: sz[0] - 10, z: 2, w: 8, d: 8 },
+  // Skyscraper at [sz[0]/2, 1]
+  { x: sz[0] / 2 - 3, z: 0, w: 6, d: 4 },
+  // Skyscraper at [2, 2]
+  { x: 0, z: 0, w: 5, d: 5 },
+  // Skyscraper at [sz[0]-2, 2]
+  { x: sz[0] - 5, z: 0, w: 5, d: 5 },
+  // Skyscraper at [2, sz[1]-2]
+  { x: 0, z: sz[1] - 5, w: 5, d: 5 },
+  // Skyscraper at [sz[0]-2, sz[1]-2]
+  { x: sz[0] - 5, z: sz[1] - 5, w: 5, d: 5 },
+];
+
 const updateGrid = (room) => {
   // RESET GRID FOR ROOM
   for (let x = 0; x < room.size[0] * room.gridDivision; x++) {
@@ -1465,6 +1676,25 @@ const updateGrid = (room) => {
   room.items.forEach((item) => {
     markItemOnGrid(room, item, false);
   });
+
+  // Block building footprints in large plaza rooms
+  if (room.size[0] > 30) {
+    const footprints = getBuildingFootprints(room.size);
+    const gd = room.gridDivision;
+    const maxX = room.size[0] * gd;
+    const maxZ = room.size[1] * gd;
+    footprints.forEach((fp) => {
+      const startX = Math.max(0, Math.floor(fp.x * gd));
+      const startZ = Math.max(0, Math.floor(fp.z * gd));
+      const endX = Math.min(maxX - 1, Math.floor((fp.x + fp.w) * gd));
+      const endZ = Math.min(maxZ - 1, Math.floor((fp.z + fp.d) * gd));
+      for (let gx = startX; gx <= endX; gx++) {
+        for (let gz = startZ; gz <= endZ; gz++) {
+          room.grid.setWalkableAt(gx, gz, false);
+        }
+      }
+    });
+  }
 };
 
 // Incremental grid update: only update cells affected by a single item change
@@ -1514,7 +1744,7 @@ const loadRooms = async () => {
   data.forEach((roomItem) => {
     const room = {
       ...roomItem,
-      size: [50, 50], // Single large plaza
+      size: [150, 150], // Large city plaza with room beyond buildings
       gridDivision: 2,
       characters: [],
     };
@@ -1561,6 +1791,31 @@ const generateRandomPosition = (room) => {
   }
 };
 
+// Check quest completion for a player after items change in room
+const checkQuestCompletion = (socketId, room) => {
+  for (const [questKey, assignment] of activeQuests) {
+    if (assignment.socketId !== socketId) continue;
+    const quest = assignment.quest;
+    if (!quest.required_items || quest.required_items.length === 0) continue;
+    // Check if all required items are present in the room
+    const allPlaced = quest.required_items.every(itemName =>
+      room.items.some(i => i.name === itemName)
+    );
+    if (allPlaced) {
+      // Quest complete!
+      const reward = quest.reward_coins || 50;
+      updateCoins(socketId, reward, io);
+      io.to(socketId).emit("questCompleted", {
+        questId: quest.id,
+        title: quest.title,
+        reward,
+        coins: (playerCoins.get(socketId) || DEFAULT_COINS),
+      });
+      activeQuests.delete(questKey);
+    }
+  }
+};
+
 // SOCKET MANAGEMENT
 
 io.on("connection", (socket) => {
@@ -1595,7 +1850,10 @@ io.on("connection", (socket) => {
         avatarUrl: sanitizeAvatarUrl(opts.avatarUrl),
         isBot: opts.isBot === true,
         name: opts.name || null,
+        coins: DEFAULT_COINS,
       };
+      playerCoins.set(socket.id, DEFAULT_COINS);
+      if (!room.password) character.canUpdateRoom = true;
       room.characters.push(character);
 
       socket.emit("roomJoined", {
@@ -1606,6 +1864,8 @@ io.on("connection", (socket) => {
         },
         characters: stripCharacters(room.characters),
         id: socket.id,
+        coins: DEFAULT_COINS,
+        hasPassword: !!room.password,
       });
       // Notify other players in the room about the new character (excludes the joiner)
       socket.broadcast.to(room.id).emit("characterJoined", {
@@ -1685,6 +1945,7 @@ io.on("connection", (socket) => {
       socket.join(room.id);
       character.position = generateRandomPosition(room);
       character.path = [];
+      character.canUpdateRoom = !room.password;
       room.characters.push(character);
 
       socket.emit("roomJoined", {
@@ -1695,6 +1956,7 @@ io.on("connection", (socket) => {
         },
         characters: stripCharacters(room.characters),
         id: socket.id,
+        hasPassword: !!room.password,
       });
       // Notify other players in the room about the new character (excludes the joiner)
       socket.broadcast.to(room.id).emit("characterJoined", {
@@ -1707,7 +1969,10 @@ io.on("connection", (socket) => {
     socket.on("characterAvatarUpdate", (avatarUrl) => {
       if (!room) return;
       character.avatarUrl = sanitizeAvatarUrl(avatarUrl);
-      io.to(room.id).emit("characters", stripCharacters(room.characters));
+      io.to(room.id).emit("characterUpdated", {
+        id: character.id,
+        avatarUrl: character.avatarUrl,
+      });
     });
 
     socket.on("move", (from, to) => {
@@ -1770,6 +2035,168 @@ io.on("connection", (socket) => {
       });
     });
 
+    // Direct/Whisper messages
+    socket.on("directMessage", ({ targetId, message }) => {
+      if (!room) return;
+      if (typeof targetId !== "string" || typeof message !== "string") return;
+      const trimmed = message.slice(0, 500);
+      const senderName = character?.name || "Player";
+      const senderIsBot = character?.isBot || false;
+      // Send to target
+      io.to(targetId).emit("directMessage", {
+        senderId: socket.id,
+        senderName,
+        senderIsBot,
+        message: trimmed,
+        timestamp: Date.now(),
+      });
+      // Confirm to sender
+      socket.emit("directMessageSent", {
+        targetId,
+        message: trimmed,
+        timestamp: Date.now(),
+      });
+    });
+
+    // Quest-related socket events
+    socket.on("getQuests", (botId) => {
+      if (!room) return;
+      // Find which bot registry entry owns this character
+      let quests = [];
+      for (const [, reg] of botRegistry) {
+        if (reg.quests && reg.quests.length > 0) {
+          // Match by checking if the bot's virtual socket character id matches
+          const conn = [...botSockets.values()].find(c => c.botId === botId);
+          if (conn) {
+            for (const [key, val] of botSockets) {
+              if (val.botId === botId) {
+                const regEntry = botRegistry.get(key);
+                if (regEntry && regEntry.quests) quests = regEntry.quests;
+                break;
+              }
+            }
+          }
+        }
+      }
+      // Also check moltbook bots (they don't have quests)
+      socket.emit("questsAvailable", { botId, quests });
+    });
+
+    socket.on("acceptQuest", ({ botId, questId }) => {
+      if (!room || !character) return;
+      const questKey = `${socket.id}-${questId}`;
+      if (activeQuests.has(questKey)) {
+        socket.emit("questError", { error: "Quest already active" });
+        return;
+      }
+      // Find quest
+      let quest = null;
+      for (const [, reg] of botRegistry) {
+        if (reg.quests) {
+          quest = reg.quests.find(q => q.id === questId);
+          if (quest) break;
+        }
+      }
+      if (!quest) {
+        socket.emit("questError", { error: "Quest not found" });
+        return;
+      }
+      activeQuests.set(questKey, {
+        socketId: socket.id,
+        questId,
+        botId,
+        quest,
+        progress: {},
+        acceptedAt: Date.now(),
+      });
+      socket.emit("questAccepted", { questId, quest });
+    });
+
+    // Bot shop events
+    socket.on("getBotShop", (botId) => {
+      if (!room) return;
+      let shop = [];
+      for (const [key, val] of botSockets) {
+        if (val.botId === botId) {
+          const reg = botRegistry.get(key);
+          if (reg && reg.shop) shop = reg.shop;
+          break;
+        }
+      }
+      socket.emit("botShopInventory", { botId, items: shop });
+    });
+
+    socket.on("buyFromBot", ({ botId, itemName }) => {
+      if (!room || !character) return;
+      // Find shop item
+      let shopItem = null;
+      for (const [key, val] of botSockets) {
+        if (val.botId === botId) {
+          const reg = botRegistry.get(key);
+          if (reg && reg.shop) {
+            shopItem = reg.shop.find(s => s.item === itemName);
+          }
+          break;
+        }
+      }
+      if (!shopItem) {
+        socket.emit("purchaseError", { error: "Item not found in shop" });
+        return;
+      }
+      const coins = playerCoins.get(socket.id) || 0;
+      if (coins < shopItem.price) {
+        socket.emit("purchaseError", { error: "Insufficient coins", required: shopItem.price, have: coins });
+        return;
+      }
+      // Deduct coins
+      const newBalance = updateCoins(socket.id, -shopItem.price, io);
+      // Place item near the player
+      const itemDef = items[itemName];
+      if (itemDef) {
+        const pos = character.position || [0, 0];
+        const placed = tryPlaceItemInRoom(room, itemName, {
+          x: [Math.max(0, pos[0] - 5), Math.min(room.size[0] * room.gridDivision - 1, pos[0] + 5)],
+          y: [Math.max(0, pos[1] - 5), Math.min(room.size[1] * room.gridDivision - 1, pos[1] + 5)],
+        });
+        if (placed) {
+          io.to(room.id).emit("mapUpdate", {
+            map: { gridDivision: room.gridDivision, size: room.size, items: room.items },
+          });
+        }
+      }
+      socket.emit("purchaseComplete", { item: itemName, price: shopItem.price, coins: newBalance });
+    });
+
+    // Collaborative building request
+    socket.on("requestBuild", (botId) => {
+      if (!room) return;
+      // Check if it's a moltbook bot
+      const moltBot = moltbookVirtualBots.get(botId);
+      if (moltBot) {
+        // Direct build for moltbook bots
+        const zone = ROOM_ZONES[Math.floor(Math.random() * ROOM_ZONES.length)];
+        const needed = zone.items.filter(name => {
+          const count = room.items.filter(i => i.name === name).length;
+          return count < 1;
+        });
+        if (needed.length > 0) {
+          const phrase = THINKING_PHRASES[Math.floor(Math.random() * THINKING_PHRASES.length)];
+          broadcastToRoom(room.id, "playerAction", { id: botId, action: "thinking", detail: phrase });
+          pendingBuilds.set(botId, { stage: "thinking", zone, startedAt: Date.now() });
+          io.to(room.id).emit("buildStarted", { botId, requestedBy: socket.id });
+        }
+        return;
+      }
+      // REST bot — push to event buffer
+      for (const [, conn] of botSockets) {
+        if (conn.botId === botId) {
+          conn.eventBuffer.push({ type: "build_request", from: character?.name || "Player", fromId: socket.id, timestamp: Date.now() });
+          io.to(room.id).emit("buildStarted", { botId, requestedBy: socket.id });
+          break;
+        }
+      }
+    });
+
     socket.on("passwordCheck", (password) => {
       if (!room) return;
       if (password === room.password) {
@@ -1810,10 +2237,11 @@ io.on("connection", (socket) => {
           size: room.size,
           items: room.items,
         },
-        characters: stripCharacters(room.characters),
       });
 
       fs.writeFileSync("rooms.json", JSON.stringify(rooms.filter(r => !r.generated), null, 2));
+      // Check quest completion
+      checkQuestCompletion(socket.id, room);
     });
 
     // Bot-initiated single item placement (LLM bots)
@@ -1882,7 +2310,6 @@ io.on("connection", (socket) => {
           size: room.size,
           items: room.items,
         },
-        characters: stripCharacters(room.characters),
       });
 
       // Show completion and clear after delay
@@ -1897,10 +2324,19 @@ io.on("connection", (socket) => {
 
       // Persist
       fs.writeFileSync("rooms.json", JSON.stringify(rooms.filter(r => !r.generated), null, 2));
+      // Check quest completion for all players in the room
+      room.characters.forEach(c => {
+        if (!c.isBot) checkQuestCompletion(c.id, room);
+      });
     });
 
     socket.on("disconnect", () => {
       console.log("User disconnected");
+      playerCoins.delete(socket.id);
+      // Clean up active quests for this player
+      for (const [key, val] of activeQuests) {
+        if (val.socketId === socket.id) activeQuests.delete(key);
+      }
       if (room) {
         const leavingName = character?.name || "Player";
         const leavingIsBot = character?.isBot || false;

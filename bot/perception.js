@@ -3,6 +3,8 @@
  * perspective and serializes it to compact text for LLM consumption.
  */
 
+import { buildLayout, serializeLayout } from "./roomLayout.js";
+
 export class PerceptionModule {
   /**
    * @param {object} botClient - BotClient instance (.id, .position, .characters, .name)
@@ -93,6 +95,12 @@ export class PerceptionModule {
       roomItems,
       roomSize: this._bot.room?.size ?? [50, 50],
       gridDivision: this._bot.room?.gridDivision ?? 2,
+      roomLayout: buildLayout({
+        size: this._bot.room?.size,
+        items: this._bot.room?.items,
+        gridDivision: this._bot.room?.gridDivision,
+        id: this._bot.room?.id,
+      }),
       timestamp: now,
     };
   }
@@ -156,6 +164,11 @@ export class PerceptionModule {
     }
     const maxGrid = (snap.roomSize?.[0] ?? 50) * (snap.gridDivision ?? 2);
     lines.push(`[Room] Grid 0-${maxGrid - 1} on each axis`);
+
+    // Room layout
+    if (snap.roomLayout) {
+      lines.push(serializeLayout(snap.roomLayout, snap.self.position));
+    }
 
     // Timestamp
     lines.push(`[Time] ${new Date(snap.timestamp).toISOString()}`);

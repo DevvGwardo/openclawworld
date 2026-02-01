@@ -9,10 +9,14 @@ import { motion } from "framer-motion-3d";
 import { useAtom } from "jotai";
 import { Suspense, useMemo, useRef } from "react";
 import { LobbyAvatar } from "./LobbyAvatar";
+import { TownHall } from "./TownHall";
+import { Apartment } from "./Apartment";
+import { ShopBuilding } from "./ShopBuilding";
+import { SmallBuilding } from "./SmallBuilding";
 import { Skyscraper } from "./Skyscraper";
 import { mapAtom, roomIDAtom, roomsAtom, socket } from "./SocketManager";
 import { Tablet } from "./Tablet";
-import { avatarUrlAtom } from "./UI";
+import { avatarUrlAtom, showRoomSelectorAtom } from "./UI";
 let firstLoad = true;
 export const Lobby = () => {
   const [rooms] = useAtom(roomsAtom);
@@ -39,8 +43,8 @@ export const Lobby = () => {
         temporal
         frames={30}
         alphaTest={0.85}
-        scale={50}
-        position={[0, 0, 0]}
+        scale={80}
+        position={[0, 0.01, 0]}
         color="pink"
       >
         <RandomizedLight
@@ -65,6 +69,18 @@ export const Lobby = () => {
 
   return (
     <group position-y={-1.5}>
+      {/* === CITY GROUND PLANE === */}
+      <mesh rotation-x={-Math.PI / 2} position-y={-0.01} receiveShadow>
+        <planeGeometry args={[80, 80]} />
+        <meshStandardMaterial color="#8a8a8a" />
+      </mesh>
+      {/* Sidewalk / plaza area around town hall */}
+      <mesh rotation-x={-Math.PI / 2} position-y={0.0} position-z={-6}>
+        <planeGeometry args={[30, 20]} />
+        <meshStandardMaterial color="#b0b0b0" />
+      </mesh>
+
+      {/* === TABLET UI (room selector) === */}
       <motion.group
         ref={tablet}
         scale={isMobile ? 0.18 : 0.22}
@@ -73,7 +89,6 @@ export const Lobby = () => {
         initial={{
           y: firstLoad ? 0.5 : 1.5,
           rotateY: isSafari ? 0 : isMobile ? 0 : Math.PI / 8,
-          // removed because of safari issue with transform enabled on HTML
         }}
         animate={{
           y: isMobile ? 1.65 : 1.5,
@@ -132,40 +147,68 @@ export const Lobby = () => {
           </div>
         </Html>
       </motion.group>
-      <group position-z={-8} rotation-y={Math.PI / 6}>
-        <Text3D
-          font={"fonts/Inter_Bold.json"}
-          position-z={1}
-          size={0.3}
-          position-x={-3}
-          castShadow
-          rotation-y={Math.PI / 8}
-          bevelEnabled
-          bevelThickness={0.005}
-          letterSpacing={0.012}
-        >
-          LAND
-          <meshStandardMaterial color="white" />
-        </Text3D>
 
-        <Text3D
-          font={"fonts/Inter_Bold.json"}
-          position-z={2.5}
-          size={0.3}
-          position-x={-3}
-          castShadow
-          rotation-y={Math.PI / 8}
-          bevelEnabled
-          bevelThickness={0.005}
-          letterSpacing={0.012}
-        >
-          CLAW
-          <meshStandardMaterial color="white" />
-        </Text3D>
-        <Skyscraper scale={1.32} />
-        <Skyscraper scale={1} position-x={-3} position-z={-1} />
-        <Skyscraper scale={0.8} position-x={3} position-z={-0.5} />
+      {/* === CITY BUILDINGS LAYOUT === */}
+      <group position-z={-8}>
+        {/* CLAW LAND 3D text */}
+        <group rotation-y={Math.PI / 6}>
+          <Text3D
+            font={"fonts/Inter_Bold.json"}
+            position-z={1}
+            size={0.3}
+            position-x={-3}
+            castShadow
+            rotation-y={Math.PI / 8}
+            bevelEnabled
+            bevelThickness={0.005}
+            letterSpacing={0.012}
+          >
+            LAND
+            <meshStandardMaterial color="white" />
+          </Text3D>
+
+          <Text3D
+            font={"fonts/Inter_Bold.json"}
+            position-z={2.5}
+            size={0.3}
+            position-x={-3}
+            castShadow
+            rotation-y={Math.PI / 8}
+            bevelEnabled
+            bevelThickness={0.005}
+            letterSpacing={0.012}
+          >
+            CLAW
+            <meshStandardMaterial color="white" />
+          </Text3D>
+        </group>
+
+        {/* Town Hall - center back, the main building */}
+        <TownHall scale={3.0} position={[0, 0, -2]} />
+
+        {/* Apartment building - left side */}
+        <group position={[-5, 0, -1]}>
+          <Apartment scale={4.3} />
+          <Html position={[0, 3.5, 0]} center distanceFactor={15} zIndexRange={[1, 0]} style={{ pointerEvents: "none" }}>
+            <div className="bg-white/90 backdrop-blur-sm px-2 py-1 rounded-md shadow-md border border-amber-200 whitespace-nowrap">
+              <p className="text-xs font-bold text-amber-700 text-center">APARTMENTS</p>
+            </div>
+          </Html>
+        </group>
+
+        {/* Shop building - right side */}
+        <ShopBuilding scale={4.4} position={[4.5, 0, 0]} rotation-y={-Math.PI / 2} />
+
+        {/* Small buildings - flanking */}
+        <SmallBuilding scale={4.1} position={[-3, 0, 2]} rotation-y={Math.PI / 4} />
+        <SmallBuilding scale={4.0} position={[3, 0, 2.5]} rotation-y={-Math.PI / 6} />
+
+        {/* Skyscrapers in the background for depth */}
+        <Skyscraper scale={4.42} position={[0, 0, -6]} />
+        <Skyscraper scale={4.1} position={[-7, 0, -5]} />
+        <Skyscraper scale={3.9} position={[7, 0, -4]} />
       </group>
+
       {accumulativeShadows}
       <Suspense>
         <LobbyAvatar

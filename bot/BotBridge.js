@@ -53,6 +53,26 @@ export class BotBridge {
     this._gateway = new GatewayClient({ url: gatewayUrl, token: gatewayToken });
     this._perception = new PerceptionModule(this._botClient, { radius: perceptionRadius });
     this._idle = new IdleController(this._botClient);
+
+    // Update idle controller dimensions when room changes
+    this._botClient.on("joined", (data) => {
+      const room = this._botClient.room;
+      if (room) {
+        const maxGrid = (room.size?.[0] ?? 50) * (room.gridDivision ?? 2);
+        this._idle._mapWidth = maxGrid;
+        this._idle._mapHeight = maxGrid;
+      }
+    });
+
+    this._botClient.on("mapUpdate", () => {
+      const room = this._botClient.room;
+      if (room) {
+        const maxGrid = (room.size?.[0] ?? 50) * (room.gridDivision ?? 2);
+        this._idle._mapWidth = maxGrid;
+        this._idle._mapHeight = maxGrid;
+      }
+    });
+
     this._rateLimiter = createRateLimiter({ burst: rateLimitBurst, sustained: rateLimitSustained });
     this._log = createBotLogger(null, botName);
 

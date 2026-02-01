@@ -196,7 +196,7 @@ export const Experience = ({ loaded }) => {
         position={[15, 20, -15]}
         castShadow
         intensity={0.35}
-        shadow-mapSize={[2048, 2048]}
+        shadow-mapSize={[1024, 1024]}
       >
         <orthographicCamera
           attach={"shadow-camera"}

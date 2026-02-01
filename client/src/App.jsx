@@ -49,6 +49,7 @@ function App() {
       <SocketManager />
       <Canvas
         shadows
+        dpr={[1, 2]}
         camera={{
           position: [0, 8, 2],
           fov: 30,

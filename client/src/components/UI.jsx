@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { AvatarCreator } from "@readyplayerme/react-avatar-creator";
 import { motion, AnimatePresence } from "framer-motion";
 import { roomItemsAtom } from "./Room";
-import { roomIDAtom, roomsAtom, socket, switchRoom } from "./SocketManager";
+import { roomIDAtom, roomsAtom, socket, switchRoom, coinsAtom, activeQuestsAtom, questNotificationsAtom, roomHasPasswordAtom, charactersAtom } from "./SocketManager";
+import DirectMessagePanel from "./DirectMessagePanel";
 
 const AVATAR_URLS = [
   "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
@@ -112,6 +113,7 @@ export const buildModeAtom = atom(false);
 export const shopModeAtom = atom(false);
 export const draggedItemAtom = atom(null);
 export const draggedItemRotationAtom = atom(0);
+export const showRoomSelectorAtom = atom(false);
 
 export const avatarUrlAtom = atom(
   localStorage.getItem("avatarURL") ||
@@ -285,6 +287,148 @@ const BotConnectModal = ({ onClose }) => {
   );
 };
 
+const HelpModal = ({ onClose }) => {
+  const [activeSection, setActiveSection] = useState("basics");
+
+  const sections = [
+    { id: "basics", label: "Basics", icon: "M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" },
+    { id: "social", label: "Social", icon: "M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" },
+    { id: "building", label: "Building", icon: "M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" },
+    { id: "bots", label: "Bots", icon: "M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h9a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0015.75 4.5h-9A2.25 2.25 0 004.5 6.75v10.5A2.25 2.25 0 006.75 19.5z" },
+    { id: "camera", label: "Camera", icon: "M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" },
+  ];
+
+  const content = {
+    basics: [
+      { key: "Move", desc: "Click anywhere on the ground to walk there" },
+      { key: "Chat", desc: "Type a message and press Enter or click Send" },
+      { key: "Dance", desc: "Click the music note button to dance" },
+      { key: "Switch Rooms", desc: "Click the building icon to browse and join rooms" },
+      { key: "Change Avatar", desc: "Click the person icon to pick a character or create a custom one" },
+      { key: "Coins", desc: "Earn coins by completing quests — your balance shows at the top" },
+    ],
+    social: [
+      { key: "Click a Player", desc: "Opens their profile card with actions" },
+      { key: "Wave", desc: "Send a wave emote from the character menu" },
+      { key: "Follow", desc: "Follow a player and your camera tracks them" },
+      { key: "Talk", desc: "Open a direct message chat with a bot or player" },
+      { key: "Quests", desc: "Accept quests from bots via the Quests tab in DMs" },
+      { key: "Shop", desc: "Buy items from bot shops via the Shop tab in DMs" },
+    ],
+    building: [
+      { key: "Enter Build Mode", desc: "Click the house button — requires the room password" },
+      { key: "Open Shop", desc: "In build mode, click the shop icon to browse items" },
+      { key: "Place Item", desc: "Drag an item from the shop onto the grid" },
+      { key: "Rotate", desc: "Click the rotate button while placing an item" },
+      { key: "Cancel", desc: "Click X to cancel placing the current item" },
+      { key: "Remove Item", desc: "Select a placed item and click the trash icon" },
+    ],
+    bots: [
+      { key: "AI Agents", desc: "Bots are AI-powered characters that can chat, give quests, and sell items" },
+      { key: "Connect a Bot", desc: "Click the bot icon (purple) and follow the instructions" },
+      { key: "Moltland", desc: "Run the npx command to install and connect your agent" },
+      { key: "Manual Setup", desc: "Use the manual tab for custom bot integration via molts.land" },
+      { key: "Bot Badges", desc: "Bots display a blue 'Bot' badge on their profile card" },
+    ],
+    camera: [
+      { key: "Zoom", desc: "Scroll the mouse wheel to zoom in and out" },
+      { key: "Rotate View", desc: "Right-click and drag to rotate the camera" },
+      { key: "Q / E Keys", desc: "Press Q or E to rotate the camera left or right" },
+      { key: "Follow Mode", desc: "When following a player, the camera tracks them automatically" },
+    ],
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] grid place-items-center">
+      <motion.div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+      />
+      <motion.div
+        className="bg-white rounded-2xl shadow-2xl z-10 w-full max-w-lg mx-4 overflow-hidden max-h-[85vh] flex flex-col"
+        initial={{ scale: 0.85, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.85, opacity: 0, y: 20 }}
+        transition={{ type: "spring", damping: 25, stiffness: 300 }}
+      >
+        {/* Header */}
+        <div className="p-5 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-slate-600">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-bold text-gray-900">Help</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Section tabs */}
+        <div className="px-5 pt-4 pb-2 flex gap-2 flex-wrap flex-shrink-0">
+          {sections.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => setActiveSection(s.id)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${
+                activeSection === s.id
+                  ? "bg-slate-800 text-white"
+                  : "bg-gray-100 text-gray-500 hover:text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3.5 h-3.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d={s.icon} />
+              </svg>
+              {s.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Content */}
+        <div className="overflow-y-auto flex-1 px-5 pb-5 pt-2">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeSection}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.15 }}
+              className="space-y-2"
+            >
+              {content[activeSection].map((item, i) => (
+                <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-800 text-white text-xs font-bold flex items-center justify-center mt-0.5">
+                    {i + 1}
+                  </span>
+                  <div>
+                    <p className="font-semibold text-gray-900 text-sm">{item.key}</p>
+                    <p className="text-gray-500 text-xs mt-0.5">{item.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-3 border-t border-gray-100 flex-shrink-0">
+          <p className="text-xs text-gray-400 text-center">Press <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-500 font-mono text-[10px]">?</kbd> anytime to open this menu</p>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 const RoomSelectorModal = ({ onClose, currentRoomID, rooms, onSwitchRoom }) => {
   return (
     <div className="fixed z-10 grid place-items-center w-full h-full top-0 left-0">
@@ -385,11 +529,18 @@ export const UI = () => {
   const [avatarMode, setAvatarMode] = useState(false);
   const [botConnectMode, setBotConnectMode] = useState(false);
   const [roomSelectorMode, setRoomSelectorMode] = useState(false);
+  const [showRoomSelector, setShowRoomSelector] = useAtom(showRoomSelectorAtom);
   const [characterSelectorMode, setCharacterSelectorMode] = useState(false);
+  const [helpMode, setHelpMode] = useState(false);
   const [allRooms] = useAtom(roomsAtom);
   const [avatarUrl, setAvatarUrl] = useAtom(avatarUrlAtom);
   const [roomID, setRoomID] = useAtom(roomIDAtom);
+  const [coins] = useAtom(coinsAtom);
+  const [characters] = useAtom(charactersAtom);
+  const [activeQuests] = useAtom(activeQuestsAtom);
+  const [questNotifications, setQuestNotifications] = useAtom(questNotificationsAtom);
   const [passwordCorrectForRoom, setPasswordCorrectForRoom] = useState(false);
+  const [roomHasPassword] = useAtom(roomHasPasswordAtom);
   const leaveRoom = () => {
     socket.emit("leaveRoom");
     setRoomID(null);
@@ -407,6 +558,14 @@ export const UI = () => {
   useEffect(() => {
     setPasswordCorrectForRoom(false); // PS: this is an ugly shortcut
   }, [roomID]);
+
+  // Open room selector when triggered from 3D scene (e.g. clicking Apartment building)
+  useEffect(() => {
+    if (showRoomSelector) {
+      setRoomSelectorMode(true);
+      setShowRoomSelector(false);
+    }
+  }, [showRoomSelector]);
 
   const handleSelectCharacter = (url) => {
     const newUrl = url + (url.includes("?") ? "&" : "?") + "meshlod=1&quality=medium";
@@ -426,8 +585,102 @@ export const UI = () => {
     }
   };
 
+  // Keyboard shortcut for help modal
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "?" && !e.ctrlKey && !e.metaKey && e.target.tagName !== "INPUT" && e.target.tagName !== "TEXTAREA") {
+        setHelpMode((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // Auto-dismiss quest notifications
+  useEffect(() => {
+    if (questNotifications.length === 0) return;
+    const timer = setTimeout(() => {
+      setQuestNotifications((prev) => prev.slice(1));
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [questNotifications]);
+
+  const totalOnline = characters.length;
+  const botCount = characters.filter((c) => c.isBot).length;
+  const playerCount = totalOnline - botCount;
+
   return (
     <>
+      {/* Online Count Badge + Coins (top-right) */}
+      {roomID && (
+        <div className="fixed top-10 right-3 sm:top-12 sm:right-4 z-[15] flex flex-col items-end gap-1.5">
+          <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-full px-3 py-1.5 flex items-center gap-2 shadow-sm">
+            <img src="/favicon.ico" alt="" className="w-4 h-4" />
+            <span className="text-gray-800 font-bold text-sm">{totalOnline}</span>
+            <span className="text-gray-400 text-xs">online</span>
+            <div className="w-px h-3.5 bg-gray-200" />
+            <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-0.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                <span className="text-gray-600 text-xs font-medium">{playerCount}</span>
+              </div>
+              <div className="flex items-center gap-0.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
+                <span className="text-gray-600 text-xs font-medium">{botCount}</span>
+              </div>
+            </div>
+          </div>
+          <div className="bg-amber-50/90 backdrop-blur-sm border border-amber-200 rounded-full px-4 py-1.5 flex items-center gap-2 shadow-sm">
+            <span className="text-amber-500 text-sm">&#x26AA;</span>
+            <span className="text-amber-700 font-bold text-sm">{coins}</span>
+            <span className="text-amber-500 text-xs font-semibold">coins</span>
+          </div>
+        </div>
+      )}
+
+      {/* Quest Tracker */}
+      {roomID && activeQuests.length > 0 && (
+        <div className="fixed top-28 right-2 sm:top-32 sm:right-4 z-[5] pointer-events-none w-56">
+          {activeQuests.map((quest) => (
+            <div key={quest.id || quest.questId} className="bg-white/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-amber-200 shadow-sm mb-1.5">
+              <p className="text-xs font-bold text-amber-700 truncate">{quest.title}</p>
+              {quest.required_items?.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {quest.required_items.map((item, i) => (
+                    <span key={i} className="text-[10px] bg-amber-50 px-1.5 py-0.5 rounded text-amber-600 border border-amber-100">
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <p className="text-[10px] text-amber-500 mt-1">+{quest.reward_coins} coins</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Quest Completion Notifications */}
+      <AnimatePresence>
+        {questNotifications.map((notif) => (
+          <motion.div
+            key={notif.id}
+            initial={{ opacity: 0, y: -20, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.95 }}
+            className="fixed top-20 left-1/2 -translate-x-1/2 z-[20] pointer-events-none"
+          >
+            <div className="bg-green-50/95 backdrop-blur-sm border border-green-200 rounded-xl px-5 py-3 shadow-lg text-center">
+              <p className="text-green-700 font-bold text-sm">Quest Complete!</p>
+              <p className="text-green-600 text-xs mt-0.5">{notif.title}</p>
+              <p className="text-amber-600 font-semibold text-xs mt-1">+{notif.reward} coins</p>
+            </div>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+
+      {/* Direct Message Panel */}
+      <DirectMessagePanel />
+
       <motion.div
         ref={ref}
         initial={{ opacity: 0 }}
@@ -469,6 +722,11 @@ export const UI = () => {
         {botConnectMode && (
           <BotConnectModal onClose={() => setBotConnectMode(false)} />
         )}
+        <AnimatePresence>
+          {helpMode && (
+            <HelpModal onClose={() => setHelpMode(false)} />
+          )}
+        </AnimatePresence>
         {roomSelectorMode && (
           <RoomSelectorModal
             onClose={() => setRoomSelectorMode(false)}
@@ -548,121 +806,90 @@ export const UI = () => {
                 </svg>
               </button>
             )}
-            {/* CHARACTER SELECTOR */}
+            {/* BOTTOM NAV BAR */}
             {!buildMode && !shopMode && (
-              <button
-                className="p-3 sm:p-4 rounded-full bg-white/90 text-gray-700 drop-shadow-md cursor-pointer hover:bg-white hover:text-gray-900 transition-colors border border-gray-200"
-                onClick={() => setCharacterSelectorMode(true)}
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={1.5}
-                  stroke="currentColor"
-                  className="w-5 h-5 sm:w-6 sm:h-6"
+              <div className="flex items-end justify-center gap-1 sm:gap-2 pointer-events-auto bg-white/95 backdrop-blur-sm rounded-2xl px-2 py-2 sm:px-4 sm:py-3 drop-shadow-lg border border-gray-200">
+                {/* Avatar */}
+                <button
+                  className="flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1.5 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors group"
+                  onClick={() => setCharacterSelectorMode(true)}
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"
-                  />
-                </svg>
-              </button>
-            )}
-            {/* CONNECT BOT */}
-            {!buildMode && !shopMode && (
-              <button
-                className="p-3 sm:p-4 rounded-full bg-white/90 text-indigo-600 drop-shadow-md cursor-pointer hover:bg-white hover:text-indigo-700 transition-colors border border-indigo-200"
-                onClick={() => setBotConnectMode(true)}
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={1.5}
-                  stroke="currentColor"
-                  className="w-5 h-5 sm:w-6 sm:h-6"
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 sm:w-6 sm:h-6 text-gray-500 group-hover:text-gray-800 transition-colors">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                  </svg>
+                  <span className="text-[10px] sm:text-xs text-gray-500 group-hover:text-gray-800 font-medium transition-colors">Avatar</span>
+                </button>
+
+                {/* Rooms */}
+                {roomID && (
+                  <button
+                    className="flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1.5 rounded-xl cursor-pointer hover:bg-amber-50 transition-colors group"
+                    onClick={() => setRoomSelectorMode(true)}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 sm:w-6 sm:h-6 text-amber-500 group-hover:text-amber-700 transition-colors">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
+                    </svg>
+                    <span className="text-[10px] sm:text-xs text-amber-500 group-hover:text-amber-700 font-medium transition-colors">Rooms</span>
+                  </button>
+                )}
+
+                {/* Dance */}
+                {roomID && (
+                  <button
+                    className="flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1.5 rounded-xl cursor-pointer hover:bg-pink-50 transition-colors group"
+                    onClick={() => socket.emit("dance")}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 sm:w-6 sm:h-6 text-pink-400 group-hover:text-pink-600 transition-colors">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 9l10.5-3m0 6.553v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-.99-3.467l2.31-.66a2.25 2.25 0 001.632-2.163zm0 0V2.25L9 5.25v10.303m0 0v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 01-.99-3.467l2.31-.66A2.25 2.25 0 009 15.553z" />
+                    </svg>
+                    <span className="text-[10px] sm:text-xs text-pink-400 group-hover:text-pink-600 font-medium transition-colors">Dance</span>
+                  </button>
+                )}
+
+                {/* Build */}
+                {roomID && (
+                  <button
+                    className="flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1.5 rounded-xl cursor-pointer hover:bg-green-50 transition-colors group"
+                    onClick={() => {
+                      if (!roomHasPassword || passwordCorrectForRoom) {
+                        setBuildMode(true);
+                      } else {
+                        setPasswordMode(true);
+                      }
+                    }}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 sm:w-6 sm:h-6 text-green-500 group-hover:text-green-700 transition-colors">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+                    </svg>
+                    <span className="text-[10px] sm:text-xs text-green-500 group-hover:text-green-700 font-medium transition-colors">Build</span>
+                  </button>
+                )}
+
+                {/* Divider */}
+                <div className="w-px h-8 bg-gray-200 mx-1 hidden sm:block" />
+
+                {/* Bots */}
+                <button
+                  className="flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1.5 rounded-xl cursor-pointer hover:bg-indigo-50 transition-colors group"
+                  onClick={() => setBotConnectMode(true)}
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h9a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0015.75 4.5h-9A2.25 2.25 0 004.5 6.75v10.5A2.25 2.25 0 006.75 19.5z"
-                  />
-                </svg>
-              </button>
-            )}
-            {/* ROOMS */}
-            {roomID && !buildMode && !shopMode && (
-              <button
-                className="p-3 sm:p-4 rounded-full bg-white/90 text-amber-600 drop-shadow-md cursor-pointer hover:bg-white hover:text-amber-700 transition-colors border border-amber-200"
-                onClick={() => setRoomSelectorMode(true)}
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={1.5}
-                  stroke="currentColor"
-                  className="w-5 h-5 sm:w-6 sm:h-6"
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-400 group-hover:text-indigo-600 transition-colors">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h9a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0015.75 4.5h-9A2.25 2.25 0 004.5 6.75v10.5A2.25 2.25 0 006.75 19.5z" />
+                  </svg>
+                  <span className="text-[10px] sm:text-xs text-indigo-400 group-hover:text-indigo-600 font-medium transition-colors">Bots</span>
+                </button>
+
+                {/* Help */}
+                <button
+                  className="flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1.5 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors group"
+                  onClick={() => setHelpMode(true)}
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21"
-                  />
-                </svg>
-              </button>
-            )}
-            {/* DANCE */}
-            {roomID && !buildMode && !shopMode && (
-              <button
-                className="p-3 sm:p-4 rounded-full bg-white/90 text-gray-700 drop-shadow-md cursor-pointer hover:bg-white hover:text-gray-900 transition-colors border border-gray-200"
-                onClick={() => socket.emit("dance")}
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={1.5}
-                  stroke="currentColor"
-                  className="w-5 h-5 sm:w-6 sm:h-6"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M9 9l10.5-3m0 6.553v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-.99-3.467l2.31-.66a2.25 2.25 0 001.632-2.163zm0 0V2.25L9 5.25v10.303m0 0v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 01-.99-3.467l2.31-.66A2.25 2.25 0 009 15.553z"
-                  />
-                </svg>
-              </button>
-            )}
-            {/* BUILD */}
-            {roomID && !buildMode && !shopMode && (
-              <button
-                className="p-3 sm:p-4 rounded-full bg-white/90 text-gray-700 drop-shadow-md cursor-pointer hover:bg-white hover:text-gray-900 transition-colors border border-gray-200"
-                onClick={() => {
-                  if (!passwordCorrectForRoom) {
-                    setPasswordMode(true);
-                  } else {
-                    setBuildMode(true);
-                  }
-                }}
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={1.5}
-                  stroke="currentColor"
-                  className="w-5 h-5 sm:w-6 sm:h-6"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25"
-                  />
-                </svg>
-              </button>
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 sm:w-6 sm:h-6 text-gray-400 group-hover:text-gray-700 transition-colors">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+                  </svg>
+                  <span className="text-[10px] sm:text-xs text-gray-400 group-hover:text-gray-700 font-medium transition-colors">Help</span>
+                </button>
+              </div>
             )}
             {/* SHOP */}
             {buildMode && !shopMode && draggedItem === null && (

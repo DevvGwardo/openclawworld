@@ -1,14 +1,21 @@
 import {
   Grid,
+  Html,
   ScrollControls,
   useCursor,
 } from "@react-three/drei";
 
 import { useThree } from "@react-three/fiber";
 import { atom, useAtom } from "jotai";
-import React, { Suspense, useEffect, useState, Component } from "react";
+import React, { Suspense, useEffect, useMemo, useState, Component } from "react";
 import { useGrid } from "../hooks/useGrid";
 import { Avatar } from "./Avatar";
+import { TownHall } from "./TownHall";
+import { Apartment } from "./Apartment";
+import { ShopBuilding } from "./ShopBuilding";
+import { SmallBuilding } from "./SmallBuilding";
+import { Skyscraper } from "./Skyscraper";
+import { showRoomSelectorAtom } from "./UI";
 
 class AvatarErrorBoundary extends Component {
   state = { hasError: false };
@@ -26,7 +33,7 @@ class AvatarErrorBoundary extends Component {
 import { Item } from "./Item";
 import { ProximityItem } from "./ProximityItem";
 import { Shop } from "./Shop";
-import { charactersAtom, mapAtom, socket, userAtom } from "./SocketManager";
+import { charactersAtom, mapAtom, socket, userAtom, htmlVisibleSetAtom } from "./SocketManager";
 import {
   buildModeAtom,
   draggedItemAtom,
@@ -36,12 +43,56 @@ import {
 
 export const roomItemsAtom = atom([]);
 
+const MAX_RENDERED_AVATARS = 150;
+
 const CharacterList = React.memo(() => {
   const [characters] = useAtom(charactersAtom);
+  const [user] = useAtom(userAtom);
+  const [htmlVisibleSet, setHtmlVisibleSet] = useAtom(htmlVisibleSetAtom);
+
+  const nearestCharacters = useMemo(() => {
+    const currentUser = characters.find((c) => c.id === user);
+    const userPos = currentUser?.position || [0, 0];
+
+    const distanceSq = (pos) => {
+      const dx = pos[0] - userPos[0];
+      const dy = pos[1] - userPos[1];
+      return dx * dx + dy * dy;
+    };
+
+    const others = characters.filter((c) => c.id !== user);
+
+    others.sort((a, b) => {
+      // Non-bot players first, then by distance
+      if (a.isBot !== b.isBot) return a.isBot ? 1 : -1;
+      return distanceSq(a.position) - distanceSq(b.position);
+    });
+
+    const capped = others.slice(0, MAX_RENDERED_AVATARS - (currentUser ? 1 : 0));
+
+    // Always include the current user at the front
+    if (currentUser) {
+      capped.unshift(currentUser);
+    }
+
+    return capped;
+  }, [characters, user]);
+
+  // Compute nearest 20 IDs for HTML overlay rendering (Task 3)
+  useMemo(() => {
+    // nearestCharacters is already sorted by distance (user first, then by proximity)
+    // Take the first 20 (user + nearest 19 others)
+    const nearest20 = new Set();
+    const limit = Math.min(20, nearestCharacters.length);
+    for (let i = 0; i < limit; i++) {
+      nearest20.add(nearestCharacters[i].id);
+    }
+    setHtmlVisibleSet(nearest20);
+  }, [nearestCharacters]);
 
   return (
     <>
-      {characters.map((character) => (
+      {nearestCharacters.map((character) => (
         <AvatarErrorBoundary key={character.id}>
           <Suspense>
             <Avatar
@@ -53,6 +104,7 @@ const CharacterList = React.memo(() => {
               avatarUrl={character.avatarUrl}
               name={character.name}
               isBot={character.isBot}
+              showHtmlOverlay={htmlVisibleSet.has(character.id)}
             />
           </Suspense>
         </AvatarErrorBoundary>
@@ -72,6 +124,7 @@ export const Room = () => {
 
   const scene = useThree((state) => state.scene);
   const [user] = useAtom(userAtom);
+  const [, setShowRoomSelector] = useAtom(showRoomSelectorAtom);
 
   useEffect(() => {
     setItems(map.items);
@@ -242,7 +295,7 @@ export const Room = () => {
           </ProximityItem>
         ))}
 
-      {!shopMode && (
+      {!shopMode && buildMode && (
         <mesh
           rotation-x={-Math.PI / 2}
           position-y={-0.002}
@@ -250,9 +303,6 @@ export const Room = () => {
           onPointerEnter={() => setOnFloor(true)}
           onPointerLeave={() => setOnFloor(false)}
           onPointerMove={(e) => {
-            if (!buildMode) {
-              return;
-            }
             const newPosition = vector3ToGrid(e.point);
             if (
               !dragPosition ||
@@ -274,6 +324,99 @@ export const Room = () => {
         <Grid infiniteGrid fadeDistance={50} fadeStrength={5} />
       )}
       {!buildMode && <CharacterList />}
+
+      {/* === CITY SURROUNDINGS (large plaza rooms) === */}
+      {!buildMode && !shopMode && map.size[0] > 30 && (
+        <group>
+          <mesh
+            rotation-x={-Math.PI / 2}
+            position-y={-0.01}
+            position-x={map.size[0] / 2}
+            position-z={map.size[1] / 2}
+            receiveShadow
+            onClick={onPlaneClicked}
+            onPointerEnter={() => setOnFloor(true)}
+            onPointerLeave={() => setOnFloor(false)}
+          >
+            <planeGeometry args={map.size} />
+            <meshStandardMaterial color="#7a7a7a" />
+          </mesh>
+
+          {/* Apartment building - clickable, opens rooms list */}
+          <group
+            position={[4, 0, map.size[1] / 2]}
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowRoomSelector(true);
+            }}
+            onPointerOver={(e) => {
+              e.stopPropagation();
+              document.body.style.cursor = "pointer";
+            }}
+            onPointerOut={() => {
+              document.body.style.cursor = "auto";
+            }}
+          >
+            <Apartment scale={5.9} rotation-y={Math.PI / 2} />
+            <Html position={[0, 4.5, 0]} center distanceFactor={20} zIndexRange={[1, 0]} style={{ pointerEvents: "none" }}>
+              <div className="bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-lg shadow-lg border border-amber-200 whitespace-nowrap">
+                <p className="text-sm font-bold text-amber-700 text-center">APARTMENTS</p>
+                <p className="text-[10px] text-amber-500 text-center">Click to view rooms</p>
+              </div>
+            </Html>
+          </group>
+
+          <group onPointerOver={null} raycast={() => null}>
+            <TownHall scale={4.1} position={[map.size[0] / 2, 0, 4]} />
+            <ShopBuilding scale={5.9} position={[map.size[0] - 4, 0, map.size[1] / 2]} rotation-y={-Math.PI / 2} />
+            <SmallBuilding scale={5.9} position={[11, 0, 11]} rotation-y={Math.PI * 1.5} />
+            <SmallBuilding scale={5.9} position={[map.size[0] - 11, 0, 11]} rotation-y={-Math.PI / 4} />
+            <Skyscraper scale={5.9} position={[map.size[0] / 2 + 14, 0, 4]} />
+            <Skyscraper scale={5.9} position={[2, 0, 2]} />
+            <Skyscraper scale={5.9} position={[map.size[0] - 2, 0, 2]} />
+            <Skyscraper scale={5.9} position={[2, 0, map.size[1] - 2]} />
+            <Skyscraper scale={5.9} position={[map.size[0] - 2, 0, map.size[1] - 2]} />
+          </group>
+        </group>
+      )}
+
+      {/* === INTERIOR ROOM (smaller generated rooms) === */}
+      {!buildMode && !shopMode && map.size[0] <= 30 && (
+        <group>
+          <mesh
+            rotation-x={-Math.PI / 2}
+            position-y={-0.01}
+            position-x={map.size[0] / 2}
+            position-z={map.size[1] / 2}
+            receiveShadow
+            onClick={onPlaneClicked}
+            onPointerEnter={() => setOnFloor(true)}
+            onPointerLeave={() => setOnFloor(false)}
+          >
+            <planeGeometry args={map.size} />
+            <meshStandardMaterial color="#c4a882" />
+          </mesh>
+
+          <group raycast={() => null}>
+            <mesh position={[map.size[0] / 2, 2, -0.15]} castShadow receiveShadow>
+              <boxGeometry args={[map.size[0] + 0.3, 4, 0.3]} />
+              <meshStandardMaterial color="#e8e0d4" />
+            </mesh>
+            <mesh position={[map.size[0] / 2, 2, map.size[1] + 0.15]} castShadow receiveShadow>
+              <boxGeometry args={[map.size[0] + 0.3, 4, 0.3]} />
+              <meshStandardMaterial color="#e8e0d4" />
+            </mesh>
+            <mesh position={[-0.15, 2, map.size[1] / 2]} castShadow receiveShadow>
+              <boxGeometry args={[0.3, 4, map.size[1] + 0.3]} />
+              <meshStandardMaterial color="#e8e0d4" />
+            </mesh>
+            <mesh position={[map.size[0] + 0.15, 2, map.size[1] / 2]} castShadow receiveShadow>
+              <boxGeometry args={[0.3, 4, map.size[1] + 0.3]} />
+              <meshStandardMaterial color="#e8e0d4" />
+            </mesh>
+          </group>
+        </group>
+      )}
     </>
   );
 };

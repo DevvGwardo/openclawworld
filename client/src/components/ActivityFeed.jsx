@@ -15,6 +15,9 @@ const typeConfig = {
   building: { icon: "🔨", color: "text-orange-600", label: "" },
   done: { icon: "✅", color: "text-green-600", label: "" },
   wave_at: { icon: "👋", color: "text-yellow-600", label: "waved" },
+  quest_completed: { icon: "🏆", color: "text-amber-600", label: "" },
+  purchase: { icon: "🛒", color: "text-indigo-600", label: "" },
+  build_started: { icon: "🏗️", color: "text-orange-600", label: "" },
 };
 
 export const ActivityFeed = () => {

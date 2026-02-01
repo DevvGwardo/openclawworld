@@ -31,7 +31,7 @@ export const Item = ({
   useEffect(() => {
     clone.traverse((child) => {
       if (child.isMesh) {
-        child.castShadow = true;
+        child.castShadow = false;
         child.receiveShadow = true;
       }
     });
