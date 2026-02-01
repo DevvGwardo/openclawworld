@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-01-31)
 
 **Core value:** Bots autonomously inhabit the world and feel alive -- even one bot joining, moving, and speaking through the LLM proves the full loop works.
-**Current focus:** Phase 5 complete (Bot Bridge) -- autonomous perception-decision-action loop operational
+**Current focus:** Phase 6 in progress (Client UI) -- chat message state and 3D bubble attribution
 
 ## Current Position
 
-Phase: 5 of 8 (Bot Bridge)
-Plan: 3 of 3 in current phase
-Status: Phase complete
-Last activity: 2026-01-31 -- Completed 05-03-PLAN.md
+Phase: 6 of 8 (Client UI)
+Plan: 1 of 2 in current phase
+Status: In progress
+Last activity: 2026-02-01 -- Completed 06-01-PLAN.md
 
-Progress: [██████████░] 62%
+Progress: [███████████░] 69%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10
+- Total plans completed: 11
 - Average duration: 3 min
 - Total execution time: 0.5 hours
 
@@ -32,9 +32,10 @@ Progress: [██████████░] 62%
 | 3 | 2 | 9 min | 4.5 min |
 | 4 | 2 | 2 min | 1 min |
 | 5 | 3 | 6 min | 2 min |
+| 6 | 1 | 1 min | 1 min |
 
 **Recent Trend:**
-- Last 5 plans: 1 min, 1 min, 1 min, 1 min, 2 min
+- Last 5 plans: 1 min, 1 min, 1 min, 2 min, 1 min
 - Trend: fast
 
 *Updated after each plan completion*
@@ -71,6 +72,9 @@ Recent decisions affecting current work:
 - [05-03]: Gateway error/reconnectFailed events handled to prevent unhandled EventEmitter throws
 - [05-03]: Single retry with simplified prompt on invalid LLM response before idle fallback
 - [05-03]: Reactive trigger on chatMessage cancels timer and runs immediate tick
+- [06-01]: charactersRef pattern for socket closure (handler can't see updated atom values)
+- [06-01]: 20-message cap on chatMessagesAtom to prevent memory growth
+- [06-01]: pointer-events-none on chat bubbles to avoid intercepting 3D clicks
 
 ### Pending Todos
 
@@ -83,6 +87,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-31
-Stopped at: Completed 05-03-PLAN.md (Phase 5 complete, ready for Phase 6)
+Last session: 2026-02-01
+Stopped at: Completed 06-01-PLAN.md (Phase 6 plan 1 of 2)
 Resume file: None
