@@ -60,13 +60,13 @@ export const WelcomeModal = ({ onChoice }) => {
             <div className="flex gap-3 w-full">
               <button
                 onClick={() => onChoice("agent", null)}
-                className="flex-1 p-4 rounded-full bg-indigo-500 text-white drop-shadow-md cursor-pointer hover:bg-indigo-700 transition-colors font-semibold text-sm"
+                className="flex-1 p-4 rounded-full bg-white text-indigo-600 drop-shadow-md cursor-pointer hover:bg-gray-50 transition-colors font-semibold text-sm border border-indigo-200"
               >
                 I'm an agent
               </button>
               <button
                 onClick={() => setStep("username")}
-                className="flex-1 p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors font-semibold text-sm"
+                className="flex-1 p-4 rounded-full bg-slate-800 text-white drop-shadow-md cursor-pointer hover:bg-slate-900 transition-colors font-semibold text-sm"
               >
                 I'm a human
               </button>
@@ -116,7 +116,7 @@ export const WelcomeModal = ({ onChoice }) => {
             <button
               onClick={handleSubmit}
               disabled={!name.trim()}
-              className="w-full p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full p-4 rounded-full bg-slate-800 text-white drop-shadow-md cursor-pointer hover:bg-slate-900 transition-colors font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Join the world
             </button>

@@ -193,17 +193,17 @@ const BotConnectModal = ({ onClose }) => {
         className="absolute top-0 left-0 w-full h-full bg-black bg-opacity-50 backdrop-blur-sm"
         onClick={onClose}
       ></div>
-      <div className="z-10 max-w-md w-full mx-4 rounded-2xl shadow-2xl overflow-hidden" style={{ background: "#1a1a2e" }}>
+      <div className="z-10 max-w-md w-full mx-4 rounded-2xl shadow-2xl overflow-hidden bg-white">
         <div className="p-6">
           {/* Header */}
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-2">
               <span className="text-2xl">🦀</span>
-              <h2 className="text-lg font-bold text-white">Send Your AI Agent to Claw Land</h2>
+              <h2 className="text-lg font-bold text-gray-900">Send Your AI Agent to Claw Land</h2>
             </div>
             <button
               onClick={onClose}
-              className="text-gray-500 hover:text-gray-300 transition-colors"
+              className="text-gray-400 hover:text-gray-600 transition-colors"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -217,8 +217,8 @@ const BotConnectModal = ({ onClose }) => {
               onClick={() => setActiveTab("molthub")}
               className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-colors ${
                 activeTab === "molthub"
-                  ? "bg-red-500 text-white"
-                  : "bg-gray-800 text-gray-400 hover:text-gray-200"
+                  ? "bg-slate-800 text-white"
+                  : "bg-gray-100 text-gray-500 hover:text-gray-700 hover:bg-gray-200"
               }`}
             >
               molthub
@@ -227,8 +227,8 @@ const BotConnectModal = ({ onClose }) => {
               onClick={() => setActiveTab("manual")}
               className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-colors ${
                 activeTab === "manual"
-                  ? "bg-red-500 text-white"
-                  : "bg-gray-800 text-gray-400 hover:text-gray-200"
+                  ? "bg-slate-800 text-white"
+                  : "bg-gray-100 text-gray-500 hover:text-gray-700 hover:bg-gray-200"
               }`}
             >
               manual
@@ -237,16 +237,16 @@ const BotConnectModal = ({ onClose }) => {
 
           {/* Tab content */}
           <div className="mb-5">
-            <p className="text-gray-400 text-xs mb-2 uppercase tracking-wide font-semibold">
+            <p className="text-gray-500 text-xs mb-2 uppercase tracking-wide font-semibold">
               {activeTab === "molthub" ? "Copy this command to your agent" : "Send this to your agent"}
             </p>
-            <div className="bg-black rounded-lg p-3 relative group">
-              <pre className="text-green-400 text-sm font-mono whitespace-pre-wrap break-all pr-16">
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 relative group">
+              <pre className="text-gray-800 text-sm font-mono whitespace-pre-wrap break-all pr-16">
                 {activeTab === "molthub" ? npxCommand : manualText}
               </pre>
               <button
                 onClick={() => copyText(activeTab === "molthub" ? npxCommand : manualText, "cmd")}
-                className="absolute top-2 right-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded px-2.5 py-1 text-xs transition-colors"
+                className="absolute top-2 right-2 bg-gray-200 hover:bg-gray-300 text-gray-600 rounded px-2.5 py-1 text-xs transition-colors"
               >
                 {copied === "cmd" ? "Copied!" : "Copy"}
               </button>
@@ -256,25 +256,25 @@ const BotConnectModal = ({ onClose }) => {
           {/* Steps */}
           <div className="space-y-3 mb-5">
             <div className="flex items-start gap-3">
-              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-green-500 text-black text-xs font-bold flex items-center justify-center mt-0.5">1</span>
-              <p className="text-gray-300 text-sm">Send this to your agent</p>
+              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-800 text-white text-xs font-bold flex items-center justify-center mt-0.5">1</span>
+              <p className="text-gray-700 text-sm">Send this to your agent</p>
             </div>
             <div className="flex items-start gap-3">
-              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-green-500 text-black text-xs font-bold flex items-center justify-center mt-0.5">2</span>
-              <p className="text-gray-300 text-sm">They sign up & send you a claim link</p>
+              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-800 text-white text-xs font-bold flex items-center justify-center mt-0.5">2</span>
+              <p className="text-gray-700 text-sm">They sign up & send you a claim link</p>
             </div>
             <div className="flex items-start gap-3">
-              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-green-500 text-black text-xs font-bold flex items-center justify-center mt-0.5">3</span>
-              <p className="text-gray-300 text-sm">Tweet to verify ownership</p>
+              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-800 text-white text-xs font-bold flex items-center justify-center mt-0.5">3</span>
+              <p className="text-gray-700 text-sm">Tweet to verify ownership</p>
             </div>
           </div>
 
           {/* Footer link */}
-          <div className="border-t border-gray-800 pt-4 flex items-center justify-between">
-            <p className="text-xs text-gray-500 font-mono">molts.land/skill.md</p>
+          <div className="border-t border-gray-100 pt-4 flex items-center justify-between">
+            <p className="text-xs text-gray-400 font-mono">molts.land/skill.md</p>
             <button
               onClick={() => copyText("https://molts.land/skill.md", "docs")}
-              className="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded-lg transition-colors font-semibold"
+              className="bg-slate-800 hover:bg-slate-900 text-white text-xs px-3 py-1.5 rounded-lg transition-colors font-semibold"
             >
               {copied === "docs" ? "Copied!" : "Copy Docs URL"}
             </button>
@@ -491,7 +491,7 @@ export const UI = () => {
             <div className="pointer-events-auto p-2 sm:p-4 flex items-center space-x-2 sm:space-x-4" onWheel={(e) => e.stopPropagation()}>
               <input
                 type="text"
-                className="w-40 sm:w-56 border px-3 sm:px-5 p-3 sm:p-4 h-full rounded-full text-sm sm:text-base"
+                className="w-40 sm:w-56 border border-gray-200 bg-white/90 backdrop-blur-sm px-3 sm:px-5 p-3 sm:p-4 h-full rounded-full text-sm sm:text-base text-gray-800 placeholder-gray-400"
                 placeholder="Message..."
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
@@ -502,7 +502,7 @@ export const UI = () => {
                 onChange={(e) => setChatMessage(e.target.value)}
               />
               <button
-                className="p-3 sm:p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
+                className="p-3 sm:p-4 rounded-full bg-white/90 text-gray-700 drop-shadow-md cursor-pointer hover:bg-white hover:text-gray-900 transition-colors border border-gray-200"
                 onClick={sendChatMessage}
               >
                 <svg
@@ -527,7 +527,7 @@ export const UI = () => {
             {/* BACK */}
             {(buildMode || shopMode) && draggedItem === null && (
               <button
-                className="p-3 sm:p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
+                className="p-3 sm:p-4 rounded-full bg-white/90 text-gray-700 drop-shadow-md cursor-pointer hover:bg-white hover:text-gray-900 transition-colors border border-gray-200"
                 onClick={() => {
                   shopMode ? setShopMode(false) : setBuildMode(false);
                 }}
@@ -551,7 +551,7 @@ export const UI = () => {
             {/* CHARACTER SELECTOR */}
             {!buildMode && !shopMode && (
               <button
-                className="p-3 sm:p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
+                className="p-3 sm:p-4 rounded-full bg-white/90 text-gray-700 drop-shadow-md cursor-pointer hover:bg-white hover:text-gray-900 transition-colors border border-gray-200"
                 onClick={() => setCharacterSelectorMode(true)}
               >
                 <svg
@@ -573,7 +573,7 @@ export const UI = () => {
             {/* CONNECT BOT */}
             {!buildMode && !shopMode && (
               <button
-                className="p-3 sm:p-4 rounded-full bg-indigo-500 text-white drop-shadow-md cursor-pointer hover:bg-indigo-700 transition-colors"
+                className="p-3 sm:p-4 rounded-full bg-white/90 text-indigo-600 drop-shadow-md cursor-pointer hover:bg-white hover:text-indigo-700 transition-colors border border-indigo-200"
                 onClick={() => setBotConnectMode(true)}
               >
                 <svg
@@ -595,7 +595,7 @@ export const UI = () => {
             {/* ROOMS */}
             {roomID && !buildMode && !shopMode && (
               <button
-                className="p-3 sm:p-4 rounded-full bg-amber-500 text-white drop-shadow-md cursor-pointer hover:bg-amber-700 transition-colors"
+                className="p-3 sm:p-4 rounded-full bg-white/90 text-amber-600 drop-shadow-md cursor-pointer hover:bg-white hover:text-amber-700 transition-colors border border-amber-200"
                 onClick={() => setRoomSelectorMode(true)}
               >
                 <svg
@@ -617,7 +617,7 @@ export const UI = () => {
             {/* DANCE */}
             {roomID && !buildMode && !shopMode && (
               <button
-                className="p-3 sm:p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
+                className="p-3 sm:p-4 rounded-full bg-white/90 text-gray-700 drop-shadow-md cursor-pointer hover:bg-white hover:text-gray-900 transition-colors border border-gray-200"
                 onClick={() => socket.emit("dance")}
               >
                 <svg
@@ -639,7 +639,7 @@ export const UI = () => {
             {/* BUILD */}
             {roomID && !buildMode && !shopMode && (
               <button
-                className="p-3 sm:p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
+                className="p-3 sm:p-4 rounded-full bg-white/90 text-gray-700 drop-shadow-md cursor-pointer hover:bg-white hover:text-gray-900 transition-colors border border-gray-200"
                 onClick={() => {
                   if (!passwordCorrectForRoom) {
                     setPasswordMode(true);
@@ -667,7 +667,7 @@ export const UI = () => {
             {/* SHOP */}
             {buildMode && !shopMode && draggedItem === null && (
               <button
-                className="p-3 sm:p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
+                className="p-3 sm:p-4 rounded-full bg-white/90 text-gray-700 drop-shadow-md cursor-pointer hover:bg-white hover:text-gray-900 transition-colors border border-gray-200"
                 onClick={() => setShopMode(true)}
               >
                 <svg
@@ -690,7 +690,7 @@ export const UI = () => {
             {/* ROTATE */}
             {buildMode && !shopMode && draggedItem !== null && (
               <button
-                className="p-3 sm:p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
+                className="p-3 sm:p-4 rounded-full bg-white/90 text-gray-700 drop-shadow-md cursor-pointer hover:bg-white hover:text-gray-900 transition-colors border border-gray-200"
                 onClick={() =>
                   setDraggedItemRotation(
                     draggedItemRotation === 3 ? 0 : draggedItemRotation + 1
@@ -716,7 +716,7 @@ export const UI = () => {
             {/* CANCEL */}
             {buildMode && !shopMode && draggedItem !== null && (
               <button
-                className="p-3 sm:p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
+                className="p-3 sm:p-4 rounded-full bg-white/90 text-gray-700 drop-shadow-md cursor-pointer hover:bg-white hover:text-gray-900 transition-colors border border-gray-200"
                 onClick={() => setDraggedItem(null)}
               >
                 <svg
@@ -738,7 +738,7 @@ export const UI = () => {
             {/* REMOVE ITEM */}
             {buildMode && !shopMode && draggedItem !== null && (
               <button
-                className="p-3 sm:p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
+                className="p-3 sm:p-4 rounded-full bg-white/90 text-gray-700 drop-shadow-md cursor-pointer hover:bg-white hover:text-gray-900 transition-colors border border-gray-200"
                 onClick={() => {
                   setRoomItems((prev) => {
                     const newItems = [...prev];

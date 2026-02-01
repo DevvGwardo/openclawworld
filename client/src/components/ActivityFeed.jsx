@@ -8,13 +8,13 @@ const MAX_VISIBLE = 6;
 const EXPIRE_MS = 6000;
 
 const typeConfig = {
-  spawn: { icon: "→", color: "text-green-400", label: "joined" },
-  despawn: { icon: "←", color: "text-red-400", label: "left" },
-  room_enter: { icon: "🚪", color: "text-amber-400", label: "entered" },
-  item_placed: { icon: "📦", color: "text-blue-400", label: "placed" },
-  building: { icon: "🔨", color: "text-orange-400", label: "" },
-  done: { icon: "✅", color: "text-green-400", label: "" },
-  wave_at: { icon: "👋", color: "text-yellow-400", label: "waved" },
+  spawn: { icon: "→", color: "text-green-600", label: "joined" },
+  despawn: { icon: "←", color: "text-red-500", label: "left" },
+  room_enter: { icon: "🚪", color: "text-amber-600", label: "entered" },
+  item_placed: { icon: "📦", color: "text-blue-600", label: "placed" },
+  building: { icon: "🔨", color: "text-orange-600", label: "" },
+  done: { icon: "✅", color: "text-green-600", label: "" },
+  wave_at: { icon: "👋", color: "text-yellow-600", label: "waved" },
 };
 
 export const ActivityFeed = () => {
@@ -56,14 +56,14 @@ export const ActivityFeed = () => {
               transition={{ type: "spring", stiffness: 400, damping: 25 }}
               className="mb-1.5"
             >
-              <div className="bg-gray-900/80 backdrop-blur-sm rounded-lg px-3 py-2 flex items-center gap-2 border border-white/10">
+              <div className="bg-white/90 backdrop-blur-sm rounded-lg px-3 py-2 flex items-center gap-2 border border-gray-200 shadow-sm">
                 <span className="text-sm flex-shrink-0">{config.icon}</span>
-                <p className="text-xs text-white/90 truncate">
-                  <span className="font-semibold text-white">
+                <p className="text-xs text-gray-700 truncate">
+                  <span className="font-semibold text-gray-900">
                     {event.name}
                   </span>
                   {event.isBot && (
-                    <span className="text-blue-300 ml-1 text-[10px]">BOT</span>
+                    <span className="text-blue-500 ml-1 text-[10px]">BOT</span>
                   )}
                   <span className={`ml-1 ${config.color}`}>
                     {event.detail || config.label}

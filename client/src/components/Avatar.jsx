@@ -477,10 +477,10 @@ export const CharacterMenu = () => {
       {/* Backdrop — click to close */}
       <div className="absolute inset-0 bg-black/30" onClick={handleClose} />
 
-      <div className="relative pointer-events-auto bg-gray-900/90 backdrop-blur-md rounded-2xl border border-white/10 shadow-2xl min-w-[240px] max-w-[280px] overflow-hidden">
+      <div className="relative pointer-events-auto bg-white/95 backdrop-blur-md rounded-2xl border border-gray-200 shadow-2xl min-w-[240px] max-w-[280px] overflow-hidden">
         {/* Avatar thumbnail */}
-        <div className="bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center py-5">
-          <div className="w-20 h-20 rounded-full overflow-hidden bg-gray-700 border-2 border-white/20 shadow-lg">
+        <div className="bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center py-5">
+          <div className="w-20 h-20 rounded-full overflow-hidden bg-gray-200 border-2 border-gray-300 shadow-lg">
             {!imgError ? (
               <img
                 src={thumbnailUrl}
@@ -490,7 +490,7 @@ export const CharacterMenu = () => {
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-gray-500">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-gray-400">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
                 </svg>
               </div>
@@ -500,11 +500,11 @@ export const CharacterMenu = () => {
 
         {/* Name + badge */}
         <div className="text-center px-4 pt-3 pb-2">
-          <p className="text-white font-semibold text-base">{selectedCharacter.name || "Player"}</p>
+          <p className="text-gray-900 font-semibold text-base">{selectedCharacter.name || "Player"}</p>
           <span className={`inline-block mt-1 text-xs font-semibold px-2.5 py-0.5 rounded-full ${
             selectedCharacter.isBot
-              ? "bg-blue-500/20 text-blue-300"
-              : "bg-green-500/20 text-green-300"
+              ? "bg-blue-100 text-blue-600"
+              : "bg-green-100 text-green-600"
           }`}>
             {selectedCharacter.isBot ? "Bot" : "Player"}
           </span>
@@ -514,7 +514,7 @@ export const CharacterMenu = () => {
         <div className="flex flex-col gap-2 p-3 pt-2">
           <button
             onClick={handleWave}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white text-sm transition-colors text-left"
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm transition-colors text-left"
           >
             <span className="text-base">{"\u{1F44B}"}</span>
             <span>Wave at {selectedCharacter.name || "them"}</span>
@@ -523,8 +523,8 @@ export const CharacterMenu = () => {
             onClick={handleFollow}
             className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-left ${
               isFollowing
-                ? "bg-blue-500/20 hover:bg-blue-500/30 text-blue-300"
-                : "bg-white/5 hover:bg-white/10 text-white"
+                ? "bg-blue-100 hover:bg-blue-200 text-blue-600"
+                : "bg-gray-100 hover:bg-gray-200 text-gray-700"
             }`}
           >
             <span className="text-base">{isFollowing ? "\u{1F441}\uFE0F" : "\u{1F4F7}"}</span>
@@ -535,7 +535,7 @@ export const CharacterMenu = () => {
         {/* Close button */}
         <button
           onClick={handleClose}
-          className="absolute top-2 right-2 text-gray-400 hover:text-white transition-colors w-7 h-7 flex items-center justify-center rounded-full bg-black/30 hover:bg-black/50"
+          className="absolute top-2 right-2 text-gray-400 hover:text-gray-600 transition-colors w-7 h-7 flex items-center justify-center rounded-full bg-gray-200/50 hover:bg-gray-200"
         >
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
