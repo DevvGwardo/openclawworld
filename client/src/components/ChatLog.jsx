@@ -40,6 +40,7 @@ export const ChatLog = () => {
             style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
             className="h-full bg-gray-900/90 rounded-xl p-3 overflow-y-auto pointer-events-auto
               [&::-webkit-scrollbar]:hidden"
+            onWheel={(e) => e.stopPropagation()}
           >
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
               Chat

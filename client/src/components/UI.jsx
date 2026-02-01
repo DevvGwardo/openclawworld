@@ -139,7 +139,7 @@ export const UI = () => {
         )}
         <div className="fixed inset-4 flex items-center justify-end flex-col pointer-events-none select-none">
           {roomID && !shopMode && !buildMode && (
-            <div className="pointer-events-auto p-4 flex items-center space-x-4">
+            <div className="pointer-events-auto p-4 flex items-center space-x-4" onWheel={(e) => e.stopPropagation()}>
               <input
                 type="text"
                 className="w-56 border px-5 p-4 h-full rounded-full"

@@ -26,6 +26,7 @@ export const ProximityItem = ({
   const height = rotation === 1 || rotation === 3 ? size[0] : size[1];
   const worldX =
     width / map.gridDivision / 2 + gridPosition[0] / map.gridDivision;
+  const worldY = 0;
   const worldZ =
     height / map.gridDivision / 2 + gridPosition[1] / map.gridDivision;
 
@@ -61,12 +62,18 @@ export const ProximityItem = ({
 
     const p = progressRef.current;
     groupRef.current.scale.setScalar(p);
-    groupRef.current.position.y = (1 - p) * -0.5;
+    groupRef.current.position.y = (1 - p) * -0.5 + worldY;
   });
 
+  // Position the scaled group at the item's world coords so scaling
+  // happens around the item's center (not the world origin).
+  // The inner offset group negates the Item's own positioning so
+  // the net local position is (0,0,0) within the scaled group.
   return (
-    <group ref={groupRef} scale={0} position-y={-0.5}>
-      {children}
+    <group ref={groupRef} scale={0} position={[worldX, -0.5, worldZ]}>
+      <group position={[-worldX, 0, -worldZ]}>
+        {children}
+      </group>
     </group>
   );
 };
