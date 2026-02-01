@@ -5,7 +5,7 @@
 See: .planning/PROJECT.md (updated 2026-01-31)
 
 **Core value:** Bots autonomously inhabit the world and feel alive -- even one bot joining, moving, and speaking through the LLM proves the full loop works.
-**Current focus:** Phase 5 in progress (Bot Bridge) -- action validation and idle patrol complete
+**Current focus:** Phase 5 in progress (Bot Bridge) -- foundational modules, action validation, and idle patrol complete
 
 ## Current Position
 
@@ -14,12 +14,12 @@ Plan: 2 of 3 in current phase
 Status: In progress
 Last activity: 2026-01-31 -- Completed 05-02-PLAN.md
 
-Progress: [████████░░] 50%
+Progress: [█████████░] 56%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
+- Total plans completed: 9
 - Average duration: 3 min
 - Total execution time: 0.5 hours
 
@@ -31,7 +31,7 @@ Progress: [████████░░] 50%
 | 2 | 1 | 1 min | 1 min |
 | 3 | 2 | 9 min | 4.5 min |
 | 4 | 2 | 2 min | 1 min |
-| 5 | 2 | 2 min | 1 min |
+| 5 | 3 | 4 min | 1.3 min |
 
 **Recent Trend:**
 - Last 5 plans: 5 min, 1 min, 1 min, 1 min, 1 min
@@ -63,6 +63,8 @@ Recent decisions affecting current work:
 - [04-02]: Reconnect promise resolves immediately for reconnects (event-driven, not caller-blocking)
 - [04-02]: Heartbeat interval configurable via constructor (default 15s)
 - [04-02]: 20% jitter on backoff delay to prevent thundering herd
+- [05-01]: Custom token bucket over limiter library wrapper (~30 lines, avoids API quirks)
+- [05-01]: Chebyshev distance for perception radius (matches 8-directional tile grid)
 - [05-02]: Dance emote dispatches to botClient.dance() separately from other emotes
 - [05-02]: Look action is a no-op in v1 (logged at debug level only)
 - [05-02]: Array LLM responses take first element only
@@ -73,7 +75,7 @@ None yet.
 
 ### Blockers/Concerns
 
-- Phase 5 (Bot Bridge): Perception serialization token budget TBD during implementation
+- Phase 5 (Bot Bridge): Perception serialization confirmed ~150-2000 chars (well within budget)
 - Phase 7 (Bot Character): Emotional state modeling approach TBD (simple vector vs discrete states)
 
 ## Session Continuity
