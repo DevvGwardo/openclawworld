@@ -94,6 +94,19 @@ export const SocketManager = () => {
     function mergeCharacters(next) {
       const prev = charactersRef.current || [];
       const prevMap = new Map(prev.map((c) => [c.id, c]));
+      const nextIds = new Set(next.map((c) => c.id));
+
+      // Detect spawns/despawns for the activity feed
+      next.forEach((c) => {
+        if (!prevMap.has(c.id)) {
+          addActivity("spawn", c.name || "Player", c.isBot);
+        }
+      });
+      prev.forEach((c) => {
+        if (!nextIds.has(c.id)) {
+          addActivity("despawn", c.name || "Player", c.isBot);
+        }
+      });
 
       // Build merged array — reuse old object when position is unchanged
       let changed = prev.length !== next.length;
