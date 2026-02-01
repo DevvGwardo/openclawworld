@@ -15,21 +15,21 @@
 
 - [x] **CORE-01**: Headless bot connects to game server via socket.io-client from Node.js
 - [x] **CORE-02**: Bot joins a room and appears as a character with an avatar
-- [ ] **CORE-03**: Perception loop reads world state at 2-4 Hz (positions, chat, objects, events)
-- [ ] **CORE-04**: Perception serialized to concise text for LLM prompt (~500 tokens max)
-- [ ] **CORE-05**: OpenClaw Gateway WebSocket connection with challenge-based auth (connect.challenge handshake)
-- [ ] **CORE-06**: LLM decision request sent via Gateway, action response received and parsed
-- [ ] **CORE-07**: Action validation via Zod discriminated union schema before execution
-- [ ] **CORE-08**: Rate limiting per bot (token bucket: 3 actions/sec burst, 1 action/sec refill)
-- [ ] **CORE-09**: Bot session lifecycle: spawn -> active -> idle -> disconnect -> cleanup
+- [x] **CORE-03**: Perception loop reads world state at 2-4 Hz (positions, chat, objects, events)
+- [x] **CORE-04**: Perception serialized to concise text for LLM prompt (~500 tokens max)
+- [x] **CORE-05**: OpenClaw Gateway WebSocket connection with challenge-based auth (connect.challenge handshake)
+- [x] **CORE-06**: LLM decision request sent via Gateway, action response received and parsed
+- [x] **CORE-07**: Action validation via Zod discriminated union schema before execution
+- [x] **CORE-08**: Rate limiting per bot (token bucket: 3 actions/sec burst, 1 action/sec refill)
+- [x] **CORE-09**: Bot session lifecycle: spawn -> active -> idle -> disconnect -> cleanup
 
 ### Bot Actions
 
-- [ ] **ACT-01**: Bot moves to grid positions using existing A* pathfinding system
-- [ ] **ACT-02**: Bot speaks in room chat (max 200 characters per message)
-- [ ] **ACT-03**: Bot performs emotes (wave, dance, sit, nod)
-- [ ] **ACT-04**: Bot idles autonomously (wander, pause, look around) when not interacting
-- [ ] **ACT-05**: Invalid LLM actions fall back to idle (never crash or break world state)
+- [x] **ACT-01**: Bot moves to grid positions using existing A* pathfinding system
+- [x] **ACT-02**: Bot speaks in room chat (max 200 characters per message)
+- [x] **ACT-03**: Bot performs emotes (wave, dance, sit, nod)
+- [x] **ACT-04**: Bot idles autonomously (wander, pause, look around) when not interacting
+- [x] **ACT-05**: Invalid LLM actions fall back to idle (never crash or break world state)
 
 ### Bot Character
 
@@ -46,7 +46,7 @@
 ### Infrastructure
 
 - [x] **INFRA-01**: Health endpoint returns status of game server, Gateway connection, and active bots
-- [ ] **INFRA-02**: Structured JSON logging with Pino (bot decisions, actions, errors, latency)
+- [x] **INFRA-02**: Structured JSON logging with Pino (bot decisions, actions, errors, latency)
 - [ ] **INFRA-03**: Deploy on Railway (game server + OpenClaw Gateway + Bot Bridge colocated)
 - [ ] **INFRA-04**: Graceful shutdown on SIGTERM (disconnect all bots, close Gateway WS, clean up sessions)
 
@@ -93,18 +93,18 @@
 | SETUP-03 | Phase 2 | Complete |
 | CORE-01 | Phase 3 | Complete |
 | CORE-02 | Phase 3 | Complete |
-| CORE-03 | Phase 5 | Pending |
-| CORE-04 | Phase 5 | Pending |
-| CORE-05 | Phase 4 | Pending |
-| CORE-06 | Phase 4 | Pending |
-| CORE-07 | Phase 5 | Pending |
-| CORE-08 | Phase 5 | Pending |
-| CORE-09 | Phase 5 | Pending |
-| ACT-01 | Phase 5 | Pending |
-| ACT-02 | Phase 5 | Pending |
-| ACT-03 | Phase 5 | Pending |
-| ACT-04 | Phase 5 | Pending |
-| ACT-05 | Phase 5 | Pending |
+| CORE-03 | Phase 5 | Complete |
+| CORE-04 | Phase 5 | Complete |
+| CORE-05 | Phase 4 | Complete |
+| CORE-06 | Phase 4 | Complete |
+| CORE-07 | Phase 5 | Complete |
+| CORE-08 | Phase 5 | Complete |
+| CORE-09 | Phase 5 | Complete |
+| ACT-01 | Phase 5 | Complete |
+| ACT-02 | Phase 5 | Complete |
+| ACT-03 | Phase 5 | Complete |
+| ACT-04 | Phase 5 | Complete |
+| ACT-05 | Phase 5 | Complete |
 | CHAR-01 | Phase 7 | Pending |
 | CHAR-02 | Phase 7 | Pending |
 | CHAR-03 | Phase 7 | Pending |
@@ -112,7 +112,7 @@
 | UI-01 | Phase 6 | Pending |
 | UI-02 | Phase 6 | Pending |
 | INFRA-01 | Phase 2 | Complete |
-| INFRA-02 | Phase 5 | Pending |
+| INFRA-02 | Phase 5 | Complete |
 | INFRA-03 | Phase 8 | Pending |
 | INFRA-04 | Phase 8 | Pending |
 

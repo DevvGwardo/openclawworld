@@ -15,8 +15,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Base Setup** - Clone, run, and verify the existing R3F Sims multiplayer template
 - [x] **Phase 2: Server Modifications** - Make game server bot-aware with isBot flag, emotes, and health endpoint
 - [x] **Phase 3: Headless Bot Client** - Bot connects to game server as a first-class player via socket.io-client
-- [ ] **Phase 4: Gateway Integration** - Connect to OpenClaw Gateway via WebSocket with challenge auth
-- [ ] **Phase 5: Bot Bridge** - Wire perception-decision-action loop with validation and rate limiting
+- [x] **Phase 4: Gateway Integration** - Connect to OpenClaw Gateway via WebSocket with challenge auth
+- [x] **Phase 5: Bot Bridge** - Wire perception-decision-action loop with validation and rate limiting
 - [ ] **Phase 6: Client UI** - Chat bubbles and chat log visible in the 3D scene
 - [ ] **Phase 7: Bot Character** - Personality, emotion, proactive behavior, and multi-bot coexistence
 - [ ] **Phase 8: Railway Deployment** - Deploy everything to Railway with health checks and graceful shutdown
@@ -75,8 +75,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 04-01-PLAN.md -- DeviceIdentity module (Ed25519 keypair) and GatewayClient with challenge auth and agent RPC
-- [ ] 04-02-PLAN.md -- Reconnection with exponential backoff, heartbeat monitoring, and integration test script
+- [x] 04-01-PLAN.md -- DeviceIdentity module (Ed25519 keypair) and GatewayClient with challenge auth and agent RPC
+- [x] 04-02-PLAN.md -- Reconnection with exponential backoff, heartbeat monitoring, and integration test script
 
 ### Phase 5: Bot Bridge
 **Goal**: One bot autonomously perceives the world, decides via LLM, and acts in the game room
@@ -91,9 +91,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 05-01-PLAN.md -- Logger, perception module, and rate limiter (foundational modules)
-- [ ] 05-02-PLAN.md -- Action validation (Zod schema) and idle patrol controller
-- [ ] 05-03-PLAN.md -- BotBridge orchestrator, lifecycle manager, and entry point
+- [x] 05-01-PLAN.md -- Logger, perception module, and rate limiter (foundational modules)
+- [x] 05-02-PLAN.md -- Action validation (Zod schema) and idle patrol controller
+- [x] 05-03-PLAN.md -- BotBridge orchestrator, lifecycle manager, and entry point
 
 ### Phase 6: Client UI
 **Goal**: Human players can see what bots are saying through visible chat in the 3D scene
@@ -148,8 +148,8 @@ Phases execute in numeric order: 1 -> 2 -> 3 (parallel with 4) -> 4 -> 5 -> 6 ->
 | 1. Base Setup | 1/1 | Complete | 2026-01-31 |
 | 2. Server Modifications | 1/1 | Complete | 2026-01-31 |
 | 3. Headless Bot Client | 2/2 | Complete | 2026-01-31 |
-| 4. Gateway Integration | 0/2 | Not started | - |
-| 5. Bot Bridge | 0/3 | Not started | - |
+| 4. Gateway Integration | 2/2 | Complete | 2026-01-31 |
+| 5. Bot Bridge | 3/3 | Complete | 2026-01-31 |
 | 6. Client UI | 0/2 | Not started | - |
 | 7. Bot Character | 0/3 | Not started | - |
 | 8. Railway Deployment | 0/2 | Not started | - |
