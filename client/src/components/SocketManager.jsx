@@ -15,6 +15,7 @@ export const roomIDAtom = atom(null);
 export const roomsAtom = atom([]);
 export const chatMessagesAtom = atom([]);
 export const moltbookPostsAtom = atom([]);
+export const usernameAtom = atom(localStorage.getItem("clawland_username") || null);
 
 export const switchRoom = (roomId) => {
   socket.emit("switchRoom", roomId);
@@ -38,9 +39,13 @@ export const SocketManager = () => {
   const [_roomID, setRoomID] = useAtom(roomIDAtom);
   const [_moltbookPosts, setMoltbookPosts] = useAtom(moltbookPostsAtom);
   const [_activityEvents, setActivityEvents] = useAtom(activityEventsAtom);
+  const [username] = useAtom(usernameAtom);
 
   const charactersRef = useRef([]);
   useEffect(() => { charactersRef.current = _characters; }, [_characters]);
+
+  // Store pending welcome data so we can join once username is available
+  const pendingWelcomeRef = useRef(null);
 
   const addActivity = (type, name, isBot, detail) => {
     setActivityEvents((prev) => [
@@ -48,6 +53,18 @@ export const SocketManager = () => {
       { id: `${Date.now()}-${Math.random()}`, type, name, isBot, detail, timestamp: Date.now() },
     ]);
   };
+
+  // When username is set and we have a pending room to join, do the join
+  useEffect(() => {
+    if (username && pendingWelcomeRef.current) {
+      const roomId = pendingWelcomeRef.current;
+      pendingWelcomeRef.current = null;
+      const avatarUrl =
+        localStorage.getItem("avatarURL") || randomAvatarUrl();
+      socket.emit("joinRoom", roomId, { avatarUrl, name: username });
+      setRoomID(roomId);
+    }
+  }, [username]);
 
   useEffect(() => {
     if (!items) {
@@ -69,13 +86,21 @@ export const SocketManager = () => {
       setRooms(value.rooms);
       setItems(value.items);
       if (value.moltbookPosts) setMoltbookPosts(value.moltbookPosts);
-      // Auto-join the first (only) room
+      // Join once username is available (may be immediate if stored)
       if (value.rooms && value.rooms.length > 0) {
-        const avatarUrl =
-          localStorage.getItem("avatarURL") ||
-          randomAvatarUrl();
-        socket.emit("joinRoom", value.rooms[0].id, { avatarUrl });
-        setRoomID(value.rooms[0].id);
+        const storedName = localStorage.getItem("clawland_username");
+        if (storedName) {
+          const avatarUrl =
+            localStorage.getItem("avatarURL") || randomAvatarUrl();
+          socket.emit("joinRoom", value.rooms[0].id, {
+            avatarUrl,
+            name: storedName,
+          });
+          setRoomID(value.rooms[0].id);
+        } else {
+          // Defer join until username is set via WelcomeModal
+          pendingWelcomeRef.current = value.rooms[0].id;
+        }
       }
     }
 

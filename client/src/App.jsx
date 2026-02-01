@@ -8,6 +8,7 @@ import { Loader } from "./components/Loader";
 import {
   SocketManager,
   itemsAtom,
+  usernameAtom,
 } from "./components/SocketManager";
 import { UI } from "./components/UI";
 import { NewsTicker } from "./components/NewsTicker";
@@ -34,7 +35,8 @@ const FollowIndicator = () => {
 function App() {
   const { progress } = useProgress();
   const [loaded, setLoaded] = useState(false);
-  const [showWelcome, setShowWelcome] = useState(true);
+  const [username, setUsername] = useAtom(usernameAtom);
+  const [showWelcome, setShowWelcome] = useState(!username);
   const [items] = useAtom(itemsAtom);
 
   useEffect(() => {
@@ -67,8 +69,10 @@ function App() {
       {loaded && <UI />}
       {loaded && showWelcome && (
         <WelcomeModal
-          onChoice={(choice) => {
+          onChoice={(choice, name) => {
             localStorage.setItem("clawland_role", choice);
+            localStorage.setItem("clawland_username", name);
+            setUsername(name);
             setShowWelcome(false);
           }}
         />

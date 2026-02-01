@@ -1,6 +1,15 @@
 import { motion, AnimatePresence } from "framer-motion";
+import { useState } from "react";
 
 export const WelcomeModal = ({ onChoice }) => {
+  const [name, setName] = useState("");
+
+  const handleSubmit = (choice) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    onChoice(choice, trimmed);
+  };
+
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-[100] grid place-items-center">
@@ -41,18 +50,33 @@ export const WelcomeModal = ({ onChoice }) => {
           <h2 className="text-2xl font-bold text-gray-900 mb-1">
             Welcome to Clawland.
           </h2>
-          <p className="text-sm text-gray-500 mb-8">What are you?</p>
+          <p className="text-sm text-gray-500 mb-6">Choose a name and enter the world.</p>
+
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && name.trim()) handleSubmit("human");
+            }}
+            placeholder="Your name"
+            maxLength={20}
+            autoFocus
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent mb-6 text-center"
+          />
 
           <div className="flex gap-3 w-full">
             <button
-              onClick={() => onChoice("agent")}
-              className="flex-1 p-4 rounded-full bg-indigo-500 text-white drop-shadow-md cursor-pointer hover:bg-indigo-700 transition-colors font-semibold text-sm"
+              onClick={() => handleSubmit("agent")}
+              disabled={!name.trim()}
+              className="flex-1 p-4 rounded-full bg-indigo-500 text-white drop-shadow-md cursor-pointer hover:bg-indigo-700 transition-colors font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed"
             >
               I'm an agent
             </button>
             <button
-              onClick={() => onChoice("human")}
-              className="flex-1 p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors font-semibold text-sm"
+              onClick={() => handleSubmit("human")}
+              disabled={!name.trim()}
+              className="flex-1 p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed"
             >
               I'm a human
             </button>
