@@ -6,7 +6,7 @@ Command: npx gltfjsx@6.2.3 public/models/Animated Woman.glb -o src/components/An
 import { Html, useAnimations, useGLTF } from "@react-three/drei";
 import { useFrame, useGraph } from "@react-three/fiber";
 import { useAtom } from "jotai";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, memo, useCallback } from "react";
 import { SkeletonUtils } from "three-stdlib";
 import { useGrid } from "../hooks/useGrid";
 import { socket, userAtom } from "./SocketManager";
@@ -15,7 +15,12 @@ import { motion } from "framer-motion-3d";
 
 const MOVEMENT_SPEED = 4;
 
-export function Avatar({
+// Distance threshold (squared) for rendering avatars — avatars beyond this are culled
+const RENDER_DISTANCE_SQ = 30 * 30;
+// Closer distance for showing HTML overlays (chat bubbles, action indicators)
+const HTML_DISTANCE_SQ = 18 * 18;
+
+export const Avatar = memo(function Avatar({
   id,
   avatarUrl = "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
   name = "Player",
@@ -25,9 +30,11 @@ export function Avatar({
   const [chatMessage, setChatMessage] = useState("");
   const [actionStatus, setActionStatus] = useState(null); // { action, detail }
   const position = useMemo(() => props.position, []);
+  const [isNearby, setIsNearby] = useState(true);
+  const [showHtml, setShowHtml] = useState(true);
 
   const avatar = useRef();
-  const [path, setPath] = useState();
+  const pathRef = useRef([]);
   const { gridToVector3 } = useGrid();
 
   const group = useRef();
@@ -49,10 +56,24 @@ export function Avatar({
     [walkAnimation[0], idleAnimation[0], danceAnimation[0]],
     avatar
   );
-  const [animation, setAnimation] = useState("M_Standing_Idle_001");
-  const [isDancing, setIsDancing] = useState(false);
-  const [init, setInit] = useState(false);
+
+  // Use refs for animation state to avoid re-renders from useFrame
+  const animationRef = useRef("M_Standing_Idle_001");
+  const isDancingRef = useRef(false);
+  const initRef = useRef(false);
   const [showChatBubble, setShowChatBubble] = useState(false);
+
+  // Apply animation changes via ref — only triggers React state when animation actually changes
+  const applyAnimation = useCallback((newAnim) => {
+    if (animationRef.current === newAnim) return;
+    const oldAnim = animationRef.current;
+    animationRef.current = newAnim;
+    if (actions[oldAnim]) actions[oldAnim].fadeOut(0.32);
+    if (actions[newAnim]) {
+      actions[newAnim].reset().fadeIn(initRef.current ? 0.32 : 0).play();
+      initRef.current = true;
+    }
+  }, [actions]);
 
   useEffect(() => {
     clone.traverse((child) => {
@@ -63,28 +84,28 @@ export function Avatar({
     });
   }, [clone]);
 
+  // Initial animation play
   useEffect(() => {
-    actions[animation]
-      .reset()
-      .fadeIn(init ? 0.32 : 0)
-      .play();
-    setInit(true);
-    return () => actions[animation]?.fadeOut(0.32);
-  }, [animation, avatarUrl]);
+    const anim = animationRef.current;
+    if (actions[anim]) {
+      actions[anim].reset().fadeIn(0).play();
+      initRef.current = true;
+    }
+  }, [actions, avatarUrl]);
 
   useEffect(() => {
     function onPlayerDance(value) {
       if (value.id === id) {
-        setIsDancing(true);
+        isDancingRef.current = true;
       }
     }
     function onPlayerMove(value) {
       if (value.id === id) {
-        const path = [];
+        const newPath = [];
         value.path?.forEach((gridPosition) => {
-          path.push(gridToVector3(gridPosition));
+          newPath.push(gridToVector3(gridPosition));
         });
-        setPath(path);
+        pathRef.current = newPath;
       }
     }
 
@@ -124,10 +145,17 @@ export function Avatar({
 
   const [user] = useAtom(userAtom);
 
-  useFrame((_state, delta) => {
+  // Throttle visibility checks — only run every N frames
+  const frameCountRef = useRef(0);
+
+  useFrame(({ scene: threeScene }, delta) => {
+    if (!avatar.current || !group.current) return;
+
     const hips = avatar.current.getObjectByName("Hips");
-    hips.position.set(0, hips.position.y, 0);
-    if (path?.length && group.current.position.distanceTo(path[0]) > 0.1) {
+    if (hips) hips.position.set(0, hips.position.y, 0);
+
+    const path = pathRef.current;
+    if (path.length && group.current.position.distanceTo(path[0]) > 0.1) {
       const direction = group.current.position
         .clone()
         .sub(path[0])
@@ -135,15 +163,28 @@ export function Avatar({
         .multiplyScalar(MOVEMENT_SPEED * delta);
       group.current.position.sub(direction);
       group.current.lookAt(path[0]);
-      setAnimation("M_Walk_001");
-      setIsDancing(false);
-    } else if (path?.length) {
+      applyAnimation("M_Walk_001");
+      isDancingRef.current = false;
+    } else if (path.length) {
       path.shift();
     } else {
-      if (isDancing) {
-        setAnimation("M_Dances_001");
+      if (isDancingRef.current) {
+        applyAnimation("M_Dances_001");
       } else {
-        setAnimation("M_Standing_Idle_001");
+        applyAnimation("M_Standing_Idle_001");
+      }
+    }
+
+    // Distance-based culling — check every 15 frames to reduce overhead
+    frameCountRef.current++;
+    if (frameCountRef.current % 15 === 0) {
+      const character = threeScene.getObjectByName(`character-${user}`);
+      if (character && group.current) {
+        const dx = character.position.x - group.current.position.x;
+        const dz = character.position.z - group.current.position.z;
+        const distSq = dx * dx + dz * dz;
+        setIsNearby(distSq < RENDER_DISTANCE_SQ);
+        setShowHtml(distSq < HTML_DISTANCE_SQ);
       }
     }
   });
@@ -155,47 +196,50 @@ export function Avatar({
       position={position}
       dispose={null}
       name={`character-${id}`}
+      visible={isNearby || id === user}
     >
-      <Html position-y={2} center distanceFactor={8} style={{ overflow: 'visible' }}>
-        <div className="w-60 max-w-full pointer-events-none overflow-visible">
-          {/* Action status indicator */}
-          {actionStatus && !showChatBubble && (
+      {(showHtml || id === user) && (
+        <Html position-y={2} center distanceFactor={8} style={{ overflow: 'visible' }}>
+          <div className="w-60 max-w-full pointer-events-none overflow-visible">
+            {/* Action status indicator */}
+            {actionStatus && !showChatBubble && (
+              <div
+                className={`text-center mb-1 p-1.5 px-3 rounded-lg border transition-opacity duration-300 ${
+                  actionStatus.action === "thinking"
+                    ? "bg-yellow-100/60 border-yellow-300/40 backdrop-blur-sm"
+                    : actionStatus.action === "building"
+                    ? "bg-orange-100/60 border-orange-300/40 backdrop-blur-sm"
+                    : actionStatus.action === "done"
+                    ? "bg-green-100/60 border-green-300/40 backdrop-blur-sm"
+                    : "bg-blue-100/60 border-blue-300/40 backdrop-blur-sm"
+                }`}
+              >
+                <p className="text-xs text-gray-700 leading-snug whitespace-nowrap">
+                  {actionStatus.action === "thinking" && "🤔 "}
+                  {actionStatus.action === "building" && "🔨 "}
+                  {actionStatus.action === "done" && "✅ "}
+                  {actionStatus.action === "walking" && "🚶 "}
+                  {actionStatus.action === "chatting" && "💬 "}
+                  {actionStatus.action === "dancing" && "💃 "}
+                  {actionStatus.action === "emoting" && "😊 "}
+                  {actionStatus.detail}
+                </p>
+              </div>
+            )}
+            {/* Chat bubble */}
             <div
-              className={`text-center mb-1 p-1.5 px-3 rounded-lg border transition-opacity duration-300 ${
-                actionStatus.action === "thinking"
-                  ? "bg-yellow-100/60 border-yellow-300/40 backdrop-blur-sm"
-                  : actionStatus.action === "building"
-                  ? "bg-orange-100/60 border-orange-300/40 backdrop-blur-sm"
-                  : actionStatus.action === "done"
-                  ? "bg-green-100/60 border-green-300/40 backdrop-blur-sm"
-                  : "bg-blue-100/60 border-blue-300/40 backdrop-blur-sm"
+              className={`text-center break-words p-2 px-4 rounded-xl bg-white/40 backdrop-blur-sm border border-white/20 transition-opacity duration-500 ${
+                showChatBubble ? "opacity-100" : "opacity-0"
               }`}
             >
-              <p className="text-xs text-gray-700 leading-snug whitespace-nowrap">
-                {actionStatus.action === "thinking" && "🤔 "}
-                {actionStatus.action === "building" && "🔨 "}
-                {actionStatus.action === "done" && "✅ "}
-                {actionStatus.action === "walking" && "🚶 "}
-                {actionStatus.action === "chatting" && "💬 "}
-                {actionStatus.action === "dancing" && "💃 "}
-                {actionStatus.action === "emoting" && "😊 "}
-                {actionStatus.detail}
+              <p className="text-[10px] font-bold text-gray-600 mb-0.5 truncate">
+                {name} {isBot && <span className="text-blue-400 font-semibold">[BOT]</span>}
               </p>
+              <p className="text-sm text-black leading-snug">{chatMessage}</p>
             </div>
-          )}
-          {/* Chat bubble */}
-          <div
-            className={`text-center break-words p-2 px-4 rounded-xl bg-white/40 backdrop-blur-sm border border-white/20 transition-opacity duration-500 ${
-              showChatBubble ? "opacity-100" : "opacity-0"
-            }`}
-          >
-            <p className="text-[10px] font-bold text-gray-600 mb-0.5 truncate">
-              {name} {isBot && <span className="text-blue-400 font-semibold">[BOT]</span>}
-            </p>
-            <p className="text-sm text-black leading-snug">{chatMessage}</p>
           </div>
-        </div>
-      </Html>
+        </Html>
+      )}
       <motion.group
         initial={{
           y: 3,
@@ -218,7 +262,7 @@ export function Avatar({
       </motion.group>
     </group>
   );
-}
+});
 
 // Preload is handled dynamically per-avatar, no static preload needed
 useGLTF.preload("/animations/M_Walk_001.glb");

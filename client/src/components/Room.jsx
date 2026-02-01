@@ -6,7 +6,7 @@ import {
 
 import { useThree } from "@react-three/fiber";
 import { atom, useAtom } from "jotai";
-import { Suspense, useEffect, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import { useGrid } from "../hooks/useGrid";
 import { Avatar } from "./Avatar";
 import { Item } from "./Item";
@@ -22,10 +22,33 @@ import {
 
 export const roomItemsAtom = atom([]);
 
+const CharacterList = React.memo(() => {
+  const [characters] = useAtom(charactersAtom);
+  const { gridToVector3 } = useGrid();
+
+  return (
+    <>
+      {characters.map((character) => (
+        <Suspense key={character.id}>
+          <Avatar
+            id={character.id}
+            position={gridToVector3(character.position)}
+            hairColor={character.hairColor}
+            topColor={character.topColor}
+            bottomColor={character.bottomColor}
+            avatarUrl={character.avatarUrl}
+            name={character.name}
+            isBot={character.isBot}
+          />
+        </Suspense>
+      ))}
+    </>
+  );
+});
+
 export const Room = () => {
   const [buildMode] = useAtom(buildModeAtom);
   const [shopMode, setShopMode] = useAtom(shopModeAtom);
-  const [characters] = useAtom(charactersAtom);
   const [map] = useAtom(mapAtom);
   const [items, setItems] = useAtom(roomItemsAtom);
   const [onFloor, setOnFloor] = useState(false);
@@ -144,7 +167,6 @@ export const Room = () => {
 
     setCanDrop(droppable);
   }, [dragPosition, draggedItem, items, draggedItemRotation]);
-  const state = useThree((state) => state);
 
   useEffect(() => {
     if (buildMode) {
@@ -236,23 +258,7 @@ export const Room = () => {
       {(buildMode || shopMode) && (
         <Grid infiniteGrid fadeDistance={50} fadeStrength={5} />
       )}
-      {!buildMode &&
-        characters.map((character) => (
-          <Suspense key={character.session + "-" + character.id}>
-            <group>
-              <Avatar
-                id={character.id}
-                position={gridToVector3(character.position)}
-                hairColor={character.hairColor}
-                topColor={character.topColor}
-                bottomColor={character.bottomColor}
-                avatarUrl={character.avatarUrl}
-                name={character.name}
-                isBot={character.isBot}
-              />
-            </group>
-          </Suspense>
-        ))}
+      {!buildMode && <CharacterList />}
     </>
   );
 };

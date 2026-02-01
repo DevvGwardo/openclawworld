@@ -21,6 +21,13 @@ export const Experience = ({ loaded }) => {
   const [roomID] = useAtom(roomIDAtom);
   const [map] = useAtom(mapAtom);
   const [user] = useAtom(userAtom);
+  const characterRef = useRef(null);
+  const frameCount = useRef(0);
+
+  // Clear cached character ref when user changes
+  useEffect(() => {
+    characterRef.current = null;
+  }, [user]);
 
   // Handle scroll wheel for zoom
   const { gl } = useThree();
@@ -70,7 +77,14 @@ export const Experience = ({ loaded }) => {
       return;
     }
 
-    const character = scene.getObjectByName(`character-${user}`);
+    frameCount.current++;
+
+    // Only search the scene graph if we don't have a cached ref, or every 60 frames
+    if (!characterRef.current || frameCount.current % 60 === 0) {
+      characterRef.current = scene.getObjectByName(`character-${user}`);
+    }
+
+    const character = characterRef.current;
     if (!character) {
       return;
     }

@@ -13,7 +13,6 @@ const ALLOWED_EMOTES = ["dance", "wave", "sit", "nod"];
 const AVATAR_URLS = [
   "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
   "https://models.readyplayer.me/65893b0514f9f5f28e61d783.glb",
-  "https://models.readyplayer.me/62ea7bc28a6d28ec134bbcce.glb",
   "https://models.readyplayer.me/663833cf6c79010563b91e1b.glb",
   "https://models.readyplayer.me/64bfa15f0e72c63d7c3934a6.glb",
   "https://models.readyplayer.me/663833cf6c79010563b91e1b.glb",
