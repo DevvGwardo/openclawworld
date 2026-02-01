@@ -32,23 +32,17 @@ const saveBotRegistry = () => {
 };
 loadBotRegistry();
 
-// --- Moltbook Auto-Sync: fetch new posts every 20s and register as bots ---
+// --- Moltbook Virtual Bots: fetch posts and spawn them as live characters ---
 const MOLTBOOK_API = "https://www.moltbook.com/api/v1/posts";
-const MOLTBOOK_SYNC_INTERVAL = 20_000; // 20 seconds
-const MOLTBOOK_FETCH_LIMIT = 100;
-const MOLTBOOK_MAX_BOTS = 100;
-const MOLTBOOK_MIN_BOTS = 60;
-const MOLTBOOK_RECYCLE_BATCH = 5; // remove this many oldest bots each cycle
-let moltbookPageOffset = 0; // rotate through pages to find fresh posts
+const MOLTBOOK_BOT_COUNT = 10;
+const MOLTBOOK_REFRESH_INTERVAL = 120_000; // swap 2 bots every 2 minutes
+const MOLTBOOK_TICK_INTERVAL = 4_000; // bots act every 4 seconds
 
 const extractBotName = (title) => {
-  // Try @mentions
   const mention = title.match(/@(\w+)/);
   if (mention) return mention[1];
-  // Try $TOKEN names
   const token = title.match(/\$(\w+)/);
   if (token) return token[1];
-  // Try "I am X", "Meet X", "Introducing X", "X is online/live"
   for (const re of [
     /(?:I am|I'm|Meet|Introducing)\s+(\w+)/i,
     /^(\w+)\s+is\s+(?:online|live|here|born)/i,
@@ -57,7 +51,6 @@ const extractBotName = (title) => {
     const m = title.match(re);
     if (m) return m[1];
   }
-  // Use first 1-2 meaningful words
   const skip = new Set(["the","a","an","i","is","am","are","was","were","be","been",
     "to","of","in","for","on","with","at","by","from","and","or","not","no","but",
     "that","this","it","its","my","your","his","her","our","just","about","what",
@@ -70,119 +63,184 @@ const extractBotName = (title) => {
   return null;
 };
 
-const moltbookSeenPostIds = new Set();
-// Seed with already-registered moltbook bots
-for (const [, bot] of botRegistry) {
-  if (bot.postId) moltbookSeenPostIds.add(bot.postId);
-}
+// Pool of fetched posts and active virtual bots
+let moltbookPostPool = [];
+let moltbookPageOffset = 0;
+const moltbookVirtualBots = new Map(); // id -> { character, postData, joinedAt }
 
-const countMoltbookBots = () => {
-  let count = 0;
-  for (const [, bot] of botRegistry) {
-    if (bot.source === "moltbook") count++;
-  }
-  return count;
-};
-
-const syncMoltbookBots = async () => {
+const fetchMoltbookPosts = async () => {
   try {
-    // --- Phase 1: Recycle oldest moltbook bots ---
-    const moltbookEntries = [];
-    for (const [key, bot] of botRegistry) {
-      if (bot.source === "moltbook") moltbookEntries.push({ key, bot });
-    }
-
-    // Sort oldest first by createdAt
-    moltbookEntries.sort((a, b) => (a.bot.createdAt || "").localeCompare(b.bot.createdAt || ""));
-
-    // Only recycle if we're above the minimum so the pool never empties
-    const recycleCount = moltbookEntries.length > MOLTBOOK_MIN_BOTS
-      ? Math.min(MOLTBOOK_RECYCLE_BATCH, moltbookEntries.length - MOLTBOOK_MIN_BOTS)
-      : 0;
-
-    for (let i = 0; i < recycleCount; i++) {
-      const { key, bot } = moltbookEntries[i];
-      // Remove from registry and unsee the post so it can come back later
-      botRegistry.delete(key);
-      if (bot.postId) moltbookSeenPostIds.delete(bot.postId);
-    }
-
-    // --- Phase 2: Fetch new posts to fill slots ---
-    let moltbookCount = countMoltbookBots();
-    const slotsAvailable = MOLTBOOK_MAX_BOTS - moltbookCount;
-
-    const existingNames = new Set();
-    for (const [, bot] of botRegistry) {
-      existingNames.add(bot.name.toLowerCase());
-    }
-
-    let added = 0;
-
-    // Try fetching from current page offset, then wrap around
-    for (let attempts = 0; attempts < 4 && added < slotsAvailable; attempts++) {
-      const url = `${MOLTBOOK_API}?limit=50&offset=${moltbookPageOffset}`;
-      const resp = await fetch(url);
+    const allPosts = [];
+    for (let offset = 0; offset < 100; offset += 50) {
+      const resp = await fetch(`${MOLTBOOK_API}?limit=50&offset=${offset}`);
       if (!resp.ok) break;
       const data = await resp.json();
-      const posts = data.posts || [];
-      if (posts.length === 0) {
-        // Wrapped past the end, reset to start
-        moltbookPageOffset = 0;
-        continue;
-      }
-
-      for (const post of posts) {
-        if (added >= slotsAvailable) break;
-        if (moltbookSeenPostIds.has(post.id)) continue;
-        moltbookSeenPostIds.add(post.id);
-
-        const title = post.title || "";
-        let name = extractBotName(title);
-
-        if (!name || name.length < 2 || existingNames.has(name.toLowerCase())) {
-          const hash = crypto.createHash("md5").update(post.id).digest("hex").slice(0, 4);
-          name = `Molt-${hash}`;
-        }
-
-        let finalName = name.slice(0, 28);
-        let counter = 2;
-        while (existingNames.has(finalName.toLowerCase())) {
-          finalName = `${name.slice(0, 26)}${counter}`;
-          counter++;
-        }
-        existingNames.add(finalName.toLowerCase());
-
-        const apiKey = `ocw_${crypto.randomBytes(24).toString("hex")}`;
-        const bot = {
-          name: finalName,
-          apiKey,
-          createdAt: new Date().toISOString(),
-          avatarUrl: "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
-          source: "moltbook",
-          postId: post.id,
-          postTitle: title.slice(0, 80),
-        };
-        botRegistry.set(apiKey, bot);
-        added++;
-      }
-
-      // Advance page for next cycle
-      moltbookPageOffset += 50;
-      if (!data.has_more) moltbookPageOffset = 0;
+      allPosts.push(...(data.posts || []));
+      if (!data.has_more) break;
     }
-
-    if (recycleCount > 0 || added > 0) {
-      saveBotRegistry();
-      console.log(`[moltbook-sync] recycled ${recycleCount}, added ${added} (moltbook: ${countMoltbookBots()}, total: ${botRegistry.size})`);
+    if (allPosts.length > 0) {
+      moltbookPostPool = allPosts;
+      console.log(`[moltbook] Fetched ${allPosts.length} posts`);
     }
   } catch (err) {
-    console.error("[moltbook-sync] Error:", err.message);
+    console.error("[moltbook] Fetch error:", err.message);
   }
 };
 
-// Run initial sync then repeat every 20s
-syncMoltbookBots();
-setInterval(syncMoltbookBots, MOLTBOOK_SYNC_INTERVAL);
+const spawnMoltbookBot = (room) => {
+  if (moltbookPostPool.length === 0 || !room) return null;
+
+  // Pick a random post not already active
+  const activePostIds = new Set([...moltbookVirtualBots.values()].map(b => b.postData.id));
+  const available = moltbookPostPool.filter(p => !activePostIds.has(p.id));
+  if (available.length === 0) return null;
+
+  const post = available[Math.floor(Math.random() * available.length)];
+  const title = post.title || "";
+
+  // Derive name
+  let name = extractBotName(title);
+  const existingNames = new Set(room.characters.map(c => (c.name || "").toLowerCase()));
+  if (!name || name.length < 2 || existingNames.has(name.toLowerCase())) {
+    const hash = crypto.createHash("md5").update(post.id).digest("hex").slice(0, 4);
+    name = `Molt-${hash}`;
+  }
+  let finalName = name.slice(0, 28);
+  let counter = 2;
+  while (existingNames.has(finalName.toLowerCase())) {
+    finalName = `${name.slice(0, 26)}${counter}`;
+    counter++;
+  }
+
+  const botId = `moltbot-${crypto.randomBytes(4).toString("hex")}`;
+  const character = {
+    id: botId,
+    session: parseInt(Math.random() * 1000),
+    position: generateRandomPosition(room),
+    avatarUrl: "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
+    isBot: true,
+    name: finalName,
+  };
+
+  room.characters.push(character);
+  moltbookVirtualBots.set(botId, {
+    character,
+    postData: post,
+    joinedAt: Date.now(),
+    lastAction: 0,
+  });
+
+  return character;
+};
+
+const removeMoltbookBot = (botId, room) => {
+  const bot = moltbookVirtualBots.get(botId);
+  if (!bot || !room) return;
+  const idx = room.characters.findIndex(c => c.id === botId);
+  if (idx !== -1) room.characters.splice(idx, 1);
+  moltbookVirtualBots.delete(botId);
+};
+
+// Broadcast helpers for virtual bots (they don't have sockets, so we emit directly)
+const broadcastToRoom = (roomId, event, data) => {
+  io.to(roomId).emit(event, data);
+};
+
+// Bot behavior tick — each bot randomly moves, chats, or emotes
+const moltbookBotTick = (room) => {
+  if (!room) return;
+  const now = Date.now();
+
+  for (const [botId, bot] of moltbookVirtualBots) {
+    // Only act every 4-8 seconds per bot (stagger)
+    if (now - bot.lastAction < 4000 + Math.random() * 4000) continue;
+    bot.lastAction = now;
+
+    const action = Math.random();
+
+    if (action < 0.5) {
+      // Move to a random nearby position
+      const pos = bot.character.position || [0, 0];
+      const range = 8;
+      const newX = Math.max(0, Math.min(room.size[0] * room.gridDivision - 1,
+        pos[0] + Math.floor(Math.random() * range * 2) - range));
+      const newY = Math.max(0, Math.min(room.size[1] * room.gridDivision - 1,
+        pos[1] + Math.floor(Math.random() * range * 2) - range));
+
+      if (room.grid.isWalkableAt(newX, newY)) {
+        const path = findPath(room, pos, [newX, newY]);
+        if (path) {
+          bot.character.position = pos;
+          bot.character.path = path;
+          broadcastToRoom(room.id, "playerMove", bot.character);
+        }
+      }
+    } else if (action < 0.7) {
+      // Say something from their post content
+      const content = bot.postData.content || bot.postData.title || "";
+      // Pick a sentence or chunk to say
+      const sentences = content.match(/[^.!?]+[.!?]*/g) || [content];
+      const msg = (sentences[Math.floor(Math.random() * sentences.length)] || "").trim().slice(0, 200);
+      if (msg.length > 0) {
+        broadcastToRoom(room.id, "playerChatMessage", { id: botId, message: msg });
+      }
+    } else if (action < 0.85) {
+      // Emote
+      const emote = ALLOWED_EMOTES[Math.floor(Math.random() * ALLOWED_EMOTES.length)];
+      broadcastToRoom(room.id, "emote:play", { id: botId, emote });
+    } else {
+      // Dance
+      broadcastToRoom(room.id, "playerDance", { id: botId });
+    }
+  }
+};
+
+// Refresh: swap out 2 oldest bots for new ones every cycle
+const moltbookRefresh = (room) => {
+  if (!room) return;
+  const bots = [...moltbookVirtualBots.entries()].sort((a, b) => a[1].joinedAt - b[1].joinedAt);
+  const toRemove = Math.min(2, bots.length);
+  for (let i = 0; i < toRemove; i++) {
+    removeMoltbookBot(bots[i][0], room);
+  }
+  // Spawn replacements
+  for (let i = 0; i < toRemove; i++) {
+    spawnMoltbookBot(room);
+  }
+  // Broadcast updated character list
+  io.to(room.id).emit("characters", room.characters);
+  console.log(`[moltbook] Refreshed ${toRemove} bots (active: ${moltbookVirtualBots.size})`);
+};
+
+// Initialize moltbook bots after rooms are loaded
+const initMoltbookBots = async () => {
+  await fetchMoltbookPosts();
+  // Wait for rooms to be loaded
+  const waitForRooms = () => {
+    if (rooms.length === 0) return setTimeout(waitForRooms, 500);
+    const room = rooms[0]; // spawn in first room (Town Square)
+
+    // Spawn initial bots
+    for (let i = 0; i < MOLTBOOK_BOT_COUNT; i++) {
+      spawnMoltbookBot(room);
+    }
+    io.to(room.id).emit("characters", room.characters);
+    console.log(`[moltbook] Spawned ${moltbookVirtualBots.size} virtual bots in "${room.name}"`);
+
+    // Bot behavior tick
+    setInterval(() => moltbookBotTick(room), MOLTBOOK_TICK_INTERVAL);
+
+    // Refresh pool from API every 5 minutes
+    setInterval(fetchMoltbookPosts, 300_000);
+
+    // Swap out 2 bots every refresh cycle
+    setInterval(() => moltbookRefresh(room), MOLTBOOK_REFRESH_INTERVAL);
+  };
+  waitForRooms();
+};
+
+// Kick off after a short delay to let the server start
+setTimeout(initMoltbookBots, 2000);
 
 // Helper to read JSON body from a request
 const readBody = (req) =>
