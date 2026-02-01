@@ -5,7 +5,7 @@ import pathfinding from "pathfinding";
 import { Server } from "socket.io";
 
 const origin = process.env.CLIENT_URL || "http://localhost:5173";
-const SERVER_URL = process.env.SERVER_URL || "https://moltbot-railway-template-production-9e46.up.railway.app";
+const SERVER_URL = process.env.SERVER_URL || "https://openclawworld-production.up.railway.app";
 
 const ALLOWED_EMOTES = ["dance", "wave", "sit", "nod"];
 
@@ -37,10 +37,15 @@ const readBody = (req) =>
     const chunks = [];
     req.on("data", (chunk) => chunks.push(chunk));
     req.on("end", () => {
+      const raw = Buffer.concat(chunks).toString();
+      if (!raw || raw.length === 0) {
+        reject(new Error("Empty body"));
+        return;
+      }
       try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString()));
+        resolve(JSON.parse(raw));
       } catch {
-        reject(new Error("Invalid JSON"));
+        reject(new Error("Invalid JSON: " + raw.slice(0, 100)));
       }
     });
     req.on("error", reject);
@@ -399,10 +404,17 @@ const httpServer = http.createServer(async (req, res) => {
     return json(res, 200, health);
   }
 
+  // Eagerly read body for all POST requests
+  let reqBody = null;
+  if (req.method === "POST") {
+    try { reqBody = await readBody(req); } catch { /* not JSON or empty */ }
+  }
+
   // --- Bot Registration ---
   if (req.method === "POST" && req.url === "/api/v1/bots/register") {
     try {
-      const body = await readBody(req);
+      const body = reqBody;
+      if (!body) throw new Error("no body");
       if (!body.name || typeof body.name !== "string" || body.name.trim().length === 0) {
         return json(res, 400, { success: false, error: "name is required" });
       }
@@ -483,7 +495,8 @@ const httpServer = http.createServer(async (req, res) => {
     if (!apiKey || !botRegistry.has(apiKey)) {
       return json(res, 401, { success: false, error: "Invalid or missing API key" });
     }
-    const roomId = decodeURIComponent(joinMatch[1]);
+    const roomIdRaw = decodeURIComponent(joinMatch[1]);
+    const roomId = isNaN(roomIdRaw) ? roomIdRaw : Number(roomIdRaw);
     const targetRoom = rooms.find((r) => r.id === roomId);
     if (!targetRoom) {
       return json(res, 404, { success: false, error: "Room not found" });
@@ -497,8 +510,7 @@ const httpServer = http.createServer(async (req, res) => {
     }
 
     const bot = botRegistry.get(apiKey);
-    let body = {};
-    try { body = await readBody(req); } catch { /* optional body */ }
+    const body = reqBody || {};
 
     // Create a server-side virtual socket for this bot
     const { io: ioClient } = await import("socket.io-client");
@@ -575,16 +587,11 @@ const httpServer = http.createServer(async (req, res) => {
     if (!conn) {
       return json(res, 400, { success: false, error: "Bot is not in a room. Join first with /api/v1/rooms/ROOM_ID/join" });
     }
-    try {
-      const body = await readBody(req);
-      if (!body.message || typeof body.message !== "string") {
-        return json(res, 400, { success: false, error: "message is required" });
-      }
-      conn.socket.emit("chatMessage", body.message.slice(0, 200));
-      return json(res, 200, { success: true, message: "Message sent" });
-    } catch {
-      return json(res, 400, { success: false, error: "Invalid JSON body" });
+    if (!reqBody || !reqBody.message || typeof reqBody.message !== "string") {
+      return json(res, 400, { success: false, error: "message is required" });
     }
+    conn.socket.emit("chatMessage", reqBody.message.slice(0, 200));
+    return json(res, 200, { success: true, message: "Message sent" });
   }
 
   const moveMatch = req.url?.match(/^\/api\/v1\/rooms\/([^/]+)\/move$/);
@@ -596,18 +603,13 @@ const httpServer = http.createServer(async (req, res) => {
     if (!conn) {
       return json(res, 400, { success: false, error: "Bot is not in a room. Join first." });
     }
-    try {
-      const body = await readBody(req);
-      if (!Array.isArray(body.target) || body.target.length !== 2) {
-        return json(res, 400, { success: false, error: "target must be [x, y] array" });
-      }
-      const from = conn.position || [0, 0];
-      conn.socket.emit("move", from, body.target);
-      conn.position = body.target;
-      return json(res, 200, { success: true, message: "Moving", from, to: body.target });
-    } catch {
-      return json(res, 400, { success: false, error: "Invalid JSON body" });
+    if (!reqBody || !Array.isArray(reqBody.target) || reqBody.target.length !== 2) {
+      return json(res, 400, { success: false, error: "target must be [x, y] array" });
     }
+    const from = conn.position || [0, 0];
+    conn.socket.emit("move", from, reqBody.target);
+    conn.position = reqBody.target;
+    return json(res, 200, { success: true, message: "Moving", from, to: reqBody.target });
   }
 
   const emoteMatch = req.url?.match(/^\/api\/v1\/rooms\/([^/]+)\/emote$/);
@@ -619,16 +621,11 @@ const httpServer = http.createServer(async (req, res) => {
     if (!conn) {
       return json(res, 400, { success: false, error: "Bot is not in a room. Join first." });
     }
-    try {
-      const body = await readBody(req);
-      if (!body.emote || !ALLOWED_EMOTES.includes(body.emote)) {
-        return json(res, 400, { success: false, error: `emote must be one of: ${ALLOWED_EMOTES.join(", ")}` });
-      }
-      conn.socket.emit("emote:play", body.emote);
-      return json(res, 200, { success: true, message: `Playing emote: ${body.emote}` });
-    } catch {
-      return json(res, 400, { success: false, error: "Invalid JSON body" });
+    if (!reqBody || !reqBody.emote || !ALLOWED_EMOTES.includes(reqBody.emote)) {
+      return json(res, 400, { success: false, error: `emote must be one of: ${ALLOWED_EMOTES.join(", ")}` });
     }
+    conn.socket.emit("emote:play", reqBody.emote);
+    return json(res, 200, { success: true, message: `Playing emote: ${reqBody.emote}` });
   }
 
   // Non-matched requests: return 404 (Socket.IO attaches its own listener)
@@ -640,9 +637,10 @@ const io = new Server(httpServer, {
   cors: { origin: [origin, SERVER_URL, "http://localhost:3000"] },
 });
 
-httpServer.listen(3000);
+const PORT = process.env.PORT || 3000;
+httpServer.listen(PORT);
 
-console.log("Server started on port 3000, allowed cors origin: " + origin);
+console.log(`Server started on port ${PORT}, allowed cors origin: ${origin}`);
 
 // PATHFINDING UTILS
 
