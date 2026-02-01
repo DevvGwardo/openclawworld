@@ -5,7 +5,7 @@ Command: npx gltfjsx@6.2.3 public/models/Animated Woman.glb -o src/components/An
 
 import { Html, useAnimations, useGLTF } from "@react-three/drei";
 import { useFrame, useGraph } from "@react-three/fiber";
-import { useAtom } from "jotai";
+import { atom, useAtom } from "jotai";
 import React, { useEffect, useMemo, useRef, useState, memo, useCallback } from "react";
 import { SkeletonUtils } from "three-stdlib";
 import { useGrid } from "../hooks/useGrid";
@@ -13,6 +13,9 @@ import { socket, userAtom } from "./SocketManager";
 
 import * as THREE from "three";
 import { motion } from "framer-motion-3d";
+
+// Atom to track which character's profile popup is open
+export const selectedCharacterAtom = atom(null);
 
 const MOVEMENT_SPEED = 4;
 // How fast the character rotates to face movement direction (radians/sec)
@@ -40,6 +43,7 @@ export const Avatar = memo(function Avatar({
 }) {
   const [chatMessage, setChatMessage] = useState("");
   const [actionStatus, setActionStatus] = useState(null); // { action, detail }
+  const [, setSelectedCharacter] = useAtom(selectedCharacterAtom);
   const position = useMemo(() => props.position, []);
   // Use refs for culling state to avoid re-renders from useFrame distance checks
   const isNearbyRef = useRef(true);
@@ -257,6 +261,11 @@ export const Avatar = memo(function Avatar({
     }
   });
 
+  const handleCharacterClick = useCallback((e) => {
+    e.stopPropagation();
+    setSelectedCharacter({ id, name, avatarUrl, isBot });
+  }, [id, name, avatarUrl, isBot, setSelectedCharacter]);
+
   return (
     <group
       ref={group}
@@ -265,48 +274,75 @@ export const Avatar = memo(function Avatar({
       dispose={null}
       name={`character-${id}`}
       visible={isNearbyRef.current || id === user}
+      onClick={handleCharacterClick}
+      onPointerOver={() => { document.body.style.cursor = "pointer"; }}
+      onPointerOut={() => { document.body.style.cursor = "auto"; }}
     >
       {(showHtmlRef.current || id === user) && (
-        <Html position-y={2} center distanceFactor={8} style={{ overflow: 'visible' }}>
-          <div className="w-60 max-w-full pointer-events-none overflow-visible">
-            {/* Action status indicator — hidden for bots to reduce visual noise */}
-            {actionStatus && !showChatBubble && !isBot && (
+        <>
+          {/* Always-visible name label */}
+          <Html position-y={2.3} center distanceFactor={8} style={{ overflow: 'visible' }}>
+            <div
+              className="pointer-events-auto cursor-pointer select-none"
+              onClick={handleCharacterClick}
+            >
+              <div className="flex items-center justify-center gap-1 whitespace-nowrap">
+                <span
+                  className="text-[11px] font-bold px-2 py-0.5 rounded-full"
+                  style={{
+                    color: isBot ? "#93c5fd" : "#ffffff",
+                    background: "rgba(0,0,0,0.45)",
+                    backdropFilter: "blur(4px)",
+                    textShadow: "0 1px 2px rgba(0,0,0,0.5)",
+                  }}
+                >
+                  {name}{isBot ? " [BOT]" : ""}
+                </span>
+              </div>
+            </div>
+          </Html>
+          {/* Chat bubble + action status */}
+          <Html position-y={2} center distanceFactor={8} style={{ overflow: 'visible' }}>
+            <div className="w-60 max-w-full pointer-events-none overflow-visible">
+              {/* Action status indicator — hidden for bots to reduce visual noise */}
+              {actionStatus && !showChatBubble && !isBot && (
+                <div
+                  className={`text-center mb-1 p-1.5 px-3 rounded-lg border transition-opacity duration-300 ${
+                    actionStatus.action === "thinking"
+                      ? "bg-yellow-100/60 border-yellow-300/40 backdrop-blur-sm"
+                      : actionStatus.action === "building"
+                      ? "bg-orange-100/60 border-orange-300/40 backdrop-blur-sm"
+                      : actionStatus.action === "done"
+                      ? "bg-green-100/60 border-green-300/40 backdrop-blur-sm"
+                      : "bg-blue-100/60 border-blue-300/40 backdrop-blur-sm"
+                  }`}
+                >
+                  <p className="text-xs text-gray-700 leading-snug whitespace-nowrap">
+                    {actionStatus.action === "thinking" && "🤔 "}
+                    {actionStatus.action === "building" && "🔨 "}
+                    {actionStatus.action === "done" && "✅ "}
+                    {actionStatus.action === "walking" && "🚶 "}
+                    {actionStatus.action === "chatting" && "💬 "}
+                    {actionStatus.action === "dancing" && "💃 "}
+                    {actionStatus.action === "emoting" && "😊 "}
+                    {actionStatus.detail}
+                  </p>
+                </div>
+              )}
+              {/* Chat bubble */}
               <div
-                className={`text-center mb-1 p-1.5 px-3 rounded-lg border transition-opacity duration-300 ${
-                  actionStatus.action === "thinking"
-                    ? "bg-yellow-100/60 border-yellow-300/40 backdrop-blur-sm"
-                    : actionStatus.action === "building"
-                    ? "bg-orange-100/60 border-orange-300/40 backdrop-blur-sm"
-                    : actionStatus.action === "done"
-                    ? "bg-green-100/60 border-green-300/40 backdrop-blur-sm"
-                    : "bg-blue-100/60 border-blue-300/40 backdrop-blur-sm"
+                className={`text-center break-words p-2 px-4 rounded-xl bg-white/40 backdrop-blur-sm border border-white/20 transition-opacity duration-500 ${
+                  showChatBubble ? "opacity-100" : "opacity-0"
                 }`}
               >
-                <p className="text-xs text-gray-700 leading-snug whitespace-nowrap">
-                  {actionStatus.action === "thinking" && "🤔 "}
-                  {actionStatus.action === "building" && "🔨 "}
-                  {actionStatus.action === "done" && "✅ "}
-                  {actionStatus.action === "walking" && "🚶 "}
-                  {actionStatus.action === "chatting" && "💬 "}
-                  {actionStatus.action === "dancing" && "💃 "}
-                  {actionStatus.action === "emoting" && "😊 "}
-                  {actionStatus.detail}
+                <p className="text-[10px] font-bold text-gray-600 mb-0.5 truncate">
+                  {name} {isBot && <span className="text-blue-400 font-semibold">[BOT]</span>}
                 </p>
+                <p className="text-sm text-black leading-snug">{chatMessage}</p>
               </div>
-            )}
-            {/* Chat bubble */}
-            <div
-              className={`text-center break-words p-2 px-4 rounded-xl bg-white/40 backdrop-blur-sm border border-white/20 transition-opacity duration-500 ${
-                showChatBubble ? "opacity-100" : "opacity-0"
-              }`}
-            >
-              <p className="text-[10px] font-bold text-gray-600 mb-0.5 truncate">
-                {name} {isBot && <span className="text-blue-400 font-semibold">[BOT]</span>}
-              </p>
-              <p className="text-sm text-black leading-snug">{chatMessage}</p>
             </div>
-          </div>
-        </Html>
+          </Html>
+        </>
       )}
       <motion.group
         initial={{

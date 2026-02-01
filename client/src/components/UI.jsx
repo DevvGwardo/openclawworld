@@ -2,18 +2,174 @@ import { atom, useAtom } from "jotai";
 import { useEffect, useRef, useState } from "react";
 
 import { AvatarCreator } from "@readyplayerme/react-avatar-creator";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { roomItemsAtom } from "./Room";
 import { roomIDAtom, roomsAtom, socket, switchRoom } from "./SocketManager";
+import { selectedCharacterAtom } from "./Avatar";
 
 const AVATAR_URLS = [
   "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
   "https://models.readyplayer.me/65893b0514f9f5f28e61d783.glb",
   "https://models.readyplayer.me/663833cf6c79010563b91e1b.glb",
   "https://models.readyplayer.me/64bfa15f0e72c63d7c3934a6.glb",
-  "https://models.readyplayer.me/663833cf6c79010563b91e1b.glb",
   "https://models.readyplayer.me/64a3f54c1d64e9f3dbc832ac.glb",
 ];
+
+// Helper to get a 2D render thumbnail from a Ready Player Me avatar URL
+const getAvatarThumbnail = (glbUrl) => {
+  if (!glbUrl) return "";
+  return glbUrl.split("?")[0].replace(".glb", ".png") + "?size=256";
+};
+
+const CharacterProfilePopup = ({ character, onClose }) => {
+  if (!character) return null;
+  const thumbnailUrl = getAvatarThumbnail(character.avatarUrl);
+
+  return (
+    <div className="fixed inset-0 z-[100] grid place-items-center">
+      <motion.div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+      />
+      <motion.div
+        className="bg-white rounded-2xl shadow-2xl z-10 w-full max-w-xs mx-4 overflow-hidden"
+        initial={{ scale: 0.85, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.85, opacity: 0, y: 20 }}
+        transition={{ type: "spring", damping: 25, stiffness: 300 }}
+      >
+        {/* Avatar image */}
+        <div className="bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center p-6">
+          <div className="w-32 h-32 rounded-full overflow-hidden bg-white shadow-lg border-4 border-white">
+            <img
+              src={thumbnailUrl}
+              alt={character.name}
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                e.target.style.display = "none";
+                e.target.parentElement.innerHTML = `<div class="w-full h-full bg-slate-200 flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-12 h-12 text-slate-400"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" /></svg></div>`;
+              }}
+            />
+          </div>
+        </div>
+        {/* Info */}
+        <div className="p-5 text-center">
+          <h3 className="text-lg font-bold text-gray-900">{character.name || "Player"}</h3>
+          <div className="mt-1.5 flex items-center justify-center gap-2">
+            {character.isBot ? (
+              <span className="text-xs font-semibold bg-blue-100 text-blue-600 px-2.5 py-0.5 rounded-full">
+                Bot
+              </span>
+            ) : (
+              <span className="text-xs font-semibold bg-green-100 text-green-600 px-2.5 py-0.5 rounded-full">
+                Player
+              </span>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            className="mt-4 w-full py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-semibold rounded-xl transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const CharacterSelectorModal = ({ onClose, currentAvatarUrl, onSelectAvatar, onCustomAvatar }) => {
+  return (
+    <div className="fixed inset-0 z-[100] grid place-items-center">
+      <motion.div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+      />
+      <motion.div
+        className="bg-white rounded-2xl shadow-2xl z-10 w-full max-w-md mx-4 overflow-hidden"
+        initial={{ scale: 0.85, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.85, opacity: 0, y: 20 }}
+        transition={{ type: "spring", damping: 25, stiffness: 300 }}
+      >
+        <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-slate-600">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-bold text-gray-900">Choose Character</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="p-5">
+          <div className="grid grid-cols-3 gap-3">
+            {AVATAR_URLS.map((url, idx) => {
+              const isActive = currentAvatarUrl?.split("?")[0] === url.split("?")[0];
+              const thumbUrl = getAvatarThumbnail(url);
+              return (
+                <button
+                  key={idx}
+                  onClick={() => { onSelectAvatar(url); onClose(); }}
+                  className={`relative rounded-xl overflow-hidden aspect-square border-2 transition-all hover:scale-105 ${
+                    isActive
+                      ? "border-slate-800 ring-2 ring-slate-300"
+                      : "border-gray-200 hover:border-gray-400"
+                  }`}
+                >
+                  <div className="w-full h-full bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
+                    <img
+                      src={thumbUrl}
+                      alt={`Character ${idx + 1}`}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.target.style.display = "none";
+                      }}
+                    />
+                  </div>
+                  {isActive && (
+                    <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-slate-800 rounded-full flex items-center justify-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3 text-white">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                      </svg>
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          <div className="border-t border-gray-100 mt-4 pt-4">
+            <button
+              onClick={() => { onCustomAvatar(); onClose(); }}
+              className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold rounded-xl transition-colors flex items-center justify-center gap-2"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.53 16.122a3 3 0 00-5.78 1.128 2.25 2.25 0 01-2.4 2.245 4.5 4.5 0 008.4-2.245c0-.399-.078-.78-.22-1.128zm0 0a15.998 15.998 0 003.388-1.62m-5.043-.025a15.994 15.994 0 011.622-3.395m3.42 3.42a15.995 15.995 0 004.764-4.648l3.876-5.814a1.151 1.151 0 00-1.597-1.597L14.146 6.32a15.996 15.996 0 00-4.649 4.763m3.42 3.42a6.776 6.776 0 00-3.42-3.42" />
+              </svg>
+              Create Custom Avatar
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 text-center mt-3">Select a character or create a custom one</p>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
 export const buildModeAtom = atom(false);
 export const shopModeAtom = atom(false);
 export const draggedItemAtom = atom(null);
@@ -347,6 +503,8 @@ export const UI = () => {
   const [avatarMode, setAvatarMode] = useState(false);
   const [botConnectMode, setBotConnectMode] = useState(false);
   const [roomSelectorMode, setRoomSelectorMode] = useState(false);
+  const [characterSelectorMode, setCharacterSelectorMode] = useState(false);
+  const [selectedCharacter, setSelectedCharacter] = useAtom(selectedCharacterAtom);
   const [allRooms] = useAtom(roomsAtom);
   const [avatarUrl, setAvatarUrl] = useAtom(avatarUrlAtom);
   const [roomID, setRoomID] = useAtom(roomIDAtom);
@@ -369,6 +527,15 @@ export const UI = () => {
     setPasswordCorrectForRoom(false); // PS: this is an ugly shortcut
   }, [roomID]);
 
+  const handleSelectCharacter = (url) => {
+    const newUrl = url + (url.includes("?") ? "&" : "?") + "meshlod=1&quality=medium";
+    setAvatarUrl(newUrl);
+    localStorage.setItem("avatarURL", newUrl);
+    if (roomID) {
+      socket.emit("characterAvatarUpdate", newUrl);
+    }
+  };
+
   const ref = useRef();
   const [chatMessage, setChatMessage] = useState("");
   const sendChatMessage = () => {
@@ -386,6 +553,24 @@ export const UI = () => {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5, delay: 0.5 }}
       >
+        <AnimatePresence>
+          {selectedCharacter && (
+            <CharacterProfilePopup
+              character={selectedCharacter}
+              onClose={() => setSelectedCharacter(null)}
+            />
+          )}
+        </AnimatePresence>
+        <AnimatePresence>
+          {characterSelectorMode && (
+            <CharacterSelectorModal
+              onClose={() => setCharacterSelectorMode(false)}
+              currentAvatarUrl={avatarUrl}
+              onSelectAvatar={handleSelectCharacter}
+              onCustomAvatar={() => setAvatarMode(true)}
+            />
+          )}
+        </AnimatePresence>
         {avatarMode && (
           <AvatarCreator
             subdomain="wawa-sensei-tutorial"
@@ -489,11 +674,11 @@ export const UI = () => {
                 </svg>
               </button>
             )}
-            {/* AVATAR */}
+            {/* CHARACTER SELECTOR */}
             {!buildMode && !shopMode && (
               <button
                 className="p-4 rounded-full bg-slate-500 text-white drop-shadow-md cursor-pointer hover:bg-slate-800 transition-colors"
-                onClick={() => setAvatarMode(true)}
+                onClick={() => setCharacterSelectorMode(true)}
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
