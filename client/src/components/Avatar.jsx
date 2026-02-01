@@ -15,14 +15,21 @@ import * as THREE from "three";
 import { motion } from "framer-motion-3d";
 
 const MOVEMENT_SPEED = 4;
+// How fast the character rotates to face movement direction (radians/sec)
+const ROTATION_SPEED = 12;
+// Arrival threshold — snap to waypoint when this close
+const ARRIVAL_THRESHOLD = 0.1;
 
 // Distance threshold (squared) for rendering avatars — avatars beyond this are culled
 const RENDER_DISTANCE_SQ = 30 * 30;
 // Closer distance for showing HTML overlays (chat bubbles, action indicators)
 const HTML_DISTANCE_SQ = 18 * 18;
 
-// Reusable vector to avoid allocations in the hot loop
+// Reusable vectors to avoid allocations in the hot loop
 const _direction = new THREE.Vector3();
+const _targetQuat = new THREE.Quaternion();
+const _lookMatrix = new THREE.Matrix4();
+const _up = new THREE.Vector3(0, 1, 0);
 
 export const Avatar = memo(function Avatar({
   id,
@@ -181,16 +188,35 @@ export const Avatar = memo(function Avatar({
 
     const path = pathRef.current;
     const idx = pathIndexRef.current;
-    if (idx < path.length && group.current.position.distanceTo(path[idx]) > 0.1) {
-      // Reuse _direction vector to avoid allocation per frame
-      _direction.copy(group.current.position).sub(path[idx]).normalize().multiplyScalar(MOVEMENT_SPEED * delta);
-      group.current.position.sub(_direction);
-      group.current.lookAt(path[idx]);
-      applyAnimation("M_Walk_001");
-      isDancingRef.current = false;
-    } else if (idx < path.length) {
-      // Advance index pointer instead of array.shift()
-      pathIndexRef.current++;
+    if (idx < path.length) {
+      const target = path[idx];
+      const dist = group.current.position.distanceTo(target);
+
+      if (dist > ARRIVAL_THRESHOLD) {
+        // --- Smooth rotation via quaternion slerp ---
+        _direction.copy(target).sub(group.current.position).normalize();
+        _lookMatrix.lookAt(_direction, new THREE.Vector3(), _up);
+        _targetQuat.setFromRotationMatrix(_lookMatrix);
+        group.current.quaternion.slerp(_targetQuat, Math.min(1, ROTATION_SPEED * delta));
+
+        // --- Movement with deceleration near final waypoint ---
+        const isLastWaypoint = idx === path.length - 1;
+        // Slow down when approaching the last waypoint for a gentle stop
+        const speedScale = isLastWaypoint ? Math.max(0.3, Math.min(1, dist / 1.0)) : 1;
+        const step = MOVEMENT_SPEED * speedScale * delta;
+        // Don't overshoot the waypoint
+        const moveDistance = Math.min(step, dist);
+
+        _direction.copy(target).sub(group.current.position).normalize().multiplyScalar(moveDistance);
+        group.current.position.add(_direction);
+
+        applyAnimation("M_Walk_001");
+        isDancingRef.current = false;
+      } else {
+        // Snap to waypoint and advance
+        group.current.position.copy(target);
+        pathIndexRef.current++;
+      }
     } else {
       if (isDancingRef.current) {
         applyAnimation("M_Dances_001");
