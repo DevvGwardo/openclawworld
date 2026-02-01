@@ -71,8 +71,10 @@ function App() {
         <WelcomeModal
           onChoice={(choice, name) => {
             localStorage.setItem("clawland_role", choice);
-            localStorage.setItem("clawland_username", name);
-            setUsername(name);
+            if (name) {
+              localStorage.setItem("clawland_username", name);
+              setUsername(name);
+            }
             setShowWelcome(false);
           }}
         />
