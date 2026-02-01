@@ -5,7 +5,6 @@ import { AvatarCreator } from "@readyplayerme/react-avatar-creator";
 import { motion, AnimatePresence } from "framer-motion";
 import { roomItemsAtom } from "./Room";
 import { roomIDAtom, roomsAtom, socket, switchRoom } from "./SocketManager";
-import { selectedCharacterAtom } from "./Avatar";
 
 const AVATAR_URLS = [
   "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
@@ -18,66 +17,6 @@ const AVATAR_URLS = [
 const getAvatarThumbnail = (glbUrl) => {
   if (!glbUrl) return "";
   return glbUrl.split("?")[0].replace(".glb", ".png") + "?size=256";
-};
-
-const CharacterProfilePopup = ({ character, onClose }) => {
-  if (!character) return null;
-  const thumbnailUrl = getAvatarThumbnail(character.avatarUrl);
-
-  return (
-    <div className="fixed inset-0 z-[100] grid place-items-center">
-      <motion.div
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={onClose}
-      />
-      <motion.div
-        className="bg-white rounded-2xl shadow-2xl z-10 w-full max-w-xs mx-4 overflow-hidden"
-        initial={{ scale: 0.85, opacity: 0, y: 20 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.85, opacity: 0, y: 20 }}
-        transition={{ type: "spring", damping: 25, stiffness: 300 }}
-      >
-        {/* Avatar image */}
-        <div className="bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center p-6">
-          <div className="w-32 h-32 rounded-full overflow-hidden bg-white shadow-lg border-4 border-white">
-            <img
-              src={thumbnailUrl}
-              alt={character.name}
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                e.target.style.display = "none";
-                e.target.parentElement.innerHTML = `<div class="w-full h-full bg-slate-200 flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-12 h-12 text-slate-400"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" /></svg></div>`;
-              }}
-            />
-          </div>
-        </div>
-        {/* Info */}
-        <div className="p-5 text-center">
-          <h3 className="text-lg font-bold text-gray-900">{character.name || "Player"}</h3>
-          <div className="mt-1.5 flex items-center justify-center gap-2">
-            {character.isBot ? (
-              <span className="text-xs font-semibold bg-blue-100 text-blue-600 px-2.5 py-0.5 rounded-full">
-                Bot
-              </span>
-            ) : (
-              <span className="text-xs font-semibold bg-green-100 text-green-600 px-2.5 py-0.5 rounded-full">
-                Player
-              </span>
-            )}
-          </div>
-          <button
-            onClick={onClose}
-            className="mt-4 w-full py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-semibold rounded-xl transition-colors"
-          >
-            Close
-          </button>
-        </div>
-      </motion.div>
-    </div>
-  );
 };
 
 const CharacterSelectorModal = ({ onClose, currentAvatarUrl, onSelectAvatar, onCustomAvatar }) => {
@@ -503,7 +442,6 @@ export const UI = () => {
   const [botConnectMode, setBotConnectMode] = useState(false);
   const [roomSelectorMode, setRoomSelectorMode] = useState(false);
   const [characterSelectorMode, setCharacterSelectorMode] = useState(false);
-  const [selectedCharacter, setSelectedCharacter] = useAtom(selectedCharacterAtom);
   const [allRooms] = useAtom(roomsAtom);
   const [avatarUrl, setAvatarUrl] = useAtom(avatarUrlAtom);
   const [roomID, setRoomID] = useAtom(roomIDAtom);
@@ -552,14 +490,7 @@ export const UI = () => {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5, delay: 0.5 }}
       >
-        <AnimatePresence>
-          {selectedCharacter && (
-            <CharacterProfilePopup
-              character={selectedCharacter}
-              onClose={() => setSelectedCharacter(null)}
-            />
-          )}
-        </AnimatePresence>
+        {/* Character profile + actions are now combined in CharacterMenu (Avatar.jsx) */}
         <AnimatePresence>
           {characterSelectorMode && (
             <CharacterSelectorModal

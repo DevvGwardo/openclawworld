@@ -285,8 +285,7 @@ export const Avatar = memo(function Avatar({
           {/* Always-visible name label */}
           <Html position-y={2.3} center distanceFactor={8} zIndexRange={[1, 0]} style={{ overflow: 'visible' }}>
             <div
-              className="pointer-events-auto cursor-pointer select-none"
-              onClick={handleCharacterClick}
+              className="pointer-events-none select-none"
             >
               <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                 <span
@@ -374,10 +373,19 @@ export const CharacterMenu = () => {
   const [selectedCharacter, setSelectedCharacter] = useAtom(selectedCharacterAtom);
   const [followedCharacter, setFollowedCharacter] = useAtom(followedCharacterAtom);
   const [user] = useAtom(userAtom);
+  const [imgError, setImgError] = useState(false);
+  const prevCharIdRef = useRef(null);
+  if (selectedCharacter?.id !== prevCharIdRef.current) {
+    prevCharIdRef.current = selectedCharacter?.id;
+    if (imgError) setImgError(false);
+  }
 
   if (!selectedCharacter || selectedCharacter.id === user) return null;
 
   const isFollowing = followedCharacter?.id === selectedCharacter.id;
+  const thumbnailUrl = selectedCharacter.avatarUrl
+    ? selectedCharacter.avatarUrl.split("?")[0].replace(".glb", ".png") + "?size=256"
+    : "";
 
   const handleWave = () => {
     socket.emit("wave:at", selectedCharacter.id);
@@ -398,34 +406,45 @@ export const CharacterMenu = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-[20] flex items-center justify-center pointer-events-none">
-      <div className="pointer-events-auto bg-gray-900/90 backdrop-blur-md rounded-xl p-4 border border-white/10 shadow-2xl min-w-[220px]">
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-3 pb-3 border-b border-white/10">
-          <div className="w-10 h-10 rounded-full bg-gray-700 overflow-hidden flex-shrink-0">
-            <img
-              src={selectedCharacter.avatarUrl?.replace(".glb", ".png") || ""}
-              alt=""
-              className="w-full h-full object-cover"
-              onError={(e) => { e.target.style.display = "none"; }}
-            />
+    <div className="fixed inset-0 z-[20] flex items-center justify-center">
+      {/* Backdrop — click to close */}
+      <div className="absolute inset-0 bg-black/30" onClick={handleClose} />
+
+      <div className="relative pointer-events-auto bg-gray-900/90 backdrop-blur-md rounded-2xl border border-white/10 shadow-2xl min-w-[240px] max-w-[280px] overflow-hidden">
+        {/* Avatar thumbnail */}
+        <div className="bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center py-5">
+          <div className="w-20 h-20 rounded-full overflow-hidden bg-gray-700 border-2 border-white/20 shadow-lg">
+            {!imgError ? (
+              <img
+                src={thumbnailUrl}
+                alt={selectedCharacter.name}
+                className="w-full h-full object-cover"
+                onError={() => setImgError(true)}
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-gray-500">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                </svg>
+              </div>
+            )}
           </div>
-          <div>
-            <p className="text-white font-semibold text-sm">{selectedCharacter.name || "Player"}</p>
-            <p className="text-xs text-gray-400">
-              {selectedCharacter.isBot ? "Bot" : "Player"}
-            </p>
-          </div>
-          <button
-            onClick={handleClose}
-            className="ml-auto text-gray-400 hover:text-white transition-colors text-lg leading-none"
-          >
-            &times;
-          </button>
+        </div>
+
+        {/* Name + badge */}
+        <div className="text-center px-4 pt-3 pb-2">
+          <p className="text-white font-semibold text-base">{selectedCharacter.name || "Player"}</p>
+          <span className={`inline-block mt-1 text-xs font-semibold px-2.5 py-0.5 rounded-full ${
+            selectedCharacter.isBot
+              ? "bg-blue-500/20 text-blue-300"
+              : "bg-green-500/20 text-green-300"
+          }`}>
+            {selectedCharacter.isBot ? "Bot" : "Player"}
+          </span>
         </div>
 
         {/* Actions */}
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 p-3 pt-2">
           <button
             onClick={handleWave}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white text-sm transition-colors text-left"
@@ -445,6 +464,16 @@ export const CharacterMenu = () => {
             <span>{isFollowing ? "Unfollow camera" : `Follow ${selectedCharacter.name || "them"}`}</span>
           </button>
         </div>
+
+        {/* Close button */}
+        <button
+          onClick={handleClose}
+          className="absolute top-2 right-2 text-gray-400 hover:text-white transition-colors w-7 h-7 flex items-center justify-center rounded-full bg-black/30 hover:bg-black/50"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
       </div>
     </div>
   );
