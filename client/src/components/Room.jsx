@@ -33,7 +33,7 @@ class AvatarErrorBoundary extends Component {
 import { Item } from "./Item";
 import { ProximityItem } from "./ProximityItem";
 import { Shop } from "./Shop";
-import { charactersAtom, mapAtom, socket, userAtom, htmlVisibleSetAtom } from "./SocketManager";
+import { charactersAtom, mapAtom, socket, userAtom, htmlVisibleSetAtom, itemsAtom } from "./SocketManager";
 import {
   buildModeAtom,
   draggedItemAtom,
@@ -125,6 +125,7 @@ export const Room = () => {
   const scene = useThree((state) => state.scene);
   const [user] = useAtom(userAtom);
   const [, setShowRoomSelector] = useAtom(showRoomSelectorAtom);
+  const [itemsCatalog] = useAtom(itemsAtom);
 
   useEffect(() => {
     setItems(map.items);
@@ -284,16 +285,23 @@ export const Room = () => {
         ))}
       {!shopMode &&
         !buildMode &&
-        map.items.map((item, idx) => (
-          <ProximityItem
-            key={`${item.name}-${idx}`}
-            gridPosition={item.gridPosition}
-            size={item.size}
-            rotation={item.rotation || 0}
-          >
-            <Item item={item} />
-          </ProximityItem>
-        ))}
+        map.items.map((item, idx) => {
+          const def = itemsCatalog?.[item.name];
+          const isSittable = def && def.sittable;
+          return (
+            <ProximityItem
+              key={`${item.name}-${idx}`}
+              gridPosition={item.gridPosition}
+              size={item.size}
+              rotation={item.rotation || 0}
+            >
+              <Item
+                item={item}
+                onSitClick={isSittable ? () => socket.emit("sit", idx) : undefined}
+              />
+            </ProximityItem>
+          );
+        })}
 
       {!shopMode && buildMode && (
         <mesh

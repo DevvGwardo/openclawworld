@@ -30,6 +30,8 @@ export const avatarDispatch = {
   playerChatMessage: new Map(), // id -> handler(value)
   playerAction: new Map(),  // id -> handler(value)
   playerWaveAt: new Map(),  // id -> handler(value)
+  playerSit: new Map(),     // id -> handler(value)
+  playerUnsit: new Map(),   // id -> handler(value)
 };
 
 // Atom: set of character IDs whose Html overlays should render (nearest 20)
@@ -433,6 +435,14 @@ export const SocketManager = () => {
       if (value && value.id) avatarDispatch.playerWaveAt.get(value.id)?.(value);
     }
 
+    function onAvatarPlayerSit(value) {
+      if (value && value.id) avatarDispatch.playerSit.get(value.id)?.(value);
+    }
+
+    function onAvatarPlayerUnsit(value) {
+      if (value && value.id) avatarDispatch.playerUnsit.get(value.id)?.(value);
+    }
+
     function onMoltbookPostsDelta(value) {
       if (!value) return;
       setMoltbookPosts((prev) => {
@@ -477,6 +487,8 @@ export const SocketManager = () => {
     socket.on("playerChatMessage", onAvatarPlayerChatMessage);
     socket.on("playerAction", onAvatarPlayerAction);
     socket.on("playerWaveAt", onAvatarPlayerWaveAt);
+    socket.on("playerSit", onAvatarPlayerSit);
+    socket.on("playerUnsit", onAvatarPlayerUnsit);
     socket.on("moltbookPostsDelta", onMoltbookPostsDelta);
     return () => {
       clearTimeout(flushTimerRef.current);
@@ -510,6 +522,8 @@ export const SocketManager = () => {
       socket.off("playerChatMessage", onAvatarPlayerChatMessage);
       socket.off("playerAction", onAvatarPlayerAction);
       socket.off("playerWaveAt", onAvatarPlayerWaveAt);
+      socket.off("playerSit", onAvatarPlayerSit);
+      socket.off("playerUnsit", onAvatarPlayerUnsit);
       socket.off("moltbookPostsDelta", onMoltbookPostsDelta);
     };
   }, []);

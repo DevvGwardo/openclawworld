@@ -280,6 +280,8 @@ const tryPlaceItemInRoom = (room, itemName, area) => {
 
 // Pending build tasks for bots — tracks multi-step building flow
 const pendingBuilds = new Map(); // botId → { stage, itemName, zone, targetPos, startedAt }
+// Pending sit timers for bots — tracks when they should stand up
+const pendingBotSits = new Map(); // botId → setTimeout handle
 
 // ENTRANCE_ZONE imported from ../shared/roomConstants.js
 
@@ -322,6 +324,13 @@ const getBotRoom = (botId) => {
 const transferMoltbookBot = (botId, fromRoom, toRoom) => {
   const bot = moltbookVirtualBots.get(botId);
   if (!bot || !fromRoom || !toRoom) return;
+
+  // Unsit bot if sitting
+  unsitCharacter(fromRoom, botId);
+  if (pendingBotSits.has(botId)) {
+    clearTimeout(pendingBotSits.get(botId));
+    pendingBotSits.delete(botId);
+  }
 
   // Capture info before removal
   const charName = bot.character.name || "Bot";
@@ -468,6 +477,7 @@ const moltbookBotTick = () => {
     if (actionsThisTick >= MOLTBOOK_MAX_ACTIONS_PER_TICK) break;
     if (pendingBuilds.has(botId)) continue;
     if (pendingRoomSwitch.has(botId)) continue;
+    if (pendingBotSits.has(botId)) continue; // currently sitting, skip
 
     // Wider stagger window: 6-14 seconds per bot (was 4-8)
     if (now - bot.lastAction < 6000 + Math.random() * 8000) continue;
@@ -478,6 +488,15 @@ const moltbookBotTick = () => {
     if (!room) continue;
 
     const action = Math.random();
+
+    // Unsit bot before any action (if sitting without pending timer, clean up)
+    if (room.characterSeats && room.characterSeats.has(botId)) {
+      unsitCharacter(room, botId);
+      if (pendingBotSits.has(botId)) {
+        clearTimeout(pendingBotSits.get(botId));
+        pendingBotSits.delete(botId);
+      }
+    }
 
     // ~5% chance to switch rooms
     if (action < 0.05) {
@@ -599,6 +618,73 @@ const moltbookBotTick = () => {
     } else if (action < 0.85) {
       // Dance — single broadcast
       broadcastToRoom(room.id, "playerDance", { id: botId });
+    } else if (action < 0.93) {
+      // Sit on furniture (~8% chance)
+      const sittableItems = [];
+      room.items.forEach((it, idx) => {
+        const def = itemsCatalog[it.name];
+        if (def && def.sittable) sittableItems.push({ item: it, idx, sittable: def.sittable });
+      });
+      if (sittableItems.length > 0) {
+        const pick = sittableItems[Math.floor(Math.random() * sittableItems.length)];
+        ensureSeatMaps(room);
+        const allSpots = getSitSpots(room, pick.item, pick.sittable);
+        // Filter available spots
+        let occupiedCount = 0;
+        for (const [key] of room.seatOccupancy) {
+          if (key.startsWith(`${pick.idx}-`)) occupiedCount++;
+        }
+        if (occupiedCount < pick.sittable.seats) {
+          const available = allSpots.filter((s) => {
+            if (room.seatOccupancy.has(`${pick.idx}-${s.seatIdx}`)) return false;
+            return room.grid.isWalkableAt(s.walkTo[0], s.walkTo[1]);
+          });
+          if (available.length > 0) {
+            const pos = bot.character.position || [0, 0];
+            available.sort((a, b) => {
+              const da = (a.walkTo[0] - pos[0]) ** 2 + (a.walkTo[1] - pos[1]) ** 2;
+              const db = (b.walkTo[0] - pos[0]) ** 2 + (b.walkTo[1] - pos[1]) ** 2;
+              return da - db;
+            });
+            const spot = available[0];
+            const path = findPath(room, pos, spot.walkTo);
+            if (path && path.length > 0) {
+              // Reserve seat
+              room.seatOccupancy.set(`${pick.idx}-${spot.seatIdx}`, botId);
+              room.characterSeats.set(botId, {
+                itemIndex: pick.idx,
+                seatIdx: spot.seatIdx,
+                seatPos: spot.seatPos,
+                seatHeight: spot.seatHeight,
+                seatRotation: spot.seatRotation,
+              });
+
+              bot.character.position = pos;
+              bot.character.path = path;
+              bot.character.position = path[path.length - 1];
+
+              // Broadcast sit
+              broadcastToRoom(room.id, "playerSit", {
+                id: botId,
+                path,
+                seatPos: spot.seatPos,
+                seatHeight: spot.seatHeight,
+                seatRotation: spot.seatRotation,
+                itemIndex: pick.idx,
+              });
+
+              // Stand up after 10-20 seconds
+              const sitDuration = 10000 + Math.random() * 10000;
+              const timer = setTimeout(() => {
+                pendingBotSits.delete(botId);
+                const currentRoom = getBotRoom(botId);
+                if (currentRoom) unsitCharacter(currentRoom, botId);
+              }, sitDuration);
+              pendingBotSits.set(botId, timer);
+            }
+          }
+        }
+      }
     } else {
       // Build
       const zone = ROOM_ZONES[Math.floor(Math.random() * ROOM_ZONES.length)];
@@ -1608,6 +1694,96 @@ httpServer.listen(PORT);
 
 console.log(`Server started on port ${PORT}, allowed cors origin: ${origin}`);
 
+// SITTING SYSTEM
+
+// Per-room seat tracking — initialized lazily
+// room.seatOccupancy: Map of "itemIdx-seatIdx" → characterId
+// room.characterSeats: Map of characterId → { itemIndex, seatIdx, seatPos, seatHeight, seatRotation }
+
+const ensureSeatMaps = (room) => {
+  if (!room.seatOccupancy) room.seatOccupancy = new Map();
+  if (!room.characterSeats) room.characterSeats = new Map();
+};
+
+// Compute sit spots for a sittable item.
+// Returns array of { walkTo: [gx, gy], seatPos: [gx, gy], seatHeight, seatRotation, seatIdx }
+// walkTo = adjacent cell the character walks to (must be walkable)
+// seatPos = grid cell on the furniture where the character sits
+// seatRotation = Y rotation in radians so they face outward from furniture
+const getSitSpots = (room, item, sittable) => {
+  const rot = item.rotation || 0;
+  const w = rot === 1 || rot === 3 ? item.size[1] : item.size[0];
+  const h = rot === 1 || rot === 3 ? item.size[0] : item.size[1];
+  const gx = item.gridPosition[0];
+  const gy = item.gridPosition[1];
+  const maxX = room.size[0] * room.gridDivision - 1;
+  const maxY = room.size[1] * room.gridDivision - 1;
+  const seatHeight = sittable.seatHeight;
+
+  const spots = [];
+  let seatIdx = 0;
+
+  // Generate spots along each edge of the furniture
+  // Front edge (gy + h side)
+  for (let x = 0; x < w; x++) {
+    const adjX = gx + x;
+    const adjY = gy + h;
+    const seatX = gx + x;
+    const seatY = gy + h - 1;
+    const faceRot = Math.PI;
+    if (adjY <= maxY) {
+      spots.push({ walkTo: [adjX, adjY], seatPos: [seatX, seatY], seatHeight, seatRotation: faceRot, seatIdx: seatIdx++ });
+    }
+  }
+  // Back edge (gy - 1 side)
+  for (let x = 0; x < w; x++) {
+    const adjX = gx + x;
+    const adjY = gy - 1;
+    const seatX = gx + x;
+    const seatY = gy;
+    const faceRot = 0;
+    if (adjY >= 0) {
+      spots.push({ walkTo: [adjX, adjY], seatPos: [seatX, seatY], seatHeight, seatRotation: faceRot, seatIdx: seatIdx++ });
+    }
+  }
+  // Left edge (gx - 1 side)
+  for (let y = 0; y < h; y++) {
+    const adjX = gx - 1;
+    const adjY = gy + y;
+    const seatX = gx;
+    const seatY = gy + y;
+    const faceRot = -Math.PI / 2;
+    if (adjX >= 0) {
+      spots.push({ walkTo: [adjX, adjY], seatPos: [seatX, seatY], seatHeight, seatRotation: faceRot, seatIdx: seatIdx++ });
+    }
+  }
+  // Right edge (gx + w side)
+  for (let y = 0; y < h; y++) {
+    const adjX = gx + w;
+    const adjY = gy + y;
+    const seatX = gx + w - 1;
+    const seatY = gy + y;
+    const faceRot = Math.PI / 2;
+    if (adjX <= maxX) {
+      spots.push({ walkTo: [adjX, adjY], seatPos: [seatX, seatY], seatHeight, seatRotation: faceRot, seatIdx: seatIdx++ });
+    }
+  }
+
+  return spots;
+};
+
+const unsitCharacter = (room, characterId) => {
+  if (!room) return;
+  ensureSeatMaps(room);
+  const seatInfo = room.characterSeats.get(characterId);
+  if (!seatInfo) return;
+  // Clear occupancy
+  room.seatOccupancy.delete(`${seatInfo.itemIndex}-${seatInfo.seatIdx}`);
+  room.characterSeats.delete(characterId);
+  // Broadcast unsit
+  io.to(room.id).emit("playerUnsit", { id: characterId });
+};
+
 // PATHFINDING UTILS
 
 const finder = new pathfinding.AStarFinder({
@@ -1917,6 +2093,7 @@ io.on("connection", (socket) => {
     });
 
     socket.on("switchRoom", (targetRoomId) => {
+      unsitCharacter(room, socket.id);
       // Leave current room
       if (room) {
         const leavingName = character?.name || "Player";
@@ -1975,8 +2152,79 @@ io.on("connection", (socket) => {
       });
     });
 
+    socket.on("sit", (itemIndex) => {
+      if (!room) return;
+      if (typeof itemIndex !== "number" || itemIndex < 0 || itemIndex >= room.items.length) return;
+      const item = room.items[itemIndex];
+      if (!item) return;
+      const itemDef = itemsCatalog[item.name];
+      if (!itemDef || !itemDef.sittable) return;
+      // Use catalog sittable data
+      const sittable = itemDef.sittable;
+      ensureSeatMaps(room);
+
+      // Already sitting? unsit first
+      unsitCharacter(room, socket.id);
+
+      const allSpots = getSitSpots(room, item, sittable);
+      // Filter to walkable & unoccupied spots
+      const available = allSpots.filter((s) => {
+        if (room.seatOccupancy.has(`${itemIndex}-${s.seatIdx}`)) return false;
+        return room.grid.isWalkableAt(s.walkTo[0], s.walkTo[1]);
+      });
+
+      // Enforce seat limit
+      let occupiedCount = 0;
+      for (const [key] of room.seatOccupancy) {
+        if (key.startsWith(`${itemIndex}-`)) occupiedCount++;
+      }
+      if (occupiedCount >= sittable.seats) return; // furniture full
+
+      if (available.length === 0) return;
+
+      // Pick nearest spot to character
+      const pos = character.position || [0, 0];
+      available.sort((a, b) => {
+        const da = (a.walkTo[0] - pos[0]) ** 2 + (a.walkTo[1] - pos[1]) ** 2;
+        const db = (b.walkTo[0] - pos[0]) ** 2 + (b.walkTo[1] - pos[1]) ** 2;
+        return da - db;
+      });
+      const spot = available[0];
+
+      // Pathfind to walkTo position
+      const path = findPath(room, pos, spot.walkTo);
+      if (!path) return;
+
+      // Reserve seat
+      room.seatOccupancy.set(`${itemIndex}-${spot.seatIdx}`, socket.id);
+      room.characterSeats.set(socket.id, {
+        itemIndex,
+        seatIdx: spot.seatIdx,
+        seatPos: spot.seatPos,
+        seatHeight: spot.seatHeight,
+        seatRotation: spot.seatRotation,
+      });
+
+      character.position = pos;
+      character.path = path;
+      if (path.length > 0) {
+        character.position = path[path.length - 1];
+      }
+
+      // Broadcast sit event
+      io.to(room.id).emit("playerSit", {
+        id: socket.id,
+        path,
+        seatPos: spot.seatPos,
+        seatHeight: spot.seatHeight,
+        seatRotation: spot.seatRotation,
+        itemIndex,
+      });
+    });
+
     socket.on("move", (from, to) => {
       if (!room) return;
+      unsitCharacter(room, socket.id);
       const path = findPath(room, from, to);
       if (!path) {
         return;
@@ -1994,6 +2242,7 @@ io.on("connection", (socket) => {
 
     socket.on("dance", () => {
       if (!room) return;
+      unsitCharacter(room, socket.id);
       io.to(room.id).emit("playerDance", {
         id: socket.id,
       });
@@ -2012,6 +2261,7 @@ io.on("connection", (socket) => {
     socket.on("wave:at", (targetId) => {
       if (!room) return;
       if (typeof targetId !== "string") return;
+      unsitCharacter(room, socket.id);
       // Find target character in room
       const target = room.characters.find((c) => c.id === targetId);
       if (!target) return;
@@ -2215,6 +2465,11 @@ io.on("connection", (socket) => {
       if (!items || items.length === 0) {
         return; // security
       }
+      // Evict all seated characters since item layout changed
+      ensureSeatMaps(room);
+      for (const [charId] of room.characterSeats) {
+        unsitCharacter(room, charId);
+      }
       room.items = items;
       updateGrid(room);
       room.characters.forEach((character) => {
@@ -2332,6 +2587,7 @@ io.on("connection", (socket) => {
 
     socket.on("disconnect", () => {
       console.log("User disconnected");
+      unsitCharacter(room, socket.id);
       playerCoins.delete(socket.id);
       // Clean up active quests for this player
       for (const [key, val] of activeQuests) {
@@ -2411,6 +2667,7 @@ const items = {
     name: "loungeSofaCorner",
     size: [5, 5],
     rotation: 2,
+    sittable: { seats: 4, seatHeight: 0.45 },
   },
   bear: {
     name: "bear",
@@ -2420,6 +2677,7 @@ const items = {
   loungeSofaOttoman: {
     name: "loungeSofaOttoman",
     size: [2, 2],
+    sittable: { seats: 1, seatHeight: 0.35 },
   },
   tableCoffeeGlassSquare: {
     name: "tableCoffeeGlassSquare",
@@ -2429,16 +2687,19 @@ const items = {
     name: "loungeDesignSofaCorner",
     size: [5, 5],
     rotation: 2,
+    sittable: { seats: 4, seatHeight: 0.45 },
   },
   loungeDesignSofa: {
     name: "loungeDesignSofa",
     size: [5, 2],
     rotation: 2,
+    sittable: { seats: 3, seatHeight: 0.45 },
   },
   loungeSofa: {
     name: "loungeSofa",
     size: [5, 2],
     rotation: 2,
+    sittable: { seats: 3, seatHeight: 0.45 },
   },
   bookcaseOpenLow: {
     name: "bookcaseOpenLow",
@@ -2458,6 +2719,7 @@ const items = {
     name: "bench",
     size: [2, 1],
     rotation: 2,
+    sittable: { seats: 2, seatHeight: 0.4 },
   },
   bedDouble: {
     name: "bedDouble",
@@ -2467,11 +2729,13 @@ const items = {
   benchCushionLow: {
     name: "benchCushionLow",
     size: [2, 1],
+    sittable: { seats: 2, seatHeight: 0.35 },
   },
   loungeChair: {
     name: "loungeChair",
     size: [2, 2],
     rotation: 2,
+    sittable: { seats: 1, seatHeight: 0.4 },
   },
   cabinetBedDrawer: {
     name: "cabinetBedDrawer",
@@ -2566,11 +2830,13 @@ const items = {
     name: "chairCushion",
     size: [1, 1],
     rotation: 2,
+    sittable: { seats: 1, seatHeight: 0.45 },
   },
   chair: {
     name: "chair",
     size: [1, 1],
     rotation: 2,
+    sittable: { seats: 1, seatHeight: 0.45 },
   },
   deskComputer: {
     name: "deskComputer",
@@ -2584,11 +2850,13 @@ const items = {
     name: "chairModernCushion",
     size: [1, 1],
     rotation: 2,
+    sittable: { seats: 1, seatHeight: 0.45 },
   },
   chairModernFrameCushion: {
     name: "chairModernFrameCushion",
     size: [1, 1],
     rotation: 2,
+    sittable: { seats: 1, seatHeight: 0.45 },
   },
   kitchenMicrowave: {
     name: "kitchenMicrowave",
@@ -2646,9 +2914,13 @@ const items = {
   stoolBar: {
     name: "stoolBar",
     size: [1, 1],
+    sittable: { seats: 1, seatHeight: 0.6 },
   },
   stoolBarSquare: {
     name: "stoolBarSquare",
     size: [1, 1],
+    sittable: { seats: 1, seatHeight: 0.6 },
   },
 };
+// Alias for use inside handlers where "items" parameter shadows this
+const itemsCatalog = items;

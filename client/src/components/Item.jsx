@@ -9,6 +9,7 @@ import { buildModeAtom } from "./UI";
 export const Item = ({
   item,
   onClick,
+  onSitClick,
   isDragging,
   dragPosition,
   canDrop,
@@ -26,7 +27,8 @@ export const Item = ({
   const height = rotation === 1 || rotation === 3 ? size[0] : size[1];
   const [hover, setHover] = useState(false);
   const [buildMode] = useAtom(buildModeAtom);
-  useCursor(buildMode ? hover : undefined);
+  const isSittable = !!onSitClick;
+  useCursor(buildMode ? hover : isSittable ? hover : undefined);
 
   useEffect(() => {
     clone.traverse((child) => {
@@ -39,7 +41,14 @@ export const Item = ({
 
   return (
     <group
-      onClick={onClick}
+      onClick={(e) => {
+        if (onSitClick) {
+          e.stopPropagation();
+          onSitClick();
+        } else if (onClick) {
+          onClick(e);
+        }
+      }}
       position={gridToVector3(
         isDragging ? dragPosition || gridPosition : gridPosition,
         width,

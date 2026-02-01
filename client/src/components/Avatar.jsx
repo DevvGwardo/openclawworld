@@ -116,9 +116,12 @@ export const Avatar = memo(function Avatar({
   const { animations: waveAnimation } = useGLTF(
     "/animations/M_Standing_Expressions_001.glb"
   );
+  const { animations: sitAnimation } = useGLTF(
+    "/animations/M_Sitting_001.glb"
+  );
 
   const { actions, mixer } = useAnimations(
-    [walkAnimation[0], idleAnimation[0], danceAnimation[0], waveAnimation[0]],
+    [walkAnimation[0], idleAnimation[0], danceAnimation[0], waveAnimation[0], sitAnimation[0]],
     avatar
   );
 
@@ -126,6 +129,9 @@ export const Avatar = memo(function Avatar({
   const animationRef = useRef("M_Standing_Idle_001");
   const isDancingRef = useRef(false);
   const isWavingRef = useRef(false);
+  const isSittingRef = useRef(false);
+  const walkToSitRef = useRef(false);
+  const seatDataRef = useRef(null); // { seatPos, seatHeight, seatRotation }
   const waveTargetIdRef = useRef(null);
   const waveTimeoutRef = useRef(null);
   const initRef = useRef(false);
@@ -174,8 +180,16 @@ export const Avatar = memo(function Avatar({
   useEffect(() => {
     function onPlayerDance(value) {
       isDancingRef.current = true;
+      isSittingRef.current = false;
+      walkToSitRef.current = false;
+      seatDataRef.current = null;
     }
     function onPlayerMove(value) {
+      // Clear sitting state on any movement
+      isSittingRef.current = false;
+      walkToSitRef.current = false;
+      seatDataRef.current = null;
+
       const newPath = [];
       value.path?.forEach((gridPosition) => {
         newPath.push(gridToVector3(gridPosition));
@@ -219,6 +233,9 @@ export const Avatar = memo(function Avatar({
       waveTargetIdRef.current = value.targetId;
       isWavingRef.current = true;
       isDancingRef.current = false;
+      isSittingRef.current = false;
+      walkToSitRef.current = false;
+      seatDataRef.current = null;
       pathRef.current = [];
       pathIndexRef.current = 0;
       clearTimeout(waveTimeoutRef.current);
@@ -228,12 +245,59 @@ export const Avatar = memo(function Avatar({
       }, 3000);
     }
 
+    function onPlayerSit(value) {
+      // Set path from event data (character walks to sit spot)
+      const newPath = [];
+      value.path?.forEach((gridPosition) => {
+        newPath.push(gridToVector3(gridPosition));
+      });
+      if (!isNearbyRef.current && id !== user) {
+        // Culled avatar — snap to seat directly
+        pathRef.current = [];
+        pathIndexRef.current = 0;
+        seatDataRef.current = {
+          seatPos: value.seatPos,
+          seatHeight: value.seatHeight,
+          seatRotation: value.seatRotation,
+        };
+        isSittingRef.current = true;
+        walkToSitRef.current = false;
+        isDancingRef.current = false;
+        isWavingRef.current = false;
+        if (value.path && value.path.length > 0) {
+          lastServerGridPos.current = value.path[value.path.length - 1];
+        }
+        return;
+      }
+      pathRef.current = newPath;
+      pathIndexRef.current = 0;
+      seatDataRef.current = {
+        seatPos: value.seatPos,
+        seatHeight: value.seatHeight,
+        seatRotation: value.seatRotation,
+      };
+      walkToSitRef.current = true;
+      isDancingRef.current = false;
+      isWavingRef.current = false;
+      if (value.path && value.path.length > 0) {
+        lastServerGridPos.current = value.path[value.path.length - 1];
+      }
+    }
+
+    function onPlayerUnsit() {
+      isSittingRef.current = false;
+      walkToSitRef.current = false;
+      seatDataRef.current = null;
+    }
+
     // Register on dispatch maps — O(1) lookup, no per-avatar socket listener
     avatarDispatch.playerMove.set(id, onPlayerMove);
     avatarDispatch.playerDance.set(id, onPlayerDance);
     avatarDispatch.playerChatMessage.set(id, onPlayerChatMessage);
     avatarDispatch.playerAction.set(id, onPlayerAction);
     avatarDispatch.playerWaveAt.set(id, onPlayerWaveAt);
+    avatarDispatch.playerSit.set(id, onPlayerSit);
+    avatarDispatch.playerUnsit.set(id, onPlayerUnsit);
 
     return () => {
       avatarDispatch.playerMove.delete(id);
@@ -241,6 +305,8 @@ export const Avatar = memo(function Avatar({
       avatarDispatch.playerChatMessage.delete(id);
       avatarDispatch.playerAction.delete(id);
       avatarDispatch.playerWaveAt.delete(id);
+      avatarDispatch.playerSit.delete(id);
+      avatarDispatch.playerUnsit.delete(id);
       clearTimeout(chatMessageBubbleTimeout);
       clearTimeout(waveTimeoutRef.current);
     };
@@ -312,8 +378,8 @@ export const Avatar = memo(function Avatar({
       hipsRef.current = avatar.current.getObjectByName("Hips");
     }
     const hips = hipsRef.current;
-    // Only reset hips X/Z drift, preserve Y for vertical bob
-    if (hips) {
+    // Only reset hips X/Z drift, preserve Y for vertical bob (skip when sitting)
+    if (hips && !isSittingRef.current) {
       // Clamp rather than zero — prevents walk root motion from drifting
       // the character away, but allows small hip sway from animation
       const hx = hips.position.x;
@@ -323,53 +389,73 @@ export const Avatar = memo(function Avatar({
       }
     }
 
-    const path = pathRef.current;
-    const idx = pathIndexRef.current;
-    if (idx < path.length) {
-      const target = path[idx];
-      const dist = group.current.position.distanceTo(target);
-
-      if (dist > ARRIVAL_THRESHOLD) {
-        _direction.copy(target).sub(group.current.position).normalize();
-        _lookMatrix.lookAt(_direction, _zero, _up);
-        _targetQuat.setFromRotationMatrix(_lookMatrix);
-        group.current.quaternion.slerp(_targetQuat, Math.min(1, ROTATION_SPEED * delta));
-
-        const isLastWaypoint = idx === path.length - 1;
-        const speedScale = isLastWaypoint ? Math.max(0.3, Math.min(1, dist / 1.0)) : 1;
-        const step = MOVEMENT_SPEED * speedScale * delta;
-        const moveDistance = Math.min(step, dist);
-
-        _direction.copy(target).sub(group.current.position).normalize().multiplyScalar(moveDistance);
-        group.current.position.add(_direction);
-
-        applyAnimation("M_Walk_001");
-        isDancingRef.current = false;
-        isWavingRef.current = false;
-      } else {
-        group.current.position.copy(target);
-        pathIndexRef.current++;
+    // Handle sitting state — skip normal movement when seated
+    if (isSittingRef.current && seatDataRef.current) {
+      // Snap position to seat
+      const seatWorldPos = gridToVector3(seatDataRef.current.seatPos);
+      group.current.position.set(seatWorldPos.x, seatDataRef.current.seatHeight, seatWorldPos.z);
+      // Set rotation to face outward
+      group.current.quaternion.setFromAxisAngle(_up, seatDataRef.current.seatRotation);
+      // Skip hips reset for sitting animation
+      if (hips) {
+        hips.position.y = hips.position.y; // preserve Y, let animation drive it
       }
-    } else if (isWavingRef.current) {
-      if (waveTargetIdRef.current) {
-        const targetObj = threeScene.getObjectByName(`character-${waveTargetIdRef.current}`);
-        if (targetObj && group.current) {
-          _direction.copy(targetObj.position).sub(group.current.position);
-          _direction.y = 0;
-          if (_direction.lengthSq() > 0.001) {
-            _direction.normalize();
-            _lookMatrix.lookAt(_direction, _zero, _up);
-            _targetQuat.setFromRotationMatrix(_lookMatrix);
-            group.current.quaternion.slerp(_targetQuat, Math.min(1, ROTATION_SPEED * delta));
+      applyAnimation("M_Sitting_001");
+    } else {
+      const path = pathRef.current;
+      const idx = pathIndexRef.current;
+      if (idx < path.length) {
+        const target = path[idx];
+        const dist = group.current.position.distanceTo(target);
+
+        if (dist > ARRIVAL_THRESHOLD) {
+          _direction.copy(target).sub(group.current.position).normalize();
+          _lookMatrix.lookAt(_direction, _zero, _up);
+          _targetQuat.setFromRotationMatrix(_lookMatrix);
+          group.current.quaternion.slerp(_targetQuat, Math.min(1, ROTATION_SPEED * delta));
+
+          const isLastWaypoint = idx === path.length - 1;
+          const speedScale = isLastWaypoint ? Math.max(0.3, Math.min(1, dist / 1.0)) : 1;
+          const step = MOVEMENT_SPEED * speedScale * delta;
+          const moveDistance = Math.min(step, dist);
+
+          _direction.copy(target).sub(group.current.position).normalize().multiplyScalar(moveDistance);
+          group.current.position.add(_direction);
+
+          applyAnimation("M_Walk_001");
+          isDancingRef.current = false;
+          isWavingRef.current = false;
+        } else {
+          group.current.position.copy(target);
+          pathIndexRef.current++;
+
+          // Check if path just completed and we should transition to sitting
+          if (pathIndexRef.current >= path.length && walkToSitRef.current && seatDataRef.current) {
+            walkToSitRef.current = false;
+            isSittingRef.current = true;
           }
         }
-      }
-      applyAnimation("M_Standing_Expressions_001");
-    } else {
-      if (isDancingRef.current) {
-        applyAnimation("M_Dances_001");
+      } else if (isWavingRef.current) {
+        if (waveTargetIdRef.current) {
+          const targetObj = threeScene.getObjectByName(`character-${waveTargetIdRef.current}`);
+          if (targetObj && group.current) {
+            _direction.copy(targetObj.position).sub(group.current.position);
+            _direction.y = 0;
+            if (_direction.lengthSq() > 0.001) {
+              _direction.normalize();
+              _lookMatrix.lookAt(_direction, _zero, _up);
+              _targetQuat.setFromRotationMatrix(_lookMatrix);
+              group.current.quaternion.slerp(_targetQuat, Math.min(1, ROTATION_SPEED * delta));
+            }
+          }
+        }
+        applyAnimation("M_Standing_Expressions_001");
       } else {
-        applyAnimation("M_Standing_Idle_001");
+        if (isDancingRef.current) {
+          applyAnimation("M_Dances_001");
+        } else {
+          applyAnimation("M_Standing_Idle_001");
+        }
       }
     }
 
@@ -672,3 +758,4 @@ useGLTF.preload("/animations/M_Walk_001.glb");
 useGLTF.preload("/animations/M_Standing_Idle_001.glb");
 useGLTF.preload("/animations/M_Dances_001.glb");
 useGLTF.preload("/animations/M_Standing_Expressions_001.glb");
+useGLTF.preload("/animations/M_Sitting_001.glb");
