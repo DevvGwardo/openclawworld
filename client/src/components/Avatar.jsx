@@ -89,15 +89,21 @@ export const Avatar = memo(function Avatar({
   const { animations: idleAnimation } = useGLTF(
     "/animations/M_Standing_Idle_001.glb"
   );
+  const { animations: waveAnimation } = useGLTF(
+    "/animations/M_Standing_Expressions_001.glb"
+  );
 
   const { actions } = useAnimations(
-    [walkAnimation[0], idleAnimation[0], danceAnimation[0]],
+    [walkAnimation[0], idleAnimation[0], danceAnimation[0], waveAnimation[0]],
     avatar
   );
 
   // Use refs for animation state to avoid re-renders from useFrame
   const animationRef = useRef("M_Standing_Idle_001");
   const isDancingRef = useRef(false);
+  const isWavingRef = useRef(false);
+  const waveTargetIdRef = useRef(null);
+  const waveTimeoutRef = useRef(null);
   const initRef = useRef(false);
   const [showChatBubble, setShowChatBubble] = useState(false);
 
@@ -176,15 +182,35 @@ export const Avatar = memo(function Avatar({
       }
     }
 
+    function onPlayerWaveAt(value) {
+      if (value.id === id) {
+        waveTargetIdRef.current = value.targetId;
+        isWavingRef.current = true;
+        isDancingRef.current = false;
+        // Stop moving so the character stands and waves
+        pathRef.current = [];
+        pathIndexRef.current = 0;
+        // Auto-stop waving after 3 seconds
+        clearTimeout(waveTimeoutRef.current);
+        waveTimeoutRef.current = setTimeout(() => {
+          isWavingRef.current = false;
+          waveTargetIdRef.current = null;
+        }, 3000);
+      }
+    }
+
     socket.on("playerMove", onPlayerMove);
     socket.on("playerDance", onPlayerDance);
     socket.on("playerChatMessage", onPlayerChatMessage);
     socket.on("playerAction", onPlayerAction);
+    socket.on("playerWaveAt", onPlayerWaveAt);
     return () => {
       socket.off("playerDance", onPlayerDance);
       socket.off("playerMove", onPlayerMove);
       socket.off("playerChatMessage", onPlayerChatMessage);
       socket.off("playerAction", onPlayerAction);
+      socket.off("playerWaveAt", onPlayerWaveAt);
+      clearTimeout(waveTimeoutRef.current);
     };
   }, [id]);
 
@@ -225,11 +251,28 @@ export const Avatar = memo(function Avatar({
 
         applyAnimation("M_Walk_001");
         isDancingRef.current = false;
+        isWavingRef.current = false;
       } else {
         // Snap to waypoint and advance
         group.current.position.copy(target);
         pathIndexRef.current++;
       }
+    } else if (isWavingRef.current) {
+      // Face the target character while waving
+      if (waveTargetIdRef.current) {
+        const targetObj = threeScene.getObjectByName(`character-${waveTargetIdRef.current}`);
+        if (targetObj && group.current) {
+          _direction.copy(targetObj.position).sub(group.current.position);
+          _direction.y = 0;
+          if (_direction.lengthSq() > 0.001) {
+            _direction.normalize();
+            _lookMatrix.lookAt(_direction, new THREE.Vector3(), _up);
+            _targetQuat.setFromRotationMatrix(_lookMatrix);
+            group.current.quaternion.slerp(_targetQuat, Math.min(1, ROTATION_SPEED * delta));
+          }
+        }
+      }
+      applyAnimation("M_Standing_Expressions_001");
     } else {
       if (isDancingRef.current) {
         applyAnimation("M_Dances_001");
@@ -282,10 +325,14 @@ export const Avatar = memo(function Avatar({
     >
       {(showHtmlRef.current || id === user) && (
         <>
-          {/* Always-visible name label */}
+          {/* Always-visible name label — clickable to open character menu */}
           <Html position-y={2.3} center distanceFactor={8} zIndexRange={[1, 0]} style={{ overflow: 'visible' }}>
             <div
-              className="pointer-events-none select-none"
+              className="select-none cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedCharacter({ id, name, avatarUrl, isBot, position: group.current?.position });
+              }}
             >
               <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                 <span
