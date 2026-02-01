@@ -138,6 +138,12 @@ export const Avatar = memo(function Avatar({
         });
         pathRef.current = newPath;
         pathIndexRef.current = 0;
+        // Update lastServerPos to the path endpoint so that subsequent
+        // characters/mapUpdate broadcasts (which carry the endpoint position)
+        // don't trigger a snap-back while the character is walking.
+        if (newPath.length > 0) {
+          lastServerPos.current = newPath[newPath.length - 1];
+        }
       }
     }
 

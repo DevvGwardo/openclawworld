@@ -1616,6 +1616,12 @@ io.on("connection", (socket) => {
       character.position = from;
       character.path = path;
       io.to(room.id).emit("playerMove", character);
+      // Update position to path endpoint so subsequent characters/mapUpdate
+      // broadcasts reflect where the player is headed, not where they started.
+      // (Bots already do this; players need it too to prevent rubber-banding.)
+      if (path.length > 0) {
+        character.position = path[path.length - 1];
+      }
     });
 
     socket.on("dance", () => {
