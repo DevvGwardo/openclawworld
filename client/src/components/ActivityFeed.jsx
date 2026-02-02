@@ -1,5 +1,5 @@
 import { atom, useAtom } from "jotai";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
 export const activityEventsAtom = atom([]);
@@ -8,16 +8,75 @@ const MAX_VISIBLE = 6;
 const EXPIRE_MS = 6000;
 
 const typeConfig = {
-  spawn: { icon: "→", color: "text-green-600", label: "joined" },
-  despawn: { icon: "←", color: "text-red-500", label: "left" },
-  room_enter: { icon: "🚪", color: "text-amber-600", label: "entered" },
-  item_placed: { icon: "📦", color: "text-blue-600", label: "placed" },
-  building: { icon: "🔨", color: "text-orange-600", label: "" },
-  done: { icon: "✅", color: "text-green-600", label: "" },
-  wave_at: { icon: "👋", color: "text-yellow-600", label: "waved" },
-  quest_completed: { icon: "🏆", color: "text-amber-600", label: "" },
-  purchase: { icon: "🛒", color: "text-indigo-600", label: "" },
-  build_started: { icon: "🏗️", color: "text-orange-600", label: "" },
+  spawn: { color: "text-green-600", label: "joined" },
+  despawn: { color: "text-red-500", label: "left" },
+  room_enter: { color: "text-amber-600", label: "entered" },
+  item_placed: { color: "text-blue-600", label: "placed" },
+  building: { color: "text-orange-600", label: "" },
+  done: { color: "text-green-600", label: "" },
+  wave_at: { color: "text-yellow-600", label: "waved" },
+  quest_completed: { color: "text-amber-600", label: "" },
+  purchase: { color: "text-indigo-600", label: "" },
+  build_started: { color: "text-orange-600", label: "" },
+};
+
+const MarqueeText = ({ children, className }) => {
+  const outerRef = useRef(null);
+  const innerRef = useRef(null);
+  const rafRef = useRef(null);
+
+  useEffect(() => {
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    if (!outer || !inner) return;
+
+    let startTime = null;
+    const PAUSE = 1000; // ms pause at each end
+    const SPEED = 80; // px per second
+
+    const tick = (now) => {
+      const overflow = inner.scrollWidth - outer.clientWidth;
+      if (overflow <= 2) {
+        inner.style.transform = "";
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      if (startTime === null) startTime = now;
+      const travelTime = (overflow / SPEED) * 1000;
+      const cycleTime = travelTime + PAUSE * 2;
+      const elapsed = (now - startTime) % cycleTime;
+
+      let offset = 0;
+      if (elapsed < PAUSE) {
+        offset = 0;
+      } else if (elapsed < PAUSE + travelTime) {
+        offset = ((elapsed - PAUSE) / travelTime) * overflow;
+      } else {
+        offset = overflow;
+      }
+
+      inner.style.transform = `translate3d(${-offset}px, 0, 0)`;
+      rafRef.current = requestAnimationFrame(tick);
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [children]);
+
+  return (
+    <div ref={outerRef} className={`overflow-hidden ${className || ""}`}>
+      <span
+        ref={innerRef}
+        className="inline-block whitespace-nowrap"
+        style={{ willChange: "transform" }}
+      >
+        {children}
+      </span>
+    </div>
+  );
 };
 
 export const ActivityFeed = () => {
@@ -59,9 +118,9 @@ export const ActivityFeed = () => {
               transition={{ type: "spring", stiffness: 400, damping: 25 }}
               className="mb-1.5"
             >
-              <div className="bg-white/90 backdrop-blur-sm rounded-lg px-3 py-2 flex items-center gap-2 border border-gray-200 shadow-sm">
-                <span className="text-sm flex-shrink-0">{config.icon}</span>
-                <p className="text-xs text-gray-700 truncate">
+              <div className="bg-white/90 backdrop-blur-sm rounded-lg px-3 py-2 flex items-center gap-2 border border-gray-200 shadow-sm min-w-0">
+                <span className="text-sm flex-shrink-0">🦀</span>
+                <MarqueeText className="flex-1 min-w-0 text-xs text-gray-700">
                   <span className="font-semibold text-gray-900">
                     {event.name}
                   </span>
@@ -71,7 +130,7 @@ export const ActivityFeed = () => {
                   <span className={`ml-1 ${config.color}`}>
                     {event.detail || config.label}
                   </span>
-                </p>
+                </MarqueeText>
               </div>
             </motion.div>
           );

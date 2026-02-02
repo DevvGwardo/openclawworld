@@ -300,6 +300,8 @@ export const Avatar = memo(function Avatar({
   // Footstep sound accumulator (local player only)
   const footstepAccRef = useRef(0);
   const footstepVariantRef = useRef(0);
+  // Grace period to avoid idle flash between path replacements
+  const walkGraceRef = useRef(0);
   // Staggered entrance delay so characters pop in at different times
   const entranceDelayRef = useRef(0.05 + Math.random() * 0.5);
   // Idle look-around state — characters periodically glance in different directions
@@ -397,8 +399,21 @@ export const Avatar = memo(function Avatar({
         }
         return;
       }
+
+      // Skip leading waypoints that the character is already at/near
+      // so we don't pause for a frame at the start of a new path
+      let startIndex = 0;
+      if (group.current && newPath.length > 1) {
+        while (
+          startIndex < newPath.length - 1 &&
+          group.current.position.distanceTo(newPath[startIndex]) < ARRIVAL_THRESHOLD
+        ) {
+          startIndex++;
+        }
+      }
+
       pathRef.current = newPath;
-      pathIndexRef.current = 0;
+      pathIndexRef.current = startIndex;
       if (value.path && value.path.length > 0) {
         lastServerGridPos.current = value.path[value.path.length - 1];
       }
@@ -641,6 +656,7 @@ export const Avatar = memo(function Avatar({
           isWavingRef.current = false;
           idleTimeRef.current = 0;
           idleLookTargetRef.current = null;
+          walkGraceRef.current = 0.15; // reset grace timer while walking
 
           // Footstep sounds — local player only, every ~350ms
           if (id === user) {
@@ -660,7 +676,18 @@ export const Avatar = memo(function Avatar({
             walkToSitRef.current = false;
             isSittingRef.current = true;
           }
+
+          // Keep walk animation active while there are more waypoints
+          // so we don't flash idle for a frame between waypoints
+          if (pathIndexRef.current < path.length) {
+            applyAnimation("M_Walk_001");
+            walkGraceRef.current = 0.15;
+          }
         }
+      } else if (walkGraceRef.current > 0) {
+        // Grace period — hold walk animation briefly after path ends
+        // so a new path from a quick re-click doesn't cause idle flash
+        walkGraceRef.current -= delta;
       } else if (isWavingRef.current) {
         idleTimeRef.current = 0;
         idleLookTargetRef.current = null;
