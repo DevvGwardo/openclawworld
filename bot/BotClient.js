@@ -88,6 +88,11 @@ export class BotClient extends EventEmitter {
         this.emit("waveAt", data);
       });
 
+      this.socket.on("rooms", (roomsList) => {
+        this.rooms = roomsList;
+        this.emit("roomsUpdate", roomsList);
+      });
+
       this.socket.on("mapUpdate", (data) => {
         this.room = data.map;
         this.characters = data.characters;
@@ -217,6 +222,34 @@ export class BotClient extends EventEmitter {
       throw new Error("Cannot place item: not in a room");
     }
     this.socket.emit("placeItem", { itemName, gridPosition, rotation });
+  }
+
+  claimApartment(roomId) {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error("Not connected"));
+        return;
+      }
+
+      const timeout = setTimeout(() => {
+        reject(new Error("Claim apartment timeout"));
+      }, 5000);
+
+      this.socket.emit("claimApartment", roomId, (result) => {
+        clearTimeout(timeout);
+        if (result && result.success) {
+          // Update local room list with new name
+          const localRoom = this.rooms.find((r) => r.id === roomId);
+          if (localRoom) {
+            localRoom.name = result.name;
+            localRoom.claimedBy = this.name;
+          }
+          resolve(result);
+        } else {
+          reject(new Error(result?.error || "Failed to claim apartment"));
+        }
+      });
+    });
   }
 
   observe() {

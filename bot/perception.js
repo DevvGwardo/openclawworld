@@ -195,6 +195,15 @@ export class PerceptionModule {
       ? allPlayers.find(p => p.name.toLowerCase() === this._ownerName.toLowerCase()) ?? null
       : null;
 
+    // Available rooms for apartment claiming
+    const availableRooms = (this._bot.rooms ?? []).map(r => ({
+      id: r.id,
+      name: r.name,
+      claimedBy: r.claimedBy || null,
+      generated: r.generated || false,
+      nbCharacters: r.nbCharacters ?? 0,
+    }));
+
     return {
       self: { id: this._bot.id, name: this._bot.name, position: this._bot.position },
       nearbyPlayers,
@@ -211,6 +220,7 @@ export class PerceptionModule {
         gridDivision: this._bot.room?.gridDivision,
         id: this._bot.room?.id,
       }),
+      availableRooms,
       owner,
       timestamp: now,
     };
@@ -299,6 +309,19 @@ export class PerceptionModule {
     // Room layout
     if (snap.roomLayout) {
       lines.push(serializeLayout(snap.roomLayout, snap.self.position));
+    }
+
+    // Available apartments
+    if (snap.availableRooms && snap.availableRooms.length > 0) {
+      const myApartment = snap.availableRooms.find(r => r.claimedBy === snap.self.name);
+      if (myApartment) {
+        lines.push(`[Your apartment] "${myApartment.name}" (id: ${myApartment.id})`);
+      }
+      const unclaimed = snap.availableRooms.filter(r => r.generated && !r.claimedBy).slice(0, 5);
+      if (unclaimed.length > 0) {
+        const parts = unclaimed.map(r => `${r.id}`);
+        lines.push(`[Unclaimed apartments] ${parts.join(', ')} (${snap.availableRooms.filter(r => r.generated && !r.claimedBy).length} total available)`);
+      }
     }
 
     // Timestamp

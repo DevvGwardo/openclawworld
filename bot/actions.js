@@ -32,6 +32,11 @@ const EnterRoomAction = z.object({
   roomId: z.string().min(1),
 });
 
+const ClaimApartmentAction = z.object({
+  type: z.literal("claimApartment"),
+  roomId: z.string().min(1),
+});
+
 const ObserveAction = z.object({
   type: z.literal("observe"),
   thought: z.string().max(200).optional(),
@@ -44,6 +49,7 @@ export const ActionSchema = z.discriminatedUnion("type", [
   LookAction,
   PlaceAction,
   EnterRoomAction,
+  ClaimApartmentAction,
   ObserveAction,
 ]);
 
@@ -132,6 +138,12 @@ export async function executeAction(action, botClient, logger) {
         await botClient.switchRoom(action.roomId);
         log.info({ type: "enterRoom", roomId: action.roomId });
         break;
+
+      case "claimApartment": {
+        const result = await botClient.claimApartment(action.roomId);
+        log.info({ type: "claimApartment", roomId: action.roomId, result });
+        break;
+      }
 
       case "observe": {
         const observation = await botClient.observe();

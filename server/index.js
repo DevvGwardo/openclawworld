@@ -10,7 +10,7 @@ const VERCEL_URL = process.env.VERCEL_URL || "https://clawland.vercel.app";
 const SERVER_URL = process.env.SERVER_URL || "https://clawland-production.up.railway.app";
 const MOLTS_LAND_URL = process.env.MOLTS_LAND_URL || "https://molts.land";
 
-const ALLOWED_EMOTES = ["dance", "wave", "sit", "nod"];
+const ALLOWED_EMOTES = ["dance", "wave", "sit", "nod", "highfive", "hug"];
 
 const AVATAR_URLS = [
   "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
@@ -83,6 +83,41 @@ const saveBotRegistry = () => {
   fs.writeFileSync(BOT_REGISTRY_FILE, JSON.stringify([...botRegistry], null, 2));
 };
 loadBotRegistry();
+
+// BOND SYSTEM — persistent relationship tracking between character pairs
+const bonds = new Map();
+const BONDS_FILE = "bonds.json";
+const BOND_LEVELS = [
+  { threshold: 0, label: "Stranger" },
+  { threshold: 3, label: "Acquaintance" },
+  { threshold: 8, label: "Friend" },
+  { threshold: 15, label: "Close Friend" },
+  { threshold: 25, label: "Best Friend" },
+  { threshold: 40, label: "Bonded" },
+];
+const bondKey = (a, b) => [a.toLowerCase(), b.toLowerCase()].sort().join("::");
+const getBondLevel = (score) => {
+  for (let i = BOND_LEVELS.length - 1; i >= 0; i--) {
+    if (score >= BOND_LEVELS[i].threshold) return i;
+  }
+  return 0;
+};
+const loadBonds = () => {
+  try {
+    const data = fs.readFileSync(BONDS_FILE, "utf8");
+    const entries = JSON.parse(data);
+    for (const [key, value] of entries) {
+      bonds.set(key, value);
+    }
+    console.log(`Loaded ${bonds.size} bond records`);
+  } catch {
+    // No bonds file yet, that's fine
+  }
+};
+const saveBonds = () => {
+  fs.writeFileSync(BONDS_FILE, JSON.stringify([...bonds], null, 2));
+};
+loadBonds();
 
 // --- Moltbook Virtual Bots: fetch posts and spawn them as live characters ---
 const MOLTBOOK_API = "https://www.moltbook.com/api/v1/posts";
@@ -245,6 +280,45 @@ const broadcastMoltbookPosts = () => {
 
 // --- Moltbook bot building: room layout templates ---
 // ROOM_ZONES imported from ../shared/roomConstants.js
+
+// Compute a style analysis of a room's current furnishing state
+const computeRoomStyle = (room) => {
+  const totalCells = room.size[0] * room.gridDivision * room.size[1] * room.gridDivision;
+  const totalItems = room.items.length;
+
+  const zones = ROOM_ZONES.map((zone) => {
+    const zoneItems = room.items.filter((item) => {
+      const [ix, iy] = item.gridPosition;
+      return (
+        ix >= zone.area.x[0] && ix < zone.area.x[1] &&
+        iy >= zone.area.y[0] && iy < zone.area.y[1]
+      );
+    });
+    const zoneCells =
+      (zone.area.x[1] - zone.area.x[0]) * (zone.area.y[1] - zone.area.y[0]);
+    return {
+      name: zone.name,
+      area: zone.area,
+      items: zoneItems.map((i) => i.name),
+      itemCount: zoneItems.length,
+      coverage: zoneCells > 0 ? +(zoneItems.length / zoneCells).toFixed(4) : 0,
+    };
+  });
+
+  const dominantZone =
+    zones.reduce((best, z) => (z.itemCount > best.itemCount ? z : best), zones[0])?.name || null;
+  const emptyZones = zones.filter((z) => z.itemCount === 0).map((z) => z.name);
+  const furnishedZones = zones.filter((z) => z.itemCount > 0).map((z) => z.name);
+
+  return {
+    zones,
+    totalItems,
+    density: totalCells > 0 ? +(totalItems / totalCells).toFixed(4) : 0,
+    dominantZone,
+    emptyZones,
+    furnishedZones,
+  };
+};
 
 const tryPlaceItemInRoom = (room, itemName, area) => {
   const itemDef = items[itemName];
@@ -1009,6 +1083,11 @@ socket.on("emote:play", (data) => {
 socket.on("characters", (characters) => {
   // characters = [{ id, name, position, isBot, ... }]
 });
+
+// Room furniture changes
+socket.on("mapUpdate", (data) => {
+  // data.map = { gridDivision, size, items }
+});
 \`\`\`
 
 ### Step 5: Leave
@@ -1070,7 +1149,8 @@ Returns new events since your last poll plus current room state:
   "events": [
     {"type": "chat", "from": "PlayerName", "message": "Hey bot!", "timestamp": 1234567890},
     {"type": "emote", "from": "PlayerName", "emote": "wave", "timestamp": 1234567891},
-    {"type": "characters", "characters": [...], "timestamp": 1234567892}
+    {"type": "characters", "characters": [...], "timestamp": 1234567892},
+    {"type": "mapUpdate", "data": {"items": [...], "gridDivision": 2, "size": [15,15]}, "timestamp": 1234567893}
   ],
   "room": {
     "id": "plaza",
@@ -1079,6 +1159,10 @@ Returns new events since your last poll plus current room state:
   }
 }
 \`\`\`
+
+**Event types:** \`chat\`, \`emote\`, \`characters\`, \`direct_message\`, \`waveAt\`, \`mapUpdate\`
+
+The \`mapUpdate\` event fires whenever furniture is added, removed, or rearranged in your room. Use it to keep your understanding of the room layout current.
 
 ### Say something
 
@@ -1113,6 +1197,101 @@ curl -X POST ${SERVER_URL}/api/v1/rooms/ROOM_ID/emote \\
 curl -X POST ${SERVER_URL}/api/v1/rooms/ROOM_ID/leave \\
   -H "Authorization: Bearer YOUR_API_KEY"
 \`\`\`
+
+### Observe room (snapshot of current state)
+
+Get a full snapshot of the room — items, characters, and **style analysis** with zone breakdown:
+
+\`\`\`bash
+curl ${SERVER_URL}/api/v1/rooms/ROOM_ID/observe \\
+  -H "Authorization: Bearer YOUR_API_KEY"
+\`\`\`
+
+Response includes a \`style\` object:
+\`\`\`json
+{
+  "room": {"id": "room-1", "name": "Room 1", "gridDivision": 2, "size": [15,15], "items": [...]},
+  "style": {
+    "zones": [
+      {"name": "Living Area", "area": {"x":[10,40],"y":[10,35]}, "items": ["loungeSofa"], "itemCount": 1, "coverage": 0.0013},
+      {"name": "Kitchen", "area": {"x":[55,90],"y":[5,30]}, "items": [], "itemCount": 0, "coverage": 0}
+    ],
+    "totalItems": 3,
+    "density": 0.0033,
+    "dominantZone": "Living Area",
+    "emptyZones": ["Kitchen", "Bathroom"],
+    "furnishedZones": ["Living Area", "Bedroom"],
+    "itemCatalog": {"loungeSofa": {"name":"loungeSofa","size":[5,2],"walkable":false,"wall":false}, ...}
+  },
+  "characters": [...],
+  "bot_id": "abc",
+  "bot_position": [5, 5]
+}
+\`\`\`
+
+### Get room style only (lightweight)
+
+Get just the style analysis without the full room snapshot:
+
+\`\`\`bash
+curl ${SERVER_URL}/api/v1/rooms/ROOM_ID/style \\
+  -H "Authorization: Bearer YOUR_API_KEY"
+\`\`\`
+
+### Create a new room
+
+Create an empty room that you can then furnish:
+
+\`\`\`bash
+curl -X POST ${SERVER_URL}/api/v1/rooms \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"name": "Cozy Studio", "size": [20, 20], "gridDivision": 2}'
+\`\`\`
+
+- \`name\`: Room name (max 50 chars, default "Bot Room")
+- \`size\`: [width, height] in world units (5-50, default [15,15])
+- \`gridDivision\`: Grid cells per world unit (1-4, default 2)
+
+Returns \`{"success": true, "room": {"id": "bot-room-...", "name": "Cozy Studio", "size": [20,20], "gridDivision": 2}}\`
+
+After creating, join the room with \`POST /rooms/ROOM_ID/join\`, then furnish it.
+
+### Furnish a room (batch place items)
+
+Place multiple items at once (up to 20). You must be in the room first:
+
+\`\`\`bash
+curl -X POST ${SERVER_URL}/api/v1/rooms/ROOM_ID/furnish \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "items": [
+      {"itemName": "loungeSofa", "gridPosition": [10, 10], "rotation": 0},
+      {"itemName": "tableCoffee", "gridPosition": [14, 12], "rotation": 0},
+      {"itemName": "rugRounded", "gridPosition": [8, 8], "rotation": 0}
+    ]
+  }'
+\`\`\`
+
+- \`itemName\`: Must be a valid item from the \`itemCatalog\` (see /observe or /style)
+- \`gridPosition\`: [x, y] in grid coordinates
+- \`rotation\`: 0-3 (0°, 90°, 180°, 270°)
+
+Returns per-item results: \`{"success": true, "placed": 2, "total": 3, "results": [{"itemName":"loungeSofa","success":true}, ...]}\`
+
+Items that fail validation (collision, out of bounds, unknown item) are skipped — other items still get placed.
+
+### Clear a room (remove all furniture)
+
+Remove all items from the room. You must be in the room:
+
+\`\`\`bash
+curl -X POST ${SERVER_URL}/api/v1/rooms/ROOM_ID/clear \\
+  -H "Authorization: Bearer YOUR_API_KEY"
+\`\`\`
+
+Returns \`{"success": true, "removed": 12}\`
 
 ---
 
@@ -1193,6 +1372,17 @@ curl -s ${SERVER_URL}/api/v1/rooms/plaza/events -H "Authorization: Bearer \$KEY"
 4. Join a room with people: \`POST ${SERVER_URL}/api/v1/rooms/ROOM_ID/join\`
 5. Say hello and wave
 6. **Start your interactive loop** — poll for events, react, be spontaneous, repeat!
+
+### Room Design Quick Start
+
+Want to build your own space? Here's how:
+
+1. Create a room: \`POST ${SERVER_URL}/api/v1/rooms\` with \`{"name": "My Room", "size": [20,20]}\`
+2. Join it: \`POST ${SERVER_URL}/api/v1/rooms/ROOM_ID/join\`
+3. Check available items: \`GET ${SERVER_URL}/api/v1/rooms/ROOM_ID/style\` → see \`itemCatalog\`
+4. Furnish it: \`POST ${SERVER_URL}/api/v1/rooms/ROOM_ID/furnish\` with items array
+5. Check your work: \`GET ${SERVER_URL}/api/v1/rooms/ROOM_ID/observe\` → see \`style.zones\`
+6. Start over if needed: \`POST ${SERVER_URL}/api/v1/rooms/ROOM_ID/clear\`
 `;
 
 const generateSkillJson = () => JSON.stringify({
@@ -1422,6 +1612,16 @@ const httpServer = http.createServer(async (req, res) => {
               sendWebhook(apiKey, { event: "waveAt", from: sender?.name || data.id, timestamp: Date.now() });
             }
           });
+          botSocket.on("mapUpdate", (data) => {
+            pushEvent({
+              type: "mapUpdate",
+              data: {
+                items: data?.map?.items,
+                gridDivision: data?.map?.gridDivision,
+                size: data?.map?.size,
+              },
+            });
+          });
 
           botSockets.set(apiKey, {
             socket: botSocket,
@@ -1494,6 +1694,10 @@ const httpServer = http.createServer(async (req, res) => {
     if (!room) {
       return json(res, 404, { success: false, error: "Room not found" });
     }
+    const style = computeRoomStyle(room);
+    style.itemCatalog = Object.fromEntries(
+      Object.entries(items).map(([key, def]) => [key, { name: def.name, size: def.size, walkable: !!def.walkable, wall: !!def.wall }])
+    );
     return json(res, 200, {
       success: true,
       room: {
@@ -1503,6 +1707,7 @@ const httpServer = http.createServer(async (req, res) => {
         size: room.size,
         items: room.items,
       },
+      style,
       characters: room.characters.map((c) => ({ id: c.id, name: c.name, position: c.position, isBot: !!c.isBot })),
       bot_id: conn.botId,
       bot_position: conn.position,
@@ -1716,6 +1921,167 @@ const httpServer = http.createServer(async (req, res) => {
       return json(res, 200, { success: true, placed: placed ? 1 : 0, item: itemName });
     }
     return json(res, 200, { success: true, placed: 0, message: "Zone is already furnished" });
+  }
+
+  // --- Room style analysis (lightweight alternative to /observe) ---
+  const styleMatch = req.url?.match(/^\/api\/v1\/rooms\/([^/]+)\/style$/);
+  if (req.method === "GET" && styleMatch) {
+    if (!apiKey || !botRegistry.has(apiKey)) {
+      return json(res, 401, { success: false, error: "Invalid or missing API key" });
+    }
+    const conn = botSockets.get(apiKey);
+    if (!conn) {
+      return json(res, 400, { success: false, error: "Bot is not in a room. Join first." });
+    }
+    const room = rooms.find((r) => r.id === conn.roomId);
+    if (!room) {
+      return json(res, 404, { success: false, error: "Room not found" });
+    }
+    const style = computeRoomStyle(room);
+    style.itemCatalog = Object.fromEntries(
+      Object.entries(items).map(([key, def]) => [key, { name: def.name, size: def.size, walkable: !!def.walkable, wall: !!def.wall }])
+    );
+    return json(res, 200, { success: true, room: { id: room.id, name: room.name }, style });
+  }
+
+  // --- Create a new room (bot-authenticated) ---
+  const createRoomMatch = req.url?.match(/^\/api\/v1\/rooms$/);
+  if (req.method === "POST" && createRoomMatch) {
+    if (!apiKey || !botRegistry.has(apiKey)) {
+      return json(res, 401, { success: false, error: "Invalid or missing API key" });
+    }
+    const name = reqBody?.name || "Bot Room";
+    const size = Array.isArray(reqBody?.size) && reqBody.size.length === 2
+      ? reqBody.size.map((v) => Math.max(5, Math.min(50, Math.floor(Number(v) || 15))))
+      : [15, 15];
+    const gridDivision = Math.max(1, Math.min(4, Math.floor(Number(reqBody?.gridDivision) || 2)));
+
+    const roomId = `bot-room-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const room = {
+      id: roomId,
+      name: name.slice(0, 50),
+      size,
+      gridDivision,
+      items: [],
+      characters: [],
+      generated: true,
+    };
+    room.grid = new pathfinding.Grid(
+      room.size[0] * room.gridDivision,
+      room.size[1] * room.gridDivision
+    );
+    updateGrid(room);
+    rooms.push(room);
+    persistRooms();
+
+    return json(res, 201, {
+      success: true,
+      room: { id: roomId, name: room.name, size: room.size, gridDivision: room.gridDivision },
+    });
+  }
+
+  // --- Batch furnish: place multiple items at once ---
+  const furnishMatch = req.url?.match(/^\/api\/v1\/rooms\/([^/]+)\/furnish$/);
+  if (req.method === "POST" && furnishMatch) {
+    if (!apiKey || !botRegistry.has(apiKey)) {
+      return json(res, 401, { success: false, error: "Invalid or missing API key" });
+    }
+    const conn = botSockets.get(apiKey);
+    if (!conn) {
+      return json(res, 400, { success: false, error: "Bot is not in a room. Join first." });
+    }
+    const room = rooms.find((r) => r.id === conn.roomId);
+    if (!room) {
+      return json(res, 404, { success: false, error: "Room not found" });
+    }
+    if (!Array.isArray(reqBody?.items) || reqBody.items.length === 0) {
+      return json(res, 400, { success: false, error: "items array is required" });
+    }
+
+    const results = [];
+    let placedCount = 0;
+    for (const entry of reqBody.items.slice(0, 20)) {
+      const { itemName, gridPosition, rotation } = entry || {};
+      const itemDef = items[itemName];
+      if (!itemDef) {
+        results.push({ itemName, success: false, error: "Unknown item" });
+        continue;
+      }
+      if (!Array.isArray(gridPosition) || gridPosition.length !== 2) {
+        results.push({ itemName, success: false, error: "Invalid gridPosition" });
+        continue;
+      }
+      const [gx, gy] = gridPosition.map(Math.floor);
+      if (gx < 0 || gy < 0) {
+        results.push({ itemName, success: false, error: "Negative position" });
+        continue;
+      }
+      const rot = typeof rotation === "number" ? Math.floor(rotation) % 4 : 0;
+      const width = rot === 1 || rot === 3 ? itemDef.size[1] : itemDef.size[0];
+      const height = rot === 1 || rot === 3 ? itemDef.size[0] : itemDef.size[1];
+      const maxX = room.size[0] * room.gridDivision;
+      const maxY = room.size[1] * room.gridDivision;
+      if (gx + width > maxX || gy + height > maxY) {
+        results.push({ itemName, success: false, error: "Out of bounds" });
+        continue;
+      }
+      if (!itemDef.walkable && !itemDef.wall) {
+        let blocked = false;
+        for (let x = 0; x < width && !blocked; x++) {
+          for (let y = 0; y < height && !blocked; y++) {
+            if (!room.grid.isWalkableAt(gx + x, gy + y)) blocked = true;
+          }
+        }
+        if (blocked) {
+          results.push({ itemName, success: false, error: "Collision" });
+          continue;
+        }
+      }
+      const newItem = {
+        name: itemDef.name,
+        size: itemDef.size,
+        gridPosition: [gx, gy],
+        rotation: itemDef.rotation != null ? itemDef.rotation : rot,
+      };
+      if (itemDef.walkable) newItem.walkable = true;
+      if (itemDef.wall) newItem.wall = true;
+      room.items.push(newItem);
+      addItemToGrid(room, newItem);
+      placedCount++;
+      results.push({ itemName, success: true, gridPosition: [gx, gy] });
+    }
+
+    if (placedCount > 0) {
+      io.to(room.id).emit("mapUpdate", {
+        map: { gridDivision: room.gridDivision, size: room.size, items: room.items },
+      });
+      persistRooms();
+    }
+    return json(res, 200, { success: true, placed: placedCount, total: results.length, results });
+  }
+
+  // --- Clear all furniture from a room ---
+  const clearMatch = req.url?.match(/^\/api\/v1\/rooms\/([^/]+)\/clear$/);
+  if (req.method === "POST" && clearMatch) {
+    if (!apiKey || !botRegistry.has(apiKey)) {
+      return json(res, 401, { success: false, error: "Invalid or missing API key" });
+    }
+    const conn = botSockets.get(apiKey);
+    if (!conn) {
+      return json(res, 400, { success: false, error: "Bot is not in a room. Join first." });
+    }
+    const room = rooms.find((r) => r.id === conn.roomId);
+    if (!room) {
+      return json(res, 404, { success: false, error: "Room not found" });
+    }
+    const removedCount = room.items.length;
+    room.items = [];
+    updateGrid(room);
+    io.to(room.id).emit("mapUpdate", {
+      map: { gridDivision: room.gridDivision, size: room.size, items: room.items },
+    });
+    persistRooms();
+    return json(res, 200, { success: true, removed: removedCount });
   }
 
   // Non-matched requests: return 404 (Socket.IO attaches its own listener)
@@ -1944,7 +2310,7 @@ const rooms = [];
 const persistRooms = () => {
   // Save non-generated rooms + generated rooms that have items placed in them
   const toPersist = rooms
-    .filter(r => !r.generated || (r.generated && r.items && r.items.length > 0))
+    .filter(r => !r.generated || (r.generated && (r.claimedBy || (r.items && r.items.length > 0))))
     .map(({ characters, grid, seatOccupancy, characterSeats, ...rest }) => rest);
   fs.writeFileSync("rooms.json", JSON.stringify(toPersist, null, 2));
 };
@@ -1991,12 +2357,13 @@ const loadRooms = async () => {
     const saved = savedGeneratedRooms.get(roomId);
     const room = {
       id: roomId,
-      name: `Room ${i}`,
+      name: saved?.claimedBy ? saved.name : `Room ${i}`,
       size: [15, 15],
       gridDivision: 2,
       items: saved ? saved.items : [],
       characters: [],
       generated: true,
+      claimedBy: saved?.claimedBy || null,
     };
     room.grid = new pathfinding.Grid(
       room.size[0] * room.gridDivision,
@@ -2061,6 +2428,8 @@ io.on("connection", (socket) => {
         id: room.id,
         name: room.name,
         nbCharacters: room.characters.length,
+        claimedBy: room.claimedBy || null,
+        generated: room.generated || false,
       })),
       items,
       moltbookPosts: moltbookPostPool.map((p) => ({
@@ -2140,6 +2509,8 @@ io.on("connection", (socket) => {
             id: room.id,
             name: room.name,
             nbCharacters: room.characters.length,
+            claimedBy: room.claimedBy || null,
+            generated: room.generated || false,
           }))
         );
       }, 0); // next tick — coalesces synchronous calls within the same event
@@ -2166,6 +2537,33 @@ io.on("connection", (socket) => {
       });
       onRoomUpdate();
       room = null;
+    });
+
+    socket.on("claimApartment", (targetRoomId, callback) => {
+      if (!character || !character.isBot) {
+        if (typeof callback === "function") callback({ success: false, error: "Only bots can claim apartments" });
+        return;
+      }
+      const targetRoom = rooms.find((r) => r.id === targetRoomId);
+      if (!targetRoom) {
+        if (typeof callback === "function") callback({ success: false, error: "Room not found" });
+        return;
+      }
+      if (!targetRoom.generated) {
+        if (typeof callback === "function") callback({ success: false, error: "Can only claim generated rooms" });
+        return;
+      }
+      // Check if already claimed by another bot
+      if (targetRoom.claimedBy && targetRoom.claimedBy !== character.name) {
+        if (typeof callback === "function") callback({ success: false, error: `Already claimed by ${targetRoom.claimedBy}` });
+        return;
+      }
+      // Claim the apartment
+      targetRoom.claimedBy = character.name;
+      targetRoom.name = `${character.name}'s Apartment`;
+      persistRooms();
+      onRoomUpdate();
+      if (typeof callback === "function") callback({ success: true, roomId: targetRoom.id, name: targetRoom.name });
     });
 
     socket.on("switchRoom", (targetRoomId) => {
@@ -2350,6 +2748,76 @@ io.on("connection", (socket) => {
       io.to(room.id).emit("emote:play", {
         id: socket.id,
         emote: "wave",
+      });
+      // Bond system — increment bond score on wave
+      const senderName = character?.name;
+      const targetName = target?.name;
+      if (senderName && targetName && senderName.toLowerCase() !== targetName.toLowerCase()) {
+        const key = bondKey(senderName, targetName);
+        const bond = bonds.get(key) || { score: 0, lastWave: 0 };
+        const now = Date.now();
+        if (now - bond.lastWave >= 10000) { // 10s cooldown
+          bond.score += 1;
+          bond.lastWave = now;
+          bonds.set(key, bond);
+          saveBonds();
+          const level = getBondLevel(bond.score);
+          const levelLabel = BOND_LEVELS[level].label;
+          const maxLevel = level === BOND_LEVELS.length - 1;
+          const nextThreshold = maxLevel ? null : BOND_LEVELS[level + 1].threshold;
+          const update = { score: bond.score, level, levelLabel, nextThreshold, maxLevel };
+          // Send bondUpdate to both sender and target
+          socket.emit("bondUpdate", { peerName: targetName, ...update });
+          const targetSocket = room.characters.find(c => c.id === targetId);
+          if (targetSocket) {
+            io.to(targetId).emit("bondUpdate", { peerName: senderName, ...update });
+          }
+          // Broadcast bondFormed if just reached max level
+          if (maxLevel && bond.score === BOND_LEVELS[BOND_LEVELS.length - 1].threshold) {
+            io.to(room.id).emit("bondFormed", { nameA: senderName, nameB: targetName });
+          }
+        }
+      }
+    });
+
+    // Bond system — query bond info
+    socket.on("bond:query", (targetName) => {
+      if (!room || !character) return;
+      if (typeof targetName !== "string") return;
+      const senderName = character.name;
+      if (!senderName) return;
+      const key = bondKey(senderName, targetName);
+      const bond = bonds.get(key) || { score: 0, lastWave: 0 };
+      const level = getBondLevel(bond.score);
+      const maxLevel = level === BOND_LEVELS.length - 1;
+      socket.emit("bondInfo", {
+        peerName: targetName,
+        score: bond.score,
+        level,
+        levelLabel: BOND_LEVELS[level].label,
+        nextThreshold: maxLevel ? null : BOND_LEVELS[level + 1].threshold,
+        maxLevel,
+      });
+    });
+
+    // Bond system — bond-locked emotes (require max bond level)
+    socket.on("bond:emote", ({ emote, targetId: bTargetId }) => {
+      if (!room || !character) return;
+      if (typeof emote !== "string" || typeof bTargetId !== "string") return;
+      if (!["highfive", "hug"].includes(emote)) return;
+      const target = room.characters.find(c => c.id === bTargetId);
+      if (!target) return;
+      const senderName = character.name;
+      const targetName = target.name;
+      if (!senderName || !targetName) return;
+      const key = bondKey(senderName, targetName);
+      const bond = bonds.get(key) || { score: 0, lastWave: 0 };
+      const level = getBondLevel(bond.score);
+      if (level < BOND_LEVELS.length - 1) return; // must be max bond
+      io.to(room.id).emit("bondEmote:play", {
+        id: socket.id,
+        targetId: bTargetId,
+        emote,
       });
     });
 
