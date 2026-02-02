@@ -7,7 +7,7 @@ import { useAnimations, useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useAtom } from "jotai";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { avatarUrlAtom } from "./UI";
+import { avatarUrlAtom } from "./SocketManager";
 import { getModelConfig, applyProceduralAnimation } from "./Avatar";
 
 export function LobbyAvatar({ ...props }) {

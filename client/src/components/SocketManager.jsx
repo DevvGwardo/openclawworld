@@ -66,6 +66,17 @@ const AVATAR_URLS = [
 ];
 const randomAvatarUrl = () => AVATAR_URLS[Math.floor(Math.random() * AVATAR_URLS.length)];
 
+// Keep the avatar URL in a shared atom so onboarding + UI stay in sync.
+// If no avatar is set yet, pick one and persist it immediately.
+const initialAvatarUrl = (() => {
+  const stored = localStorage.getItem("avatarURL");
+  if (stored) return stored;
+  const picked = randomAvatarUrl();
+  localStorage.setItem("avatarURL", picked);
+  return picked;
+})();
+export const avatarUrlAtom = atom(initialAvatarUrl);
+
 export const SocketManager = () => {
   const [_characters, setCharacters] = useAtom(charactersAtom);
   const [_chatMessages, setChatMessages] = useAtom(chatMessagesAtom);
@@ -77,6 +88,7 @@ export const SocketManager = () => {
   const [_moltbookPosts, setMoltbookPosts] = useAtom(moltbookPostsAtom);
   const [_activityEvents, setActivityEvents] = useAtom(activityEventsAtom);
   const [username] = useAtom(usernameAtom);
+  const [avatarUrl] = useAtom(avatarUrlAtom);
   const [_coins, setCoins] = useAtom(coinsAtom);
   const [_directMessages, setDirectMessages] = useAtom(directMessagesAtom);
   const [_activeQuests, setActiveQuests] = useAtom(activeQuestsAtom);
@@ -110,16 +122,14 @@ export const SocketManager = () => {
 
   // When username is set and we have a pending room to join, do the join
   useEffect(() => {
-    if (username && pendingWelcomeRef.current) {
+    if (username && avatarUrl && pendingWelcomeRef.current) {
       const roomId = pendingWelcomeRef.current;
       pendingWelcomeRef.current = null;
-      const avatarUrl =
-        localStorage.getItem("avatarURL") || randomAvatarUrl();
       setRoomTransition({ active: true, from: null, to: roomId, startedAt: Date.now() });
       socket.emit("joinRoom", roomId, { avatarUrl, name: username });
       setRoomID(roomId);
     }
-  }, [username]);
+  }, [username, avatarUrl]);
 
   useEffect(() => {
     if (!items) {
@@ -175,8 +185,7 @@ export const SocketManager = () => {
       if (value.rooms && value.rooms.length > 0) {
         const storedName = localStorage.getItem("clawland_username");
         if (storedName) {
-          const avatarUrl =
-            localStorage.getItem("avatarURL") || randomAvatarUrl();
+          const avatarUrl = localStorage.getItem("avatarURL") || initialAvatarUrl;
           setRoomTransition({ active: true, from: null, to: value.rooms[0].id, startedAt: Date.now() });
           socket.emit("joinRoom", value.rooms[0].id, {
             avatarUrl,

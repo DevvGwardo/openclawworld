@@ -22,6 +22,7 @@ import {
   userAtom,
   characterMotivesAtom,
   roomTransitionAtom,
+  avatarUrlAtom,
 } from "./SocketManager";
 import DirectMessagePanel from "./DirectMessagePanel";
 import { renderAvatarPortrait } from "./Avatar";
@@ -299,11 +300,6 @@ export const draggedItemAtom = atom(null);
 export const draggedItemRotationAtom = atom(0);
 export const showRoomSelectorAtom = atom(false);
 export const selectedShopItemAtom = atom(null);
-
-export const avatarUrlAtom = atom(
-  localStorage.getItem("avatarURL") ||
-    AVATAR_URLS[Math.floor(Math.random() * AVATAR_URLS.length)]
-);
 
 const PasswordInput = ({ onClose, onSuccess }) => {
   const [password, setPassword] = useState("");
@@ -1121,6 +1117,7 @@ export const UI = () => {
     const newUrl = url.startsWith("/") ? url : url + (url.includes("?") ? "&" : "?") + "meshlod=1&quality=medium";
     setAvatarUrl(newUrl);
     localStorage.setItem("avatarURL", newUrl);
+    localStorage.setItem("clawland_avatar_chosen", "1");
     if (roomID) {
       socket.emit("characterAvatarUpdate", newUrl);
     }
@@ -1296,6 +1293,7 @@ export const UI = () => {
                 "meshlod=1&quality=medium";
               setAvatarUrl(newAvatarUrl);
               localStorage.setItem("avatarURL", newAvatarUrl);
+              localStorage.setItem("clawland_avatar_chosen", "1");
               if (roomID) {
                 socket.emit("characterAvatarUpdate", newAvatarUrl);
               }

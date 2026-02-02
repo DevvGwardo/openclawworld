@@ -14,9 +14,8 @@ import { Apartment } from "./Apartment";
 import { ShopBuilding } from "./ShopBuilding";
 import { SmallBuilding } from "./SmallBuilding";
 import { Skyscraper } from "./Skyscraper";
-import { mapAtom, roomIDAtom, roomsAtom, socket } from "./SocketManager";
+import { avatarUrlAtom, mapAtom, roomIDAtom, roomsAtom, socket } from "./SocketManager";
 import { Tablet } from "./Tablet";
-import { avatarUrlAtom, showRoomSelectorAtom } from "./UI";
 let firstLoad = true;
 export const Lobby = () => {
   const [rooms] = useAtom(roomsAtom);
