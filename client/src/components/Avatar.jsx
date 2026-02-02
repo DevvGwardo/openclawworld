@@ -14,6 +14,7 @@ import { dmPanelTargetAtom } from "./DirectMessagePanel";
 import soundManager from "../audio/SoundManager";
 
 import * as THREE from "three";
+import { GLTFLoader } from "three-stdlib";
 import { motion } from "framer-motion-3d";
 
 // Atom to track which character's profile popup is open
@@ -332,7 +333,7 @@ export const Avatar = memo(function Avatar({
     });
   }, [clone]);
 
-  // Reset cached bone refs when the model changes so they get re-looked up
+  // Reset all cached refs when the model changes so animation state starts fresh
   useEffect(() => {
     hipsRef.current = null;
     leftUpLegRef.current = null;
@@ -342,6 +343,14 @@ export const Avatar = memo(function Avatar({
     proceduralBonesRef.current = null;
     restPosesRef.current = null;
     proceduralTimeRef.current = 0;
+    // Reset animation state so humanoid animations re-initialize properly
+    animationRef.current = "M_Standing_Idle_001";
+    initRef.current = false;
+    isDancingRef.current = false;
+    isWavingRef.current = false;
+    isSittingRef.current = false;
+    walkToSitRef.current = false;
+    seatDataRef.current = null;
   }, [clone]);
 
   // Initial animation play + random facing direction
@@ -748,7 +757,7 @@ export const Avatar = memo(function Avatar({
       {(showHtmlOverlay || id === user) && (
         <>
           {/* Always-visible name label — clickable to open character menu */}
-          <Html position-y={isNonHumanoid ? 1.3 : 2.3} center distanceFactor={8} zIndexRange={[1, 0]} style={{ overflow: 'visible', pointerEvents: 'none' }}>
+          <Html position-y={isNonHumanoid ? 1.1 : 2.1} center distanceFactor={8} zIndexRange={[1, 0]} style={{ overflow: 'visible', pointerEvents: 'none' }}>
             <div
               className="select-none cursor-pointer"
               style={{ pointerEvents: 'auto' }}
@@ -777,8 +786,8 @@ export const Avatar = memo(function Avatar({
               </div>
             </div>
           </Html>
-          {/* Chat bubble + action status */}
-          <Html position-y={isNonHumanoid ? 1.0 : 2} center distanceFactor={8} zIndexRange={[1, 0]} style={{ overflow: 'visible', pointerEvents: 'none' }}>
+          {/* Chat bubble + action status — positioned above name label */}
+          <Html position-y={isNonHumanoid ? 1.7 : 2.8} center distanceFactor={8} zIndexRange={[1, 0]} style={{ overflow: 'visible', pointerEvents: 'none' }}>
             <div className="w-60 max-w-full pointer-events-none overflow-visible">
               {/* Action status indicator — hidden for bots to reduce visual noise */}
               {actionStatus && !showChatBubble && !isBot && (
@@ -811,9 +820,6 @@ export const Avatar = memo(function Avatar({
                   showChatBubble ? "opacity-100" : "opacity-0"
                 }`}
               >
-                <p className="text-[10px] font-bold text-gray-600 mb-0.5 truncate">
-                  {name} {isBot && <span className="text-blue-400 font-semibold">[BOT]</span>}
-                </p>
                 <p className="text-sm text-black leading-snug">{chatMessage}</p>
               </div>
             </div>
@@ -853,25 +859,152 @@ export const Avatar = memo(function Avatar({
   );
 });
 
+// --- Avatar Portrait Renderer ---
+// Renders a close-up face portrait of a character model off-screen
+const avatarPortraitCache = {};
+
+const renderAvatarPortrait = (avatarUrl, callback) => {
+  if (!avatarUrl) return;
+  if (avatarPortraitCache[avatarUrl]) {
+    callback(avatarPortraitCache[avatarUrl]);
+    return;
+  }
+
+  const size = 256;
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  renderer.setSize(size, size);
+  renderer.setPixelRatio(1);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xe8e8e8);
+
+  // Soft lighting for portrait
+  scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+  const keyLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  keyLight.position.set(1, 1, 2);
+  scene.add(keyLight);
+  const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+  fillLight.position.set(-1, 0.5, 1);
+  scene.add(fillLight);
+
+  const camera = new THREE.PerspectiveCamera(35, 1, 0.01, 100);
+
+  const loader = new GLTFLoader();
+  loader.load(
+    avatarUrl,
+    (gltf) => {
+      const model = gltf.scene;
+      scene.add(model);
+
+      const modelConfig = getModelConfig(avatarUrl);
+
+      // Non-humanoid models keep default orientation (face is toward +Z)
+
+      // Update matrices so bone world positions are correct
+      model.updateMatrixWorld(true);
+
+      let targetPos;
+      let cameraDistance;
+
+      if (modelConfig) {
+        // Non-humanoid: use bounding box for reliable framing
+        const box = new THREE.Box3().setFromObject(model);
+        const size3 = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        // Target upper portion (face area)
+        targetPos = new THREE.Vector3(center.x, center.y + size3.y * 0.15, center.z);
+        // Pull back enough to see the whole upper body
+        cameraDistance = Math.max(size3.x, size3.y, size3.z) * 1.5;
+      } else {
+        // Humanoid (RPM): find Head bone for precise framing
+        let headBone = null;
+        model.traverse((child) => {
+          if (child.isBone && child.name === "Head") {
+            headBone = child;
+          }
+        });
+
+        if (headBone) {
+          targetPos = new THREE.Vector3();
+          headBone.getWorldPosition(targetPos);
+          targetPos.y += 0.05;
+          cameraDistance = 0.5;
+        } else {
+          const box = new THREE.Box3().setFromObject(model);
+          const size3 = box.getSize(new THREE.Vector3());
+          const center = box.getCenter(new THREE.Vector3());
+          targetPos = new THREE.Vector3(center.x, center.y + size3.y * 0.25, center.z);
+          cameraDistance = Math.max(size3.x, size3.y) * 0.8;
+        }
+      }
+
+      // Position camera in front of the face
+      camera.position.set(
+        targetPos.x,
+        targetPos.y,
+        targetPos.z + cameraDistance
+      );
+      camera.lookAt(targetPos);
+
+      renderer.render(scene, camera);
+      const dataUrl = renderer.domElement.toDataURL();
+
+      // Cleanup
+      scene.remove(model);
+      model.traverse((child) => {
+        if (child.isMesh) {
+          child.geometry?.dispose();
+          if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose());
+          else child.material?.dispose();
+        }
+      });
+      renderer.dispose();
+
+      avatarPortraitCache[avatarUrl] = dataUrl;
+      callback(dataUrl);
+    },
+    undefined,
+    () => {
+      renderer.dispose();
+      callback(null);
+    }
+  );
+};
+
 export const CharacterMenu = () => {
   const [selectedCharacter, setSelectedCharacter] = useAtom(selectedCharacterAtom);
   const [followedCharacter, setFollowedCharacter] = useAtom(followedCharacterAtom);
   const [, setDmPanelTarget] = useAtom(dmPanelTargetAtom);
   const [user] = useAtom(userAtom);
-  const [imgError, setImgError] = useState(false);
+  const [portraitUrl, setPortraitUrl] = useState(null);
+  const [portraitLoading, setPortraitLoading] = useState(false);
   const prevCharIdRef = useRef(null);
-  if (selectedCharacter?.id !== prevCharIdRef.current) {
-    prevCharIdRef.current = selectedCharacter?.id;
-    if (imgError) setImgError(false);
-  }
+
+  // Render portrait when selected character changes
+  useEffect(() => {
+    if (!selectedCharacter?.avatarUrl) return;
+    if (selectedCharacter.id === prevCharIdRef.current) return;
+    prevCharIdRef.current = selectedCharacter.id;
+
+    const url = selectedCharacter.avatarUrl;
+    if (avatarPortraitCache[url]) {
+      setPortraitUrl(avatarPortraitCache[url]);
+      setPortraitLoading(false);
+      return;
+    }
+
+    setPortraitUrl(null);
+    setPortraitLoading(true);
+    renderAvatarPortrait(url, (dataUrl) => {
+      setPortraitUrl(dataUrl);
+      setPortraitLoading(false);
+    });
+  }, [selectedCharacter?.id, selectedCharacter?.avatarUrl]);
 
   if (!selectedCharacter || selectedCharacter.id === user) return null;
 
   const isFollowing = followedCharacter?.id === selectedCharacter.id;
-  const isLocalAvatar = selectedCharacter.avatarUrl?.startsWith("/");
-  const thumbnailUrl = selectedCharacter.avatarUrl && !isLocalAvatar
-    ? selectedCharacter.avatarUrl.split("?")[0].replace(".glb", ".png") + "?size=256"
-    : "";
 
   const handleWave = () => {
     socket.emit("wave:at", selectedCharacter.id);
@@ -914,21 +1047,24 @@ export const CharacterMenu = () => {
       <div className="absolute inset-0 bg-black/30" onClick={handleClose} />
 
       <div className="relative pointer-events-auto bg-white/95 backdrop-blur-md rounded-2xl border border-gray-200 shadow-2xl min-w-[240px] max-w-[280px] overflow-hidden">
-        {/* Avatar thumbnail */}
+        {/* Avatar portrait — rendered from 3D model */}
         <div className="bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center py-5">
           <div className="w-20 h-20 rounded-full overflow-hidden bg-gray-200 border-2 border-gray-300 shadow-lg">
-            {!imgError ? (
+            {portraitUrl ? (
               <img
-                src={thumbnailUrl}
+                src={portraitUrl}
                 alt={selectedCharacter.name}
                 className="w-full h-full object-cover"
-                onError={() => setImgError(true)}
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-gray-400">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-                </svg>
+                {portraitLoading ? (
+                  <div className="w-5 h-5 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-gray-400">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                  </svg>
+                )}
               </div>
             )}
           </div>
@@ -937,57 +1073,67 @@ export const CharacterMenu = () => {
         {/* Name + badge */}
         <div className="text-center px-4 pt-3 pb-2">
           <p className="text-gray-900 font-semibold text-base">{selectedCharacter.name || "Player"}</p>
-          <span className={`inline-block mt-1 text-xs font-semibold px-2.5 py-0.5 rounded-full ${
-            selectedCharacter.isBot
-              ? "bg-blue-100 text-blue-600"
-              : "bg-green-100 text-green-600"
-          }`}>
-            {selectedCharacter.isBot ? "Bot" : "Player"}
-          </span>
+          {selectedCharacter.isBot && selectedCharacter.id?.startsWith('moltbot-') ? (
+            <span className="inline-flex items-center gap-1 mt-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-orange-100 text-orange-600">
+              <img src="https://www.moltbook.com/favicon.ico" alt="" className="w-3.5 h-3.5 rounded-sm" />
+              Molt
+            </span>
+          ) : (
+            <span className={`inline-block mt-1 text-xs font-semibold px-2.5 py-0.5 rounded-full ${
+              selectedCharacter.isBot
+                ? "bg-blue-100 text-blue-600"
+                : "bg-green-100 text-green-600"
+            }`}>
+              {selectedCharacter.isBot ? "Bot" : "Player"}
+            </span>
+          )}
         </div>
 
         {/* Actions */}
-        <div className="flex flex-col gap-2 p-3 pt-2">
+        <div className="flex items-end justify-center gap-1 px-3 py-3 bg-white/95 backdrop-blur-sm rounded-b-2xl border-t border-gray-100">
           <button
             onClick={handleWave}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm transition-colors text-left"
+            className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors group"
           >
-            <span className="text-base">{"\u{1F44B}"}</span>
-            <span>Wave at {selectedCharacter.name || "them"}</span>
+            <span className="text-lg">{"\u{1F44B}"}</span>
+            <span className="text-[10px] text-gray-500 group-hover:text-gray-800 font-medium transition-colors">Wave</span>
           </button>
           <button
             onClick={handleFollow}
-            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-left ${
-              isFollowing
-                ? "bg-blue-100 hover:bg-blue-200 text-blue-600"
-                : "bg-gray-100 hover:bg-gray-200 text-gray-700"
+            className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl cursor-pointer transition-colors group ${
+              isFollowing ? "bg-blue-50" : "hover:bg-gray-100"
             }`}
           >
-            <span className="text-base">{isFollowing ? "\u{1F441}\uFE0F" : "\u{1F4F7}"}</span>
-            <span>{isFollowing ? "Unfollow camera" : `Follow ${selectedCharacter.name || "them"}`}</span>
+            <span className="text-lg">{isFollowing ? "\u{1F441}\uFE0F" : "\u{1F4F7}"}</span>
+            <span className={`text-[10px] font-medium transition-colors ${
+              isFollowing
+                ? "text-blue-600"
+                : "text-gray-500 group-hover:text-gray-800"
+            }`}>{isFollowing ? "Unfollow" : "Follow"}</span>
           </button>
-          {selectedCharacter.isBot && (
+          {selectedCharacter.isBot && !selectedCharacter.id?.startsWith('moltbot-') && (
             <>
+              <div className="w-px h-8 bg-gray-200" />
               <button
                 onClick={handleTalkTo}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-sm transition-colors text-left"
+                className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl cursor-pointer hover:bg-indigo-50 transition-colors group"
               >
-                <span className="text-base">{"\u{1F4AC}"}</span>
-                <span>Talk to {selectedCharacter.name || "them"}</span>
+                <span className="text-lg">{"\u{1F4AC}"}</span>
+                <span className="text-[10px] text-indigo-400 group-hover:text-indigo-600 font-medium transition-colors">Talk</span>
               </button>
               <button
                 onClick={handleShop}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 text-sm transition-colors text-left"
+                className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl cursor-pointer hover:bg-amber-50 transition-colors group"
               >
-                <span className="text-base">{"\u{1F6D2}"}</span>
-                <span>Shop</span>
+                <span className="text-lg">{"\u{1F6D2}"}</span>
+                <span className="text-[10px] text-amber-500 group-hover:text-amber-700 font-medium transition-colors">Shop</span>
               </button>
               <button
                 onClick={handleBuildRequest}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 text-sm transition-colors text-left"
+                className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl cursor-pointer hover:bg-green-50 transition-colors group"
               >
-                <span className="text-base">{"\u{1F528}"}</span>
-                <span>Help me build</span>
+                <span className="text-lg">{"\u{1F528}"}</span>
+                <span className="text-[10px] text-green-500 group-hover:text-green-700 font-medium transition-colors">Build</span>
               </button>
             </>
           )}
