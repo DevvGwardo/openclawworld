@@ -14,7 +14,7 @@ import { Apartment } from "./Apartment";
 import { ShopBuilding } from "./ShopBuilding";
 import { SmallBuilding } from "./SmallBuilding";
 import { Skyscraper } from "./Skyscraper";
-import { avatarUrlAtom, mapAtom, roomIDAtom, roomsAtom, socket } from "./SocketManager";
+import { avatarUrlAtom, mapAtom, roomIDAtom, roomsAtom, roomTransitionAtom, socket } from "./SocketManager";
 import { Tablet } from "./Tablet";
 let firstLoad = true;
 export const Lobby = () => {
@@ -22,7 +22,9 @@ export const Lobby = () => {
   const [avatarUrl] = useAtom(avatarUrlAtom);
   const [_roomID, setRoomID] = useAtom(roomIDAtom);
   const [_map, setMap] = useAtom(mapAtom);
+  const [, setRoomTransition] = useAtom(roomTransitionAtom);
   const joinRoom = (roomId) => {
+    setRoomTransition({ active: true, from: null, to: roomId, startedAt: Date.now() });
     socket.emit("joinRoom", roomId, {
       avatarUrl,
     });

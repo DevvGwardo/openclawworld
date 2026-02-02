@@ -615,29 +615,29 @@ const RoomTransitionOverlay = ({ transition, roomLabel }) => {
     <AnimatePresence>
       {transition?.active && (
         <motion.div
-          className="fixed inset-0 z-[60] grid place-items-center"
+          className="fixed inset-0 z-[200] grid place-items-center pointer-events-auto"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
+          transition={{ duration: 0.18, ease: "easeOut" }}
         >
-          <div className="absolute inset-0 bg-gradient-to-b from-slate-900/35 via-slate-900/45 to-slate-900/35 backdrop-blur-sm" />
           <motion.div
-            className="relative w-[92vw] max-w-sm rounded-2xl border border-white/15 bg-white/90 backdrop-blur-md shadow-2xl px-5 py-4"
-            initial={{ y: 14, scale: 0.97, opacity: 0 }}
+            className="absolute inset-0 bg-black"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.92 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+          />
+
+          <motion.div
+            className="relative w-[92vw] max-w-sm rounded-2xl border border-white/10 bg-black/40 backdrop-blur-md shadow-2xl px-5 py-4"
+            initial={{ y: 10, scale: 0.98, opacity: 0 }}
             animate={{ y: 0, scale: 1, opacity: 1 }}
-            exit={{ y: 10, scale: 0.98, opacity: 0 }}
-            transition={{ type: "spring", damping: 24, stiffness: 320 }}
+            exit={{ y: 8, scale: 0.985, opacity: 0 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
           >
             <div className="flex items-center gap-3">
-              <div className="relative w-10 h-10 rounded-xl bg-sky-50 border border-sky-200 grid place-items-center overflow-hidden">
-                <motion.div
-                  className="absolute inset-0"
-                  initial={{ opacity: 0.0 }}
-                  animate={{ opacity: 0.25 }}
-                  exit={{ opacity: 0.0 }}
-                  transition={{ duration: 0.25, ease: "easeOut" }}
-                  style={{ boxShadow: "0 0 0 1px rgba(14,165,233,0.18) inset" }}
-                />
+              <div className="relative w-10 h-10 rounded-xl bg-white/10 border border-white/10 grid place-items-center overflow-hidden">
                 <motion.img
                   src="/favicon.ico"
                   alt=""
@@ -660,22 +660,23 @@ const RoomTransitionOverlay = ({ transition, roomLabel }) => {
                 />
               </div>
               <div className="min-w-0">
-                <p className="text-gray-900 font-extrabold tracking-tight">Teleporting…</p>
-                <p className="text-xs text-gray-500 mt-0.5 truncate">
-                  {roomLabel ? `Heading to ${roomLabel}` : "Moving you to your destination"}
+                <p className="text-white font-extrabold tracking-tight">Teleporting...</p>
+                <p className="text-xs text-white/70 mt-0.5 truncate">
+                  {roomLabel ? `Heading to ${roomLabel}` : "Loading room"}
                 </p>
               </div>
             </div>
-            <div className="mt-3 h-1.5 w-full rounded-full bg-gray-200 overflow-hidden">
+
+            <div className="mt-3 h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
               <motion.div
-                className="h-full bg-gradient-to-r from-sky-500 via-emerald-400 to-amber-300"
+                className="h-full bg-white"
                 initial={{ x: "-40%" }}
                 animate={{ x: "110%" }}
-                transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut" }}
+                transition={{ duration: 1.05, repeat: Infinity, ease: "easeInOut" }}
                 style={{ width: "40%" }}
               />
             </div>
-            <p className="text-[11px] text-gray-500 mt-2">Tip: You can press ? anytime for controls.</p>
+            <p className="text-[11px] text-white/55 mt-2">Tip: Press ? anytime for controls.</p>
           </motion.div>
         </motion.div>
       )}
