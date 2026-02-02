@@ -15,6 +15,7 @@ import { NewsTicker } from "./components/NewsTicker";
 import { ActivityFeed } from "./components/ActivityFeed";
 import { WelcomeModal } from "./components/WelcomeModal";
 import { CharacterMenu, followedCharacterAtom } from "./components/Avatar";
+import { Minimap } from "./components/Minimap";
 import soundManager from "./audio/SoundManager";
 import AudioSettingsPanel from "./audio/AudioSettingsPanel";
 
@@ -89,6 +90,7 @@ function App() {
       {loaded && <CharacterMenu />}
       {loaded && <FollowIndicator />}
       {loaded && <UI />}
+      {loaded && <Minimap />}
       {loaded && <AudioSettingsPanel />}
       {loaded && showWelcome && (
         <WelcomeModal
