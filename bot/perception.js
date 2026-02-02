@@ -24,12 +24,14 @@ export class PerceptionModule {
     this._bot = botClient;
     this._radius = options.radius ?? 15;
     this._chatHistoryMs = options.chatHistoryMs ?? 300_000;
+    this._directMessageHistoryMs = options.directMessageHistoryMs ?? 300_000;
     this._activityHistoryMs = options.activityHistoryMs ?? 120_000;
     this._maxOwnActions = options.maxOwnActions ?? 8;
     this._maxActivityEvents = options.maxActivityEvents ?? 30;
     this._ownerName = options.ownerName ?? null;
 
     this._chatHistory = [];    // { id, name, message, timestamp }
+    this._directMessages = []; // { id, name, message, timestamp }
     this._ownActions = [];     // { type, params, timestamp }
     this._activityFeed = [];   // { event, detail, timestamp }
 
@@ -54,6 +56,17 @@ export class PerceptionModule {
     const name = character?.session?.name ?? character?.name ?? `Player-${id.slice(0, 4)}`;
     this._chatHistory.push({ id, name, message, timestamp: Date.now() });
     this._pruneChat();
+  }
+
+  /**
+   * Record an incoming direct message.
+   * @param {{ id: string, name?: string, message: string }} msg
+   */
+  onDirectMessage({ id, name, message }) {
+    const character = this._bot.characters?.find(c => c.id === id);
+    const senderName = name ?? character?.session?.name ?? character?.name ?? `Player-${id.slice(0, 4)}`;
+    this._directMessages.push({ id, name: senderName, message, timestamp: Date.now() });
+    this._pruneDirectMessages();
   }
 
   /**
@@ -196,10 +209,17 @@ export class PerceptionModule {
 
     // Prune chat and map
     this._pruneChat();
+    this._pruneDirectMessages();
     const recentChat = this._chatHistory.map(c => ({
       name: c.name,
       message: c.message,
       secsAgo: Math.round((now - c.timestamp) / 1000),
+    }));
+    const recentDirectMessages = this._directMessages.map(c => ({
+      name: c.name,
+      message: c.message,
+      secsAgo: Math.round((now - c.timestamp) / 1000),
+      senderId: c.id,
     }));
 
     // Own recent actions
@@ -253,6 +273,7 @@ export class PerceptionModule {
       nearbyPlayers,
       totalPlayersInRoom,
       recentChat,
+      recentDirectMessages,
       ownRecentActions,
       activityFeed,
       roomItems,
@@ -333,6 +354,17 @@ export class PerceptionModule {
       lines.push(`[Chat] ${parts.join(' | ')}`);
     }
 
+    // Direct messages
+    if (snap.recentDirectMessages.length === 0) {
+      lines.push('[Direct messages] None');
+    } else {
+      const parts = snap.recentDirectMessages.map(c => {
+        const msg = c.message.length > 120 ? c.message.slice(0, 117) + '...' : c.message;
+        return `(${c.secsAgo}s ago) ${c.name} (${c.senderId}): ${msg}`;
+      });
+      lines.push(`[Direct messages] ${parts.join(' | ')}`);
+    }
+
     // Activity feed
     if (snap.activityFeed.length > 0) {
       const parts = snap.activityFeed.slice(-10).map(a => `(${a.secsAgo}s ago) ${a.detail}`);
@@ -401,6 +433,12 @@ export class PerceptionModule {
   _pruneChat() {
     const cutoff = Date.now() - this._chatHistoryMs;
     this._chatHistory = this._chatHistory.filter(c => c.timestamp >= cutoff);
+  }
+
+  /** @private */
+  _pruneDirectMessages() {
+    const cutoff = Date.now() - this._directMessageHistoryMs;
+    this._directMessages = this._directMessages.filter(c => c.timestamp >= cutoff);
   }
 
   /** @private */

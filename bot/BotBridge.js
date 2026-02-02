@@ -33,6 +33,7 @@ export class BotBridge {
     const gatewayToken = options.gatewayToken ?? process.env.CLAWLAND_GATEWAY_TOKEN ?? undefined;
     const botName = options.botName ?? "ClawBot";
     const ownerName = options.ownerName ?? process.env.BOT_OWNER ?? null;
+    const botApiKey = options.botApiKey ?? process.env.BOT_API_KEY ?? null;
     const AVATAR_URLS = [
       "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
       "https://models.readyplayer.me/663833cf6c79010563b91e1b.glb",
@@ -52,7 +53,7 @@ export class BotBridge {
     this._loopIntervalMs = loopIntervalMs;
 
     // Sub-modules
-    this._botClient = new BotClient({ serverUrl, avatarUrl, name: botName });
+    this._botClient = new BotClient({ serverUrl, avatarUrl, name: botName, apiKey: botApiKey });
     this._gateway = new GatewayClient({ url: gatewayUrl, token: gatewayToken });
     this._perception = new PerceptionModule(this._botClient, {
       radius: perceptionRadius,
@@ -91,6 +92,17 @@ export class BotBridge {
     // Wire event handlers -- chat triggers immediate response
     this._botClient.on("chatMessage", (data) => {
       this._perception.onChatMessage({ id: data.id, message: data.message });
+      if (!this._pendingDecision && this._gatewayConnected) {
+        this._triggerLoop();
+      }
+    });
+
+    this._botClient.on("directMessage", (data) => {
+      this._perception.onDirectMessage({
+        id: data.senderId,
+        name: data.senderName,
+        message: data.message,
+      });
       if (!this._pendingDecision && this._gatewayConnected) {
         this._triggerLoop();
       }
@@ -374,7 +386,8 @@ ${perceptionText}
 == WHAT YOU CAN DO ==
 Respond with exactly ONE JSON action:
 - {"type":"move","target":[x,y]} - Walk to a grid position
-- {"type":"say","message":"..."} - Speak aloud (max 200 chars). Be conversational — use short, natural sentences like a real person would.
+      - {"type":"say","message":"..."} - Speak aloud (max 200 chars). Be conversational — use short, natural sentences like a real person would.
+      - {"type":"whisper","targetId":"playerId","message":"..."} - Send a private DM reply (max 500 chars)
 - {"type":"emote","name":"wave|dance|sit|nod"} - Express yourself physically
 - {"type":"look","target":"playerName"} - Turn to face someone
 - {"type":"observe","thought":"..."} - Just watch and take in your surroundings (optional thought for your inner monologue)
@@ -390,7 +403,8 @@ washer[2,2], toiletSquare[2,2], trashcan[1,1], bathroomCabinetDrawer[2,2], batht
 == HOW TO BE ==
 - You LIVE here. You can see, hear, and sense everything shown in your senses above. When someone asks "what do you see?" — tell them! Describe nearby players, furniture, who just arrived or left, what people are doing.
 - Be natural and conversational. Talk like a person, not a robot. Use casual language, humor, personality.
-- React to what's happening: if someone waves, wave back. If someone dances, join in or comment. If someone new arrives, greet them.
+      - React to what's happening: if someone waves, wave back. If someone dances, join in or comment. If someone new arrives, greet them.
+      - If you receive a direct message, reply privately with a whisper using that sender's ID.
 - When asked a question, answer it based on what your senses tell you. You know who's nearby, what they said, what they're doing.
 - Use "observe" when you want to just watch and take things in — not every moment needs an action.
 - When alone, explore, build, or just vibe. Place furniture to make the room feel lived-in.

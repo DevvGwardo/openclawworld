@@ -13,11 +13,13 @@ export class BotClient extends EventEmitter {
     serverUrl = "http://localhost:3000",
     avatarUrl = AVATAR_URLS[Math.floor(Math.random() * AVATAR_URLS.length)],
     name = "ClawBot",
+    apiKey = null,
   } = {}) {
     super();
     this.serverUrl = serverUrl;
     this.avatarUrl = avatarUrl;
     this.name = name;
+    this.apiKey = apiKey;
     this.socket = null;
     this.id = null;
     this.room = null;
@@ -32,12 +34,14 @@ export class BotClient extends EventEmitter {
 
   connect() {
     return new Promise((resolve, reject) => {
+      const auth = this.apiKey ? { token: this.apiKey } : undefined;
       this.socket = io(this.serverUrl, {
         transports: ["websocket"],
         autoConnect: true,
         reconnection: true,
         reconnectionAttempts: 5,
         reconnectionDelay: 1000,
+        auth,
       });
 
       this.socket.once("welcome", (data) => {
@@ -62,6 +66,10 @@ export class BotClient extends EventEmitter {
 
       this.socket.on("playerChatMessage", (data) => {
         this.emit("chatMessage", data);
+      });
+
+      this.socket.on("directMessage", (data) => {
+        this.emit("directMessage", data);
       });
 
       this.socket.on("emote:play", (data) => {
@@ -233,6 +241,19 @@ export class BotClient extends EventEmitter {
       throw new Error("Message must be a non-empty string");
     }
     this.socket.emit("chatMessage", message);
+  }
+
+  whisper(targetId, message) {
+    if (!this.socket || !this.id) {
+      throw new Error("Cannot whisper: not connected or not in a room");
+    }
+    if (typeof targetId !== "string" || targetId.length === 0) {
+      throw new Error("Invalid targetId for whisper");
+    }
+    if (typeof message !== "string" || message.length === 0) {
+      throw new Error("Message must be a non-empty string");
+    }
+    this.socket.emit("directMessage", { targetId, message: message.slice(0, 500) });
   }
 
   emote(emoteName) {

@@ -25,8 +25,10 @@ import {
   avatarUrlAtom,
   mapAtom,
   pendingInteractionAtom,
+  dmUnreadCountsAtom,
+  dmInboxOpenAtom,
 } from "./SocketManager";
-import DirectMessagePanel from "./DirectMessagePanel";
+import DirectMessagePanel, { dmPanelTargetAtom } from "./DirectMessagePanel";
 import { renderAvatarPortrait } from "./Avatar";
 import soundManager from "../audio/SoundManager";
 
@@ -1269,6 +1271,9 @@ export const UI = () => {
   const [, setSelectedShopItem] = useAtom(selectedShopItemAtom);
   const [roomTransition, setRoomTransition] = useAtom(roomTransitionAtom);
   const [map] = useAtom(mapAtom);
+  const [dmUnreadCounts] = useAtom(dmUnreadCountsAtom);
+  const [dmInboxOpen, setDmInboxOpen] = useAtom(dmInboxOpenAtom);
+  const [dmPanelTarget, setDmPanelTarget] = useAtom(dmPanelTargetAtom);
 
   // Safety timeout: force-clear the transition overlay if it stays active too long
   useEffect(() => {
@@ -1416,6 +1421,10 @@ export const UI = () => {
   const totalOnline = characters.length;
   const botCount = characters.filter((c) => c.isBot).length;
   const playerCount = totalOnline - botCount;
+  const unreadThreads = useMemo(
+    () => Object.values(dmUnreadCounts).filter((count) => count > 0).length,
+    [dmUnreadCounts]
+  );
   const currentRoom = allRooms.find((r) => r.id === roomID);
   const isPlaza = currentRoom && !currentRoom.generated && !currentRoom.id.startsWith("room-");
   const isApartment = currentRoom && (currentRoom.generated || currentRoom.id.startsWith("room-"));
@@ -1705,6 +1714,33 @@ export const UI = () => {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM3 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 019.374 21c-2.331 0-4.512-.645-6.374-1.766z" />
                     </svg>
                     <span className="text-[10px] sm:text-xs text-blue-400 group-hover:text-blue-600 font-medium transition-colors">Invite</span>
+                  </button>
+                )}
+
+                {/* Inbox */}
+                {roomID && (
+                  <button
+                    className="relative flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1.5 rounded-xl cursor-pointer hover:bg-red-50 transition-colors group"
+                    onClick={() => {
+                      soundManager.play("button_click");
+                      if (dmInboxOpen || dmPanelTarget) {
+                        setDmInboxOpen(false);
+                        setDmPanelTarget(null);
+                      } else {
+                        setDmPanelTarget(null);
+                        setDmInboxOpen(true);
+                      }
+                    }}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 sm:w-6 sm:h-6 text-red-400 group-hover:text-red-600 transition-colors">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 7.5l-8.25 5.25L5.25 7.5M3.75 5.25h16.5a1.5 1.5 0 011.5 1.5v10.5a1.5 1.5 0 01-1.5 1.5H3.75a1.5 1.5 0 01-1.5-1.5V6.75a1.5 1.5 0 011.5-1.5z" />
+                    </svg>
+                    <span className="text-[10px] sm:text-xs text-red-400 group-hover:text-red-600 font-medium transition-colors">Inbox</span>
+                    {unreadThreads > 0 && (
+                      <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                        {unreadThreads}
+                      </span>
+                    )}
                   </button>
                 )}
 

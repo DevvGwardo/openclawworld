@@ -20,6 +20,9 @@ export const moltbookPostsAtom = atom([]);
 export const usernameAtom = atom(localStorage.getItem("clawland_username") || null);
 export const coinsAtom = atom(100);
 export const directMessagesAtom = atom({}); // keyed by peerId -> message array
+export const dmUnreadCountsAtom = atom({}); // keyed by peerId -> unread count
+export const dmPeersAtom = atom({}); // keyed by peerId -> { name, isBot }
+export const dmInboxOpenAtom = atom(false);
 export const activeQuestsAtom = atom([]);
 export const questNotificationsAtom = atom([]);
 export const roomHasPasswordAtom = atom(true);
@@ -94,6 +97,8 @@ export const SocketManager = () => {
   const [avatarUrl] = useAtom(avatarUrlAtom);
   const [_coins, setCoins] = useAtom(coinsAtom);
   const [_directMessages, setDirectMessages] = useAtom(directMessagesAtom);
+  const [_dmUnreadCounts, setDmUnreadCounts] = useAtom(dmUnreadCountsAtom);
+  const [_dmPeers, setDmPeers] = useAtom(dmPeersAtom);
   const [_activeQuests, setActiveQuests] = useAtom(activeQuestsAtom);
   const [_questNotifications, setQuestNotifications] = useAtom(questNotificationsAtom);
   const [_roomHasPassword, setRoomHasPassword] = useAtom(roomHasPasswordAtom);
@@ -340,6 +345,17 @@ export const SocketManager = () => {
 
     function onDirectMessage(value) {
       soundManager.play("dm_receive");
+      setDmUnreadCounts((prev) => ({
+        ...prev,
+        [value.senderId]: (prev[value.senderId] || 0) + 1,
+      }));
+      setDmPeers((prev) => ({
+        ...prev,
+        [value.senderId]: {
+          name: value.senderName || "Player",
+          isBot: !!value.senderIsBot,
+        },
+      }));
       setDirectMessages((prev) => {
         const peerId = value.senderId;
         const existing = prev[peerId] || [];

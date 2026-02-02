@@ -9,7 +9,7 @@ import { atom, useAtom } from "jotai";
 import React, { useEffect, useMemo, useRef, useState, memo, useCallback } from "react";
 import { SkeletonUtils } from "three-stdlib";
 import { useGrid } from "../hooks/useGrid";
-import { socket, userAtom, avatarDispatch, bondsAtom, charactersAtom, characterMotivesAtom, characterInteractionStatesAtom, pendingInteractionAtom } from "./SocketManager";
+import { socket, userAtom, avatarDispatch, bondsAtom, charactersAtom, characterMotivesAtom, characterInteractionStatesAtom, pendingInteractionAtom, dmInboxOpenAtom } from "./SocketManager";
 import { dmPanelTargetAtom } from "./DirectMessagePanel";
 import soundManager from "../audio/SoundManager";
 
@@ -1300,6 +1300,7 @@ export const CharacterMenu = () => {
   const [selectedCharacter, setSelectedCharacter] = useAtom(selectedCharacterAtom);
   const [followedCharacter, setFollowedCharacter] = useAtom(followedCharacterAtom);
   const [, setDmPanelTarget] = useAtom(dmPanelTargetAtom);
+  const [, setDmInboxOpen] = useAtom(dmInboxOpenAtom);
   const [user] = useAtom(userAtom);
   const [bonds] = useAtom(bondsAtom);
   const [portraitUrl, setPortraitUrl] = useState(null);
@@ -1354,11 +1355,13 @@ export const CharacterMenu = () => {
 
   const handleTalkTo = () => {
     setDmPanelTarget({ id: selectedCharacter.id, name: selectedCharacter.name, isBot: selectedCharacter.isBot });
+    setDmInboxOpen(false);
     setSelectedCharacter(null);
   };
 
   const handleShop = () => {
     setDmPanelTarget({ id: selectedCharacter.id, name: selectedCharacter.name, isBot: selectedCharacter.isBot });
+    setDmInboxOpen(false);
     // Set a brief delay then switch tab via a custom event
     setTimeout(() => window.dispatchEvent(new CustomEvent("dm-panel-tab", { detail: "shop" })), 100);
     setSelectedCharacter(null);
@@ -1496,7 +1499,7 @@ export const CharacterMenu = () => {
               </button>
             </>
           )}
-          {selectedCharacter.isBot && !selectedCharacter.id?.startsWith('moltbot-') && (
+          {selectedCharacter.isBot && selectedCharacter.isOfficialBot && !selectedCharacter.id?.startsWith('moltbot-') && (
             <>
               <div className="w-px h-8 bg-gray-200" />
               <button

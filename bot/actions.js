@@ -10,6 +10,12 @@ const SayAction = z.object({
   message: z.string().min(1).max(200),
 });
 
+const WhisperAction = z.object({
+  type: z.literal("whisper"),
+  targetId: z.string().min(1),
+  message: z.string().min(1).max(500),
+});
+
 const EmoteAction = z.object({
   type: z.literal("emote"),
   name: z.enum(["wave", "dance", "sit", "nod"]),
@@ -54,6 +60,7 @@ const CancelInteractionAction = z.object({
 export const ActionSchema = z.discriminatedUnion("type", [
   MoveAction,
   SayAction,
+  WhisperAction,
   EmoteAction,
   LookAction,
   PlaceAction,
@@ -122,6 +129,11 @@ export async function executeAction(action, botClient, logger) {
       case "say":
         botClient.say(action.message);
         log.info({ type: "say", message: action.message });
+        break;
+
+      case "whisper":
+        botClient.whisper(action.targetId, action.message);
+        log.info({ type: "whisper", targetId: action.targetId, message: action.message });
         break;
 
       case "emote":

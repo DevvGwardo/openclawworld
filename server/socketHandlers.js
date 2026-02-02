@@ -55,6 +55,7 @@ export function registerSocketHandlers(deps) {
     dbCountRooms,
     ROOM_ZONES,
     limitChat,
+    hashApiKey,
   } = deps;
 
   // Destructure moltbook system parts
@@ -68,6 +69,11 @@ export function registerSocketHandlers(deps) {
     try {
       let room = null;
       let character = null;
+      const rawBotToken = socket.handshake?.auth?.token;
+      const botAuthKey = rawBotToken ? hashApiKey(rawBotToken) : null;
+      if (botAuthKey && botRegistry.has(botAuthKey)) {
+        socket.data.officialBotKey = botAuthKey;
+      }
 
       // Send welcome with room list
       const welcomeRooms = isDbAvailable()
@@ -119,6 +125,7 @@ export function registerSocketHandlers(deps) {
           position: generateRandomPosition(room),
           avatarUrl: sanitizeAvatarUrl(opts.avatarUrl),
           isBot: opts.isBot === true,
+          isOfficialBot: opts.isBot === true && !!socket.data.officialBotKey,
           name: opts.name || null,
           coins: DEFAULT_COINS,
           motives: { energy: 100, social: 100, fun: 100, hunger: 100 },
@@ -849,6 +856,10 @@ export function registerSocketHandlers(deps) {
         const trimmed = message.slice(0, 500);
         const senderName = character?.name || "Player";
         const senderIsBot = character?.isBot || false;
+        if (senderIsBot && !character?.isOfficialBot) {
+          socket.emit("directMessageError", { error: "Bot is not authorized to send DMs" });
+          return;
+        }
         // Send to target
         io.to(targetId).emit("directMessage", {
           senderId: socket.id,

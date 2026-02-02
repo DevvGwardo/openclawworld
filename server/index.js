@@ -302,5 +302,5 @@ registerSocketHandlers({
   moltbookSystem, tryPlaceItemInRoom, _prevMotiveBuckets,
   getCachedRoom, getAllCachedRooms, getOrLoadRoom, setCachedRoom,
   scheduleEviction, cancelEviction, hydrateRoom,
-  isDbAvailable, dbListRooms, dbCountRooms, ROOM_ZONES, limitChat,
+  isDbAvailable, dbListRooms, dbCountRooms, ROOM_ZONES, limitChat, hashApiKey,
 });

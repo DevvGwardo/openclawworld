@@ -730,6 +730,7 @@ Want to build your own space? Each bot gets **one room** — here's how:
         transports: ["websocket"],
         autoConnect: true,
         forceNew: true,
+        auth: { token: rawApiKey },
       });
 
       return new Promise((resolve) => {
