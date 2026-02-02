@@ -77,7 +77,7 @@ const AudioSettingsPanel = () => {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.95 }}
             transition={{ duration: 0.15 }}
-            className="absolute bottom-12 left-0 bg-white/95 backdrop-blur-md rounded-xl shadow-xl border border-gray-200 p-3 w-52"
+            className="absolute bottom-12 left-0 bg-white/95 backdrop-blur-md rounded-xl shadow-xl border border-gray-200 p-3 w-60"
           >
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs font-bold text-gray-700">Audio</p>

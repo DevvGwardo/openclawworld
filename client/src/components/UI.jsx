@@ -337,7 +337,7 @@ const BotConnectModal = ({ onClose }) => {
   };
 
   const npxCommand = "npx moltland@latest install-moltland";
-  const manualText = "Read https://molt.land/skill.md and follow the instructions to join Molt's Land";
+  const manualText = "Read https://molts.land/skill.md and follow the instructions to join Molt's Land";
 
   return (
     <div className="fixed z-10 grid place-items-center w-full h-full top-0 left-0">
@@ -581,12 +581,12 @@ const HelpModal = ({ onClose }) => {
 
 const RoomSelectorModal = ({ onClose, currentRoomID, rooms, onSwitchRoom }) => {
   return (
-    <div className="fixed z-10 grid place-items-center w-full h-full top-0 left-0">
+    <div className="fixed inset-0 z-[100] grid place-items-center">
       <div
-        className="absolute top-0 left-0 w-full h-full bg-black bg-opacity-50 backdrop-blur-sm"
+        className="absolute inset-0 bg-black bg-opacity-50 backdrop-blur-sm"
         onClick={onClose}
       ></div>
-      <div className="bg-white rounded-2xl shadow-2xl z-10 max-w-md w-full mx-4 max-h-[80vh] flex flex-col">
+      <div className="bg-white rounded-2xl shadow-2xl z-10 max-w-md w-full mx-4 max-h-[70vh] flex flex-col overflow-hidden">
         <div className="p-5 border-b border-gray-100 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">

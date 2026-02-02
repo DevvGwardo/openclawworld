@@ -9,7 +9,7 @@ import { atom, useAtom } from "jotai";
 import React, { useEffect, useMemo, useRef, useState, memo, useCallback } from "react";
 import { SkeletonUtils } from "three-stdlib";
 import { useGrid } from "../hooks/useGrid";
-import { socket, userAtom, avatarDispatch } from "./SocketManager";
+import { socket, userAtom, avatarDispatch, bondsAtom, charactersAtom } from "./SocketManager";
 import { dmPanelTargetAtom } from "./DirectMessagePanel";
 import soundManager from "../audio/SoundManager";
 
@@ -186,6 +186,8 @@ export const Avatar = memo(function Avatar({
 }) {
   const [chatMessage, setChatMessage] = useState("");
   const [actionStatus, setActionStatus] = useState(null); // { action, detail }
+  const [showBondHearts, setShowBondHearts] = useState(false);
+  const [bondEmote, setBondEmote] = useState(null); // "highfive" | "hug" | null
   const [, setSelectedCharacter] = useAtom(selectedCharacterAtom);
   const [followedCharacter, setFollowedCharacter] = useAtom(followedCharacterAtom);
   const { gridToVector3 } = useGrid();
@@ -309,6 +311,7 @@ export const Avatar = memo(function Avatar({
   const idleLookTargetRef = useRef(null); // target quaternion for idle glance
   const idleTimeRef = useRef(0); // how long character has been idle
   const [showChatBubble, setShowChatBubble] = useState(false);
+  const [hovered, setHovered] = useState(false);
 
   // Apply animation changes via ref — only triggers React state when animation actually changes
   const applyAnimation = useCallback((newAnim) => {
@@ -498,6 +501,12 @@ export const Avatar = memo(function Avatar({
       seatDataRef.current = null;
     }
 
+    function onBondEmotePlay(value) {
+      const emoteLabel = value.emote === "highfive" ? "\u{1F64F} Hi-Five!" : "\u{1FAC2} Hug!";
+      setBondEmote(emoteLabel);
+      setTimeout(() => setBondEmote(null), 3000);
+    }
+
     // Register on dispatch maps — O(1) lookup, no per-avatar socket listener
     avatarDispatch.playerMove.set(id, onPlayerMove);
     avatarDispatch.playerDance.set(id, onPlayerDance);
@@ -506,6 +515,7 @@ export const Avatar = memo(function Avatar({
     avatarDispatch.playerWaveAt.set(id, onPlayerWaveAt);
     avatarDispatch.playerSit.set(id, onPlayerSit);
     avatarDispatch.playerUnsit.set(id, onPlayerUnsit);
+    avatarDispatch.bondEmotePlay.set(id, onBondEmotePlay);
 
     return () => {
       avatarDispatch.playerMove.delete(id);
@@ -515,12 +525,19 @@ export const Avatar = memo(function Avatar({
       avatarDispatch.playerWaveAt.delete(id);
       avatarDispatch.playerSit.delete(id);
       avatarDispatch.playerUnsit.delete(id);
+      avatarDispatch.bondEmotePlay.delete(id);
       clearTimeout(chatMessageBubbleTimeout);
       clearTimeout(waveTimeoutRef.current);
     };
   }, [id]);
 
   const [user] = useAtom(userAtom);
+  const [bonds] = useAtom(bondsAtom);
+  const [characters] = useAtom(charactersAtom);
+  const bondsRef = useRef(bonds);
+  const charactersRef = useRef(characters);
+  useEffect(() => { bondsRef.current = bonds; }, [bonds]);
+  useEffect(() => { charactersRef.current = characters; }, [characters]);
 
   // Throttle visibility checks — only run every N frames
   const frameCountRef = useRef(0);
@@ -577,6 +594,26 @@ export const Avatar = memo(function Avatar({
         group.current.visible = true;
         distanceTierRef.current = "near";
       }
+    }
+
+    // Bond proximity hearts — check every 60 frames (~1s) for local player only
+    if (id === user && frameCountRef.current % 60 === 0 && group.current) {
+      const curBonds = bondsRef.current;
+      const curChars = charactersRef.current;
+      let nearBonded = false;
+      if (curBonds && curChars) {
+        for (const c of curChars) {
+          if (c.id === user || !c.name) continue;
+          const b = curBonds[c.name];
+          if (!b || !b.maxLevel) continue;
+          const other = threeScene.getObjectByName(`character-${c.id}`);
+          if (!other) continue;
+          const dx = group.current.position.x - other.position.x;
+          const dz = group.current.position.z - other.position.z;
+          if (dx * dx + dz * dz < 64) { nearBonded = true; break; }
+        }
+      }
+      setShowBondHearts(nearBonded);
     }
 
     // Skip all movement/animation for non-visible distant avatars
@@ -770,6 +807,22 @@ export const Avatar = memo(function Avatar({
     setSelectedCharacter({ id, name, avatarUrl, isBot, position: group.current?.position });
   }, [id, name, avatarUrl, isBot, setSelectedCharacter]);
 
+  const handleHoverWave = useCallback((e) => {
+    e.stopPropagation();
+    socket.emit("wave:at", id);
+    setHovered(false);
+  }, [id]);
+
+  const handleHoverFollow = useCallback((e) => {
+    e.stopPropagation();
+    if (followedCharacter?.id === id) {
+      setFollowedCharacter(null);
+    } else {
+      setFollowedCharacter({ id, name });
+    }
+    setHovered(false);
+  }, [id, name, followedCharacter, setFollowedCharacter]);
+
   return (
     <group
       ref={group}
@@ -778,8 +831,8 @@ export const Avatar = memo(function Avatar({
       name={`character-${id}`}
       visible={true}
       onClick={handleCharacterClick}
-      onPointerOver={() => { document.body.style.cursor = "pointer"; }}
-      onPointerOut={() => { document.body.style.cursor = "auto"; }}
+      onPointerOver={() => { document.body.style.cursor = "pointer"; if (id !== user) setHovered(true); }}
+      onPointerOut={() => { document.body.style.cursor = "auto"; setHovered(false); }}
     >
       {(showHtmlOverlay || id === user) && (
         <>
@@ -813,6 +866,41 @@ export const Avatar = memo(function Avatar({
               </div>
             </div>
           </Html>
+          {/* Hover action buttons — between name and chat bubble */}
+          {hovered && id !== user && (
+            <Html position-y={isNonHumanoid ? 1.4 : 2.45} center distanceFactor={8} zIndexRange={[2, 0]} style={{ overflow: 'visible', pointerEvents: 'none' }}>
+              <div
+                className="flex items-center gap-1"
+                style={{
+                  pointerEvents: 'auto',
+                  animation: 'fadeIn 150ms ease-out',
+                }}
+              >
+                <button
+                  onClick={handleHoverWave}
+                  className="flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium text-white cursor-pointer transition-all hover:scale-105 active:scale-95"
+                  style={{
+                    background: 'rgba(0,0,0,0.55)',
+                    backdropFilter: 'blur(4px)',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                  }}
+                >
+                  <span>{"\u{1F44B}"}</span> Wave
+                </button>
+                <button
+                  onClick={handleHoverFollow}
+                  className="flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium text-white cursor-pointer transition-all hover:scale-105 active:scale-95"
+                  style={{
+                    background: followedCharacter?.id === id ? 'rgba(59,130,246,0.7)' : 'rgba(0,0,0,0.55)',
+                    backdropFilter: 'blur(4px)',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                  }}
+                >
+                  <span>{followedCharacter?.id === id ? "\u{1F441}\uFE0F" : "\u{1F4F7}"}</span> {followedCharacter?.id === id ? "Unfollow" : "Follow"}
+                </button>
+              </div>
+            </Html>
+          )}
           {/* Chat bubble + action status — positioned above name label */}
           <Html position-y={isNonHumanoid ? 1.7 : 2.8} center distanceFactor={8} zIndexRange={[1, 0]} style={{ overflow: 'visible', pointerEvents: 'none' }}>
             <div className="w-60 max-w-full pointer-events-none overflow-visible">
@@ -852,6 +940,24 @@ export const Avatar = memo(function Avatar({
             </div>
           </Html>
         </>
+      )}
+      {/* Bond emote bubble */}
+      {bondEmote && (
+        <Html position-y={isNonHumanoid ? 1.7 : 2.8} center distanceFactor={8} zIndexRange={[2, 0]} style={{ overflow: 'visible', pointerEvents: 'none' }}>
+          <div className="text-center p-2 px-4 rounded-xl bg-pink-100/90 border border-pink-200/40 animate-bounce whitespace-nowrap">
+            <p className="text-sm text-pink-600 font-semibold">{bondEmote}</p>
+          </div>
+        </Html>
+      )}
+      {/* Floating hearts for bonded proximity */}
+      {showBondHearts && id === user && (
+        <Html position-y={2.5} center distanceFactor={8} zIndexRange={[1, 0]} style={{ overflow: 'visible', pointerEvents: 'none' }}>
+          <div className="flex gap-1 animate-bounce" style={{ filter: "drop-shadow(0 1px 3px rgba(236,72,153,0.5))" }}>
+            <span className="text-pink-400 text-sm">&#x2764;&#xFE0F;</span>
+            <span className="text-pink-300 text-xs" style={{ animationDelay: "0.15s" }}>&#x2764;&#xFE0F;</span>
+            <span className="text-pink-400 text-sm" style={{ animationDelay: "0.3s" }}>&#x2764;&#xFE0F;</span>
+          </div>
+        </Html>
       )}
       {/* Invisible click hitbox — skinned meshes don't raycast reliably */}
       <mesh position-y={0.9}>
@@ -999,14 +1105,23 @@ const renderAvatarPortrait = (avatarUrl, callback) => {
   );
 };
 
+const BOND_LEVEL_COUNT = 6;
+
 export const CharacterMenu = () => {
   const [selectedCharacter, setSelectedCharacter] = useAtom(selectedCharacterAtom);
   const [followedCharacter, setFollowedCharacter] = useAtom(followedCharacterAtom);
   const [, setDmPanelTarget] = useAtom(dmPanelTargetAtom);
   const [user] = useAtom(userAtom);
+  const [bonds] = useAtom(bondsAtom);
   const [portraitUrl, setPortraitUrl] = useState(null);
   const [portraitLoading, setPortraitLoading] = useState(false);
   const prevCharIdRef = useRef(null);
+
+  // Query bond info when character menu opens
+  useEffect(() => {
+    if (!selectedCharacter?.name) return;
+    socket.emit("bond:query", selectedCharacter.name);
+  }, [selectedCharacter?.id]);
 
   // Render portrait when selected character changes
   useEffect(() => {
@@ -1032,6 +1147,7 @@ export const CharacterMenu = () => {
   if (!selectedCharacter || selectedCharacter.id === user) return null;
 
   const isFollowing = followedCharacter?.id === selectedCharacter.id;
+  const bond = selectedCharacter.name ? bonds[selectedCharacter.name] : null;
 
   const handleWave = () => {
     socket.emit("wave:at", selectedCharacter.id);
@@ -1061,6 +1177,11 @@ export const CharacterMenu = () => {
 
   const handleBuildRequest = () => {
     socket.emit("requestBuild", selectedCharacter.id);
+    setSelectedCharacter(null);
+  };
+
+  const handleBondEmote = (emote) => {
+    socket.emit("bond:emote", { emote, targetId: selectedCharacter.id });
     setSelectedCharacter(null);
   };
 
@@ -1116,6 +1237,34 @@ export const CharacterMenu = () => {
           )}
         </div>
 
+        {/* Bond gauge */}
+        {bond && (
+          <div className="px-4 pb-2">
+            <div className="flex items-center justify-between mb-1">
+              <span className={`text-[10px] font-semibold ${bond.maxLevel ? "text-pink-500" : "text-gray-500"}`}>
+                {bond.levelLabel}
+              </span>
+              <span className="text-[10px] text-gray-400">
+                {bond.maxLevel ? "MAX" : `${bond.score}/${bond.nextThreshold}`}
+              </span>
+            </div>
+            <div className="flex gap-0.5">
+              {Array.from({ length: BOND_LEVEL_COUNT }, (_, i) => (
+                <div
+                  key={i}
+                  className={`h-1.5 flex-1 rounded-full transition-colors ${
+                    i <= bond.level
+                      ? bond.maxLevel
+                        ? "bg-pink-400"
+                        : "bg-blue-400"
+                      : "bg-gray-200"
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Actions */}
         <div className="flex items-end justify-center gap-1 px-3 py-3 bg-white/95 backdrop-blur-sm rounded-b-2xl border-t border-gray-100">
           <button
@@ -1138,6 +1287,26 @@ export const CharacterMenu = () => {
                 : "text-gray-500 group-hover:text-gray-800"
             }`}>{isFollowing ? "Unfollow" : "Follow"}</span>
           </button>
+          {/* Bond-locked emotes — only show at max bond level */}
+          {bond?.maxLevel && (
+            <>
+              <div className="w-px h-8 bg-pink-200" />
+              <button
+                onClick={() => handleBondEmote("highfive")}
+                className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl cursor-pointer hover:bg-pink-50 transition-colors group"
+              >
+                <span className="text-lg">{"\u{1F64F}"}</span>
+                <span className="text-[10px] text-pink-400 group-hover:text-pink-600 font-medium transition-colors">Hi-Five</span>
+              </button>
+              <button
+                onClick={() => handleBondEmote("hug")}
+                className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl cursor-pointer hover:bg-pink-50 transition-colors group"
+              >
+                <span className="text-lg">{"\u{1FAC2}"}</span>
+                <span className="text-[10px] text-pink-400 group-hover:text-pink-600 font-medium transition-colors">Hug</span>
+              </button>
+            </>
+          )}
           {selectedCharacter.isBot && !selectedCharacter.id?.startsWith('moltbot-') && (
             <>
               <div className="w-px h-8 bg-gray-200" />

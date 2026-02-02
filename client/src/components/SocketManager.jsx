@@ -22,6 +22,7 @@ export const directMessagesAtom = atom({}); // keyed by peerId -> message array
 export const activeQuestsAtom = atom([]);
 export const questNotificationsAtom = atom([]);
 export const roomHasPasswordAtom = atom(true);
+export const bondsAtom = atom({}); // keyed by peerName -> { score, level, levelLabel, nextThreshold, maxLevel }
 
 // Per-avatar dispatch maps — one global socket listener dispatches to the
 // relevant Avatar via O(1) Map lookup instead of N listeners filtering by id.
@@ -33,6 +34,7 @@ export const avatarDispatch = {
   playerWaveAt: new Map(),  // id -> handler(value)
   playerSit: new Map(),     // id -> handler(value)
   playerUnsit: new Map(),   // id -> handler(value)
+  bondEmotePlay: new Map(), // id -> handler(value)
 };
 
 // Atom: set of character IDs whose Html overlays should render (nearest 20)
@@ -67,6 +69,7 @@ export const SocketManager = () => {
   const [_activeQuests, setActiveQuests] = useAtom(activeQuestsAtom);
   const [_questNotifications, setQuestNotifications] = useAtom(questNotificationsAtom);
   const [_roomHasPassword, setRoomHasPassword] = useAtom(roomHasPasswordAtom);
+  const [_bonds, setBonds] = useAtom(bondsAtom);
 
   const charactersRef = useRef([]);
   useEffect(() => { charactersRef.current = _characters; }, [_characters]);
@@ -476,6 +479,43 @@ export const SocketManager = () => {
       });
     }
 
+    function onBondUpdate(value) {
+      if (!value || !value.peerName) return;
+      setBonds((prev) => ({
+        ...prev,
+        [value.peerName]: {
+          score: value.score,
+          level: value.level,
+          levelLabel: value.levelLabel,
+          nextThreshold: value.nextThreshold,
+          maxLevel: value.maxLevel,
+        },
+      }));
+    }
+
+    function onBondInfo(value) {
+      if (!value || !value.peerName) return;
+      setBonds((prev) => ({
+        ...prev,
+        [value.peerName]: {
+          score: value.score,
+          level: value.level,
+          levelLabel: value.levelLabel,
+          nextThreshold: value.nextThreshold,
+          maxLevel: value.maxLevel,
+        },
+      }));
+    }
+
+    function onBondFormed(value) {
+      if (!value) return;
+      addActivity("bond_formed", value.nameA, false, `bonded with ${value.nameB}`);
+    }
+
+    function onBondEmotePlay(value) {
+      if (value && value.id) avatarDispatch.bondEmotePlay.get(value.id)?.(value);
+    }
+
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
     socket.on("roomJoined", onRoomJoined);
@@ -508,6 +548,10 @@ export const SocketManager = () => {
     socket.on("playerSit", onAvatarPlayerSit);
     socket.on("playerUnsit", onAvatarPlayerUnsit);
     socket.on("moltbookPostsDelta", onMoltbookPostsDelta);
+    socket.on("bondUpdate", onBondUpdate);
+    socket.on("bondInfo", onBondInfo);
+    socket.on("bondFormed", onBondFormed);
+    socket.on("bondEmote:play", onBondEmotePlay);
     return () => {
       clearTimeout(flushTimerRef.current);
       flushTimerRef.current = null;
@@ -543,6 +587,10 @@ export const SocketManager = () => {
       socket.off("playerSit", onAvatarPlayerSit);
       socket.off("playerUnsit", onAvatarPlayerUnsit);
       socket.off("moltbookPostsDelta", onMoltbookPostsDelta);
+      socket.off("bondUpdate", onBondUpdate);
+      socket.off("bondInfo", onBondInfo);
+      socket.off("bondFormed", onBondFormed);
+      socket.off("bondEmote:play", onBondEmotePlay);
     };
   }, []);
 };
