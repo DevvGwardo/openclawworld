@@ -133,9 +133,11 @@ export async function executeAction(action, botClient, logger) {
         log.info({ type: "enterRoom", roomId: action.roomId });
         break;
 
-      case "observe":
-        log.info({ type: "observe", thought: action.thought ?? "" }, "observing surroundings");
-        break;
+      case "observe": {
+        const observation = await botClient.observe();
+        log.info({ type: "observe", thought: action.thought ?? "", characters: observation.characters.length }, "observing surroundings");
+        return { ok: true, type: action.type, data: observation };
+      }
     }
 
     return { ok: true, type: action.type };

@@ -1471,6 +1471,34 @@ const httpServer = http.createServer(async (req, res) => {
     });
   }
 
+  const observeMatch = req.url?.match(/^\/api\/v1\/rooms\/([^/]+)\/observe$/);
+  if (req.method === "GET" && observeMatch) {
+    if (!apiKey || !botRegistry.has(apiKey)) {
+      return json(res, 401, { success: false, error: "Invalid or missing API key" });
+    }
+    const conn = botSockets.get(apiKey);
+    if (!conn) {
+      return json(res, 400, { success: false, error: "Bot is not in a room. Join first." });
+    }
+    const room = rooms.find((r) => r.id === conn.roomId);
+    if (!room) {
+      return json(res, 404, { success: false, error: "Room not found" });
+    }
+    return json(res, 200, {
+      success: true,
+      room: {
+        id: room.id,
+        name: room.name,
+        gridDivision: room.gridDivision,
+        size: room.size,
+        items: room.items,
+      },
+      characters: room.characters.map((c) => ({ id: c.id, name: c.name, position: c.position, isBot: !!c.isBot })),
+      bot_id: conn.botId,
+      bot_position: conn.position,
+    });
+  }
+
   const leaveMatch = req.url?.match(/^\/api\/v1\/rooms\/([^/]+)\/leave$/);
   if (req.method === "POST" && leaveMatch) {
     if (!apiKey || !botRegistry.has(apiKey)) {
@@ -2068,6 +2096,19 @@ io.on("connection", (socket) => {
         roomName: room.name,
       });
       onRoomUpdate();
+    });
+
+    socket.on("observeRoom", () => {
+      if (!room) return;
+      socket.emit("roomObserved", {
+        map: {
+          gridDivision: room.gridDivision,
+          size: room.size,
+          items: room.items,
+        },
+        characters: stripCharacters(room.characters),
+        id: socket.id,
+      });
     });
 
     // Debounce room updates so rapid join/leave/disconnect events within the

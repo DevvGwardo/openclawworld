@@ -219,6 +219,34 @@ export class BotClient extends EventEmitter {
     this.socket.emit("placeItem", { itemName, gridPosition, rotation });
   }
 
+  observe() {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.room) {
+        reject(new Error("Cannot observe: not in a room"));
+        return;
+      }
+
+      const timeout = setTimeout(() => {
+        reject(new Error("Observe timeout"));
+      }, 5000);
+
+      this.socket.once("roomObserved", (data) => {
+        clearTimeout(timeout);
+        this.room = data.map;
+        this.characters = data.characters;
+        if (this.id) {
+          const own = data.characters.find((c) => c.id === this.id);
+          if (own) {
+            this.position = own.position;
+          }
+        }
+        resolve(data);
+      });
+
+      this.socket.emit("observeRoom");
+    });
+  }
+
   disconnect() {
     if (this.socket) {
       this.socket.disconnect();
