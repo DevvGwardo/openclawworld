@@ -693,6 +693,95 @@ export function registerSocketHandlers(deps) {
         callback({ success: true, rooms: grouped });
       });
 
+      // Create a new room (user-initiated via UI)
+      let lastCreateRoom = 0;
+      socket.on("createRoom", async (opts, callback) => {
+        if (typeof callback !== "function") return;
+        if (!character || !room) return callback({ success: false, error: "Not in a room" });
+
+        // Rate limit: 1 room creation per 30 seconds per socket
+        const now = Date.now();
+        if (now - lastCreateRoom < 30000) {
+          return callback({ success: false, error: "Please wait before creating another room" });
+        }
+
+        // Validate inputs
+        const name = (typeof opts?.name === "string" ? opts.name.trim() : "").slice(0, 50);
+        if (name.length === 0) return callback({ success: false, error: "Room name is required" });
+
+        const sizeX = Math.max(5, Math.min(50, Math.floor(Number(opts?.sizeX) || 15)));
+        const sizeY = Math.max(5, Math.min(50, Math.floor(Number(opts?.sizeY) || 15)));
+        const gridDivision = Math.max(1, Math.min(4, Math.floor(Number(opts?.gridDivision) || 2)));
+
+        // Hash password if provided
+        let password = null;
+        if (typeof opts?.password === "string" && opts.password.trim().length > 0) {
+          password = await bcrypt.hash(opts.password.trim(), 10);
+        }
+
+        // Generate unique room ID
+        const roomId = `user-room-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+        // Create room object
+        const newRoom = hydrateRoom({
+          id: roomId,
+          name,
+          size: [sizeX, sizeY],
+          gridDivision,
+          items: [],
+          generated: false,
+          claimedBy: character.name,
+          password,
+        });
+        setCachedRoom(newRoom);
+        persistRooms(newRoom);
+        lastCreateRoom = now;
+
+        // Leave current room (reuse switchRoom logic)
+        if (character.interactionState) character.interactionState = null;
+        unsitCharacter(room, socket.id, broadcastToRoom);
+        if (room) {
+          const leavingName = character?.name || "Player";
+          const leavingIsBot = character?.isBot || false;
+          const leavingId = socket.id;
+          const oldRoomName = room.name;
+          const oldRoomId = room.id;
+          socket.leave(room.id);
+          const idx = room.characters.findIndex((c) => c.id === socket.id);
+          if (idx !== -1) room.characters.splice(idx, 1);
+          io.to(oldRoomId).emit("characterLeft", {
+            id: leavingId,
+            name: leavingName,
+            isBot: leavingIsBot,
+            roomName: oldRoomName,
+          });
+          if (room.characters.length === 0) scheduleEviction(room.id);
+        }
+
+        // Join the new room
+        room = newRoom;
+        cancelEviction(room.id);
+        socket.join(room.id);
+        character.position = generateRandomPosition(room);
+        character.path = [];
+        character.canUpdateRoom = true; // Creator always has edit access
+        room.characters.push(character);
+
+        socket.emit("roomJoined", {
+          map: {
+            gridDivision: room.gridDivision,
+            size: room.size,
+            items: room.items,
+          },
+          characters: stripCharacters(room.characters),
+          id: socket.id,
+          hasPassword: !!room.password,
+        });
+        onRoomUpdate();
+
+        callback({ success: true, roomId });
+      });
+
       // Invite a user to join your room
       socket.on("inviteToRoom", (targetId, callback) => {
         if (typeof callback !== "function") return;

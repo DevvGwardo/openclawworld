@@ -911,6 +911,134 @@ const InviteNotification = ({ invite, onAccept, onDismiss }) => {
   );
 };
 
+const CreateRoomModal = ({ onClose }) => {
+  const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const [sizePreset, setSizePreset] = useState("medium");
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState("");
+
+  const SIZE_PRESETS = {
+    small: { sizeX: 10, sizeY: 10, label: "Small", desc: "10x10" },
+    medium: { sizeX: 15, sizeY: 15, label: "Medium", desc: "15x15" },
+    large: { sizeX: 20, sizeY: 20, label: "Large", desc: "20x20" },
+  };
+
+  const handleCreate = () => {
+    const trimmedName = name.trim();
+    if (!trimmedName) { setError("Room name is required"); return; }
+    setCreating(true);
+    setError("");
+    const preset = SIZE_PRESETS[sizePreset];
+    socket.emit("createRoom", {
+      name: trimmedName,
+      password: password.trim() || undefined,
+      sizeX: preset.sizeX,
+      sizeY: preset.sizeY,
+    }, (res) => {
+      setCreating(false);
+      if (res?.success) {
+        onClose();
+      } else {
+        setError(res?.error || "Failed to create room");
+      }
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-[110] grid place-items-center">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <motion.div
+        className="bg-white rounded-2xl shadow-2xl z-10 w-full max-w-sm mx-4 overflow-hidden"
+        initial={{ scale: 0.85, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.85, opacity: 0, y: 20 }}
+        transition={{ type: "spring", damping: 25, stiffness: 300 }}
+      >
+        {/* Header */}
+        <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-emerald-600">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-bold text-gray-900">Create Room</h2>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Room name */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Room Name</label>
+            <input
+              autoFocus
+              type="text"
+              maxLength={50}
+              className="w-full border border-gray-200 bg-gray-50 rounded-xl px-4 py-2.5 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-100"
+              placeholder="My Awesome Room"
+              value={name}
+              onChange={(e) => { setName(e.target.value); setError(""); }}
+            />
+          </div>
+
+          {/* Password (optional) */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Password <span className="text-gray-400 font-normal">(optional)</span></label>
+            <input
+              type="text"
+              className="w-full border border-gray-200 bg-gray-50 rounded-xl px-4 py-2.5 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-100"
+              placeholder="Leave empty for public room"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+
+          {/* Size presets */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Room Size</label>
+            <div className="grid grid-cols-3 gap-2">
+              {Object.entries(SIZE_PRESETS).map(([key, preset]) => (
+                <button
+                  key={key}
+                  onClick={() => setSizePreset(key)}
+                  className={`p-2.5 rounded-xl border-2 text-center transition-colors ${
+                    sizePreset === key
+                      ? "border-emerald-400 bg-emerald-50 text-emerald-700"
+                      : "border-gray-200 bg-gray-50 text-gray-600 hover:border-gray-300"
+                  }`}
+                >
+                  <p className="text-sm font-semibold">{preset.label}</p>
+                  <p className="text-xs text-gray-400">{preset.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Error */}
+          {error && (
+            <p className="text-sm text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
+          )}
+
+          {/* Create button */}
+          <button
+            onClick={handleCreate}
+            disabled={creating || !name.trim()}
+            className="w-full py-2.5 rounded-xl text-sm font-semibold text-white bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {creating ? "Creating..." : "Create Room"}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 const ROOMS_PER_PAGE = 30;
 
 const RoomSelectorModal = ({ onClose, currentRoomID, onSwitchRoom }) => {
@@ -919,6 +1047,7 @@ const RoomSelectorModal = ({ onClose, currentRoomID, onSwitchRoom }) => {
   const [totalRooms, setTotalRooms] = useState(0);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [showCreateRoom, setShowCreateRoom] = useState(false);
   const debounceRef = useRef(null);
 
   const loadRooms = async (pageNum, search) => {
@@ -976,15 +1105,31 @@ const RoomSelectorModal = ({ onClose, currentRoomID, onSwitchRoom }) => {
               <p className="text-xs text-gray-400">{totalRooms} rooms total</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowCreateRoom(true)}
+              className="w-8 h-8 bg-emerald-100 hover:bg-emerald-200 rounded-lg flex items-center justify-center transition-colors"
+              title="Create Room"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-emerald-600">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+            </button>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
+
+        {/* Create Room Modal */}
+        <AnimatePresence>
+          {showCreateRoom && <CreateRoomModal onClose={() => { setShowCreateRoom(false); loadRooms(page, searchQuery.trim()); }} />}
+        </AnimatePresence>
 
         {/* Search */}
         <div className="px-4 pt-3 pb-2">

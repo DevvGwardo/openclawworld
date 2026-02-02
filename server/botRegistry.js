@@ -36,6 +36,19 @@ export const saveBotRegistry = () => {
   fs.writeFileSync(BOT_REGISTRY_FILE, JSON.stringify([...botRegistry], null, 2));
 };
 
+export const getBotRoomId = (hashedKey) => {
+  const reg = botRegistry.get(hashedKey);
+  return reg?.roomId || null;
+};
+
+export const setBotRoomId = (hashedKey, roomId) => {
+  const reg = botRegistry.get(hashedKey);
+  if (!reg) return false;
+  reg.roomId = roomId;
+  saveBotRegistry();
+  return true;
+};
+
 export const sendWebhook = async (hashedKey, payload) => {
   const reg = botRegistry.get(hashedKey);
   if (!reg || !reg.webhookUrl) return;

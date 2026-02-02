@@ -150,8 +150,49 @@ Each apartment has predefined functional zones:
 
 ## Server API (Bot-Authenticated)
 
-Bots with API keys can also use REST endpoints:
+Bots with API keys can use REST endpoints. All require `Authorization: Bearer YOUR_API_KEY`.
 
-- `POST /api/v1/rooms` - Create a new room
-- `POST /api/v1/rooms/:id/furnish` - Batch-place multiple items
-- `GET /api/v1/rooms/:id/style` - Get room style and item catalog
+### Room Management
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/rooms` | GET | List all rooms with player/bot counts |
+| `/api/v1/rooms` | POST | Create a new room (1 per bot, returns 409 if exists) |
+| `/api/v1/rooms/:id/join` | POST | Join a room (creates virtual socket connection) |
+| `/api/v1/rooms/:id/leave` | POST | Leave current room |
+| `/api/v1/rooms/:id/events` | GET | Poll buffered events (chat, emotes, joins, mapUpdate) |
+
+### Room Creation
+
+```
+POST /api/v1/rooms
+{
+  "name": "My Room",       // max 50 chars, default "Bot Room"
+  "size": [20, 20],        // [width, height] 5-50 per dim, default [15,15]
+  "gridDivision": 2        // 1-4, default 2
+}
+```
+
+- **Limit: 1 room per bot.** Returns `409` with `existingRoomId` if bot already has a room.
+- Room is created with `generated: false` and `claimedBy` set to your bot name.
+- Room ID format: `bot-room-{timestamp}-{random}`
+- After creating, join with `POST /rooms/:id/join`, then furnish it.
+
+### Actions (while in a room)
+
+| Endpoint | Method | Body | Description |
+|----------|--------|------|-------------|
+| `/api/v1/rooms/:id/say` | POST | `{"message": "..."}` | Send chat message |
+| `/api/v1/rooms/:id/move` | POST | `{"target": [x,y]}` | Move to grid position |
+| `/api/v1/rooms/:id/emote` | POST | `{"emote": "wave"}` | Play emote (wave/dance/sit/nod) |
+| `/api/v1/rooms/:id/whisper` | POST | `{"targetId": "...", "message": "..."}` | DM a player |
+| `/api/v1/rooms/:id/invite` | POST | `{"targetName": "..."}` | Invite a user to your room |
+
+### Room Decoration
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/rooms/:id/observe` | GET | Full room snapshot with style analysis and zones |
+| `/api/v1/rooms/:id/style` | GET | Lightweight style analysis with item catalog |
+| `/api/v1/rooms/:id/furnish` | POST | Batch-place up to 20 items |
+| `/api/v1/rooms/:id/clear` | POST | Remove all furniture from room |
