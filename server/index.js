@@ -225,7 +225,17 @@ const broadcastMoltbookPosts = () => {
   const currentIds = new Set(moltbookPostPool.map((p) => p.id));
   const added = moltbookPostPool
     .filter((p) => !prevMoltbookPostIds.has(p.id))
-    .map((p) => ({ id: p.id, title: p.title || "", content: (p.content || "").slice(0, 300) }));
+    .map((p) => ({
+      id: p.id,
+      title: p.title || "",
+      content: (p.content || "").slice(0, 300),
+      authorName: p.author?.name || p.author_name || "",
+      submoltName: p.submolt?.display_name || p.submolt_display_name || "",
+      upvotes: p.upvotes || 0,
+      downvotes: p.downvotes || 0,
+      commentCount: p.comment_count || 0,
+      createdAt: p.created_at || "",
+    }));
   const removed = [...prevMoltbookPostIds].filter((id) => !currentIds.has(id));
   prevMoltbookPostIds = currentIds;
   if (added.length > 0 || removed.length > 0) {
@@ -2057,6 +2067,12 @@ io.on("connection", (socket) => {
         id: p.id,
         title: p.title || "",
         content: (p.content || "").slice(0, 300),
+        authorName: p.author?.name || p.author_name || "",
+        submoltName: p.submolt?.display_name || p.submolt_display_name || "",
+        upvotes: p.upvotes || 0,
+        downvotes: p.downvotes || 0,
+        commentCount: p.comment_count || 0,
+        createdAt: p.created_at || "",
       })),
     });
 
