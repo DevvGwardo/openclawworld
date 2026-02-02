@@ -19,6 +19,14 @@ body {
   margin: 0;
 }
 
+/* Improve iOS Safari/Chrome touch interactions for the 3D canvas */
+canvas {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
 
 /* ===== Loader Screen ===== */
 

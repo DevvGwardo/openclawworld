@@ -316,7 +316,7 @@ export const Room = () => {
         <mesh
           rotation-x={-Math.PI / 2}
           position-y={-0.002}
-          onClick={onPlaneClicked}
+          onPointerDown={onPlaneClicked}
           onPointerEnter={() => setOnFloor(true)}
           onPointerLeave={() => setOnFloor(false)}
           onPointerMove={(e) => {
@@ -352,7 +352,7 @@ export const Room = () => {
             position-x={map.size[0] / 2}
             position-z={map.size[1] / 2}
             receiveShadow
-            onClick={onPlaneClicked}
+            onPointerDown={onPlaneClicked}
             onPointerEnter={() => setOnFloor(true)}
             onPointerLeave={() => setOnFloor(false)}
           >
@@ -417,7 +417,7 @@ export const Room = () => {
             position-x={map.size[0] / 2}
             position-z={map.size[1] / 2}
             receiveShadow
-            onClick={onPlaneClicked}
+            onPointerDown={onPlaneClicked}
             onPointerEnter={() => setOnFloor(true)}
             onPointerLeave={() => setOnFloor(false)}
           >

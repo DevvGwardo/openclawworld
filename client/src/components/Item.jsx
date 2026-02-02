@@ -41,7 +41,7 @@ export const Item = ({
 
   return (
     <group
-      onClick={(e) => {
+      onPointerDown={(e) => {
         if (onSitClick) {
           e.stopPropagation();
           onSitClick();
