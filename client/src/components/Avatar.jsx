@@ -11,6 +11,7 @@ import { SkeletonUtils } from "three-stdlib";
 import { useGrid } from "../hooks/useGrid";
 import { socket, userAtom, avatarDispatch } from "./SocketManager";
 import { dmPanelTargetAtom } from "./DirectMessagePanel";
+import soundManager from "../audio/SoundManager";
 
 import * as THREE from "three";
 import { motion } from "framer-motion-3d";
@@ -295,6 +296,9 @@ export const Avatar = memo(function Avatar({
   const animOffsetRef = useRef(Math.random());
   // Random initial facing direction so characters don't all face the same way
   const initialRotationRef = useRef(Math.random() * Math.PI * 2);
+  // Footstep sound accumulator (local player only)
+  const footstepAccRef = useRef(0);
+  const footstepVariantRef = useRef(0);
   // Staggered entrance delay so characters pop in at different times
   const entranceDelayRef = useRef(0.05 + Math.random() * 0.5);
   // Idle look-around state — characters periodically glance in different directions
@@ -628,6 +632,16 @@ export const Avatar = memo(function Avatar({
           isWavingRef.current = false;
           idleTimeRef.current = 0;
           idleLookTargetRef.current = null;
+
+          // Footstep sounds — local player only, every ~350ms
+          if (id === user) {
+            footstepAccRef.current += delta;
+            if (footstepAccRef.current >= 0.35) {
+              footstepAccRef.current = 0;
+              footstepVariantRef.current = (footstepVariantRef.current % 3) + 1;
+              soundManager.play(`footstep_${footstepVariantRef.current}`);
+            }
+          }
         } else {
           group.current.position.copy(target);
           pathIndexRef.current++;

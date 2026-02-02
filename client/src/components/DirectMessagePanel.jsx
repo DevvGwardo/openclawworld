@@ -2,6 +2,7 @@ import { atom, useAtom } from "jotai";
 import { useState, useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { socket, directMessagesAtom, coinsAtom, activeQuestsAtom } from "./SocketManager";
+import soundManager from "../audio/SoundManager";
 
 // Which bot's DM panel is open (null = closed)
 export const dmPanelTargetAtom = atom(null);
@@ -50,11 +51,13 @@ const DirectMessagePanel = () => {
     if (!message.trim() || !target) return;
     socket.emit("directMessage", { targetId: target.id, message: message.trim() });
     setMessage("");
+    soundManager.play("chat_send");
   };
 
   const acceptQuest = (questId) => {
     if (!target) return;
     socket.emit("acceptQuest", { botId: target.id, questId });
+    soundManager.play("quest_accept");
   };
 
   const buyItem = (itemName) => {
@@ -84,7 +87,7 @@ const DirectMessagePanel = () => {
             <p className="text-xs text-blue-500">Bot</p>
           </div>
           <button
-            onClick={() => setTarget(null)}
+            onClick={() => { soundManager.play("menu_close"); setTarget(null); }}
             className="text-gray-400 hover:text-gray-600 transition-colors"
           >
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
@@ -98,7 +101,7 @@ const DirectMessagePanel = () => {
           {["chat", "quests", "shop"].map((tab) => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => { soundManager.play("tab_switch"); setActiveTab(tab); }}
               className={`flex-1 py-2.5 text-xs font-semibold uppercase tracking-wide transition-colors ${
                 activeTab === tab
                   ? "text-slate-800 border-b-2 border-slate-800"

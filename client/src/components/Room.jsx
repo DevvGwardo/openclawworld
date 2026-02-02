@@ -39,6 +39,7 @@ import {
   shopModeAtom,
   selectedShopItemAtom,
 } from "./UI";
+import soundManager from "../audio/SoundManager";
 
 export const roomItemsAtom = atom([]);
 
@@ -151,6 +152,7 @@ export const Room = () => {
             newItems[draggedItem].rotation = draggedItemRotation;
             return newItems;
           });
+          soundManager.play("item_place");
         }
         setDraggedItem(null);
       }
@@ -277,7 +279,10 @@ export const Room = () => {
             key={`${item.name}-${idx}`}
             item={item}
             onClick={() => {
-              setDraggedItem((prev) => (prev === null ? idx : prev));
+              setDraggedItem((prev) => {
+                if (prev === null) soundManager.play("item_pickup");
+                return prev === null ? idx : prev;
+              });
               setDraggedItemRotation(item.rotation || 0);
             }}
             isDragging={draggedItem === idx}

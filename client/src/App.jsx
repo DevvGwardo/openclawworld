@@ -2,7 +2,7 @@ import { Canvas } from "@react-three/fiber";
 // import { EffectComposer, N8AO } from "@react-three/postprocessing";
 import { useProgress } from "@react-three/drei";
 import { useAtom } from "jotai";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Experience } from "./components/Experience";
 import { Loader } from "./components/Loader";
 import {
@@ -15,6 +15,8 @@ import { NewsTicker } from "./components/NewsTicker";
 import { ActivityFeed } from "./components/ActivityFeed";
 import { WelcomeModal } from "./components/WelcomeModal";
 import { CharacterMenu, followedCharacterAtom } from "./components/Avatar";
+import soundManager from "./audio/SoundManager";
+import AudioSettingsPanel from "./audio/AudioSettingsPanel";
 
 const FollowIndicator = () => {
   const [followedCharacter, setFollowedCharacter] = useAtom(followedCharacterAtom);
@@ -38,12 +40,31 @@ function App() {
   const [username, setUsername] = useAtom(usernameAtom);
   const [showWelcome, setShowWelcome] = useState(!username);
   const [items] = useAtom(itemsAtom);
+  const soundInitRef = useRef(false);
 
   useEffect(() => {
     if (progress === 100 && items) {
       setLoaded(true); // As progress can go back to 0 when new resources are loaded, we need to make sure we don't fade out the UI when that happens
     }
   }, [progress]);
+
+  // Initialize sound system on first user interaction (browser autoplay policy)
+  useEffect(() => {
+    const initSound = () => {
+      if (!soundInitRef.current) {
+        soundInitRef.current = true;
+        soundManager.init();
+        soundManager.playMusic("ambient_room");
+      }
+    };
+    window.addEventListener("click", initSound, { once: true });
+    window.addEventListener("keydown", initSound, { once: true });
+    return () => {
+      window.removeEventListener("click", initSound);
+      window.removeEventListener("keydown", initSound);
+    };
+  }, []);
+
   return (
     <>
       <SocketManager />
@@ -68,6 +89,7 @@ function App() {
       {loaded && <CharacterMenu />}
       {loaded && <FollowIndicator />}
       {loaded && <UI />}
+      {loaded && <AudioSettingsPanel />}
       {loaded && showWelcome && (
         <WelcomeModal
           onChoice={(choice, name) => {

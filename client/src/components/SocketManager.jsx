@@ -3,6 +3,7 @@ import { atom, useAtom } from "jotai";
 import { useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 import { activityEventsAtom } from "./ActivityFeed";
+import soundManager from "../audio/SoundManager";
 
 export const socket = io(
   import.meta.env.VITE_SERVER_URL || "http://localhost:3000"
@@ -201,6 +202,7 @@ export const SocketManager = () => {
     }
 
     function onPlayerChatMessage(value) {
+      soundManager.play("chat_receive");
       const chars = charactersRef.current || [];
       const sender = chars.find((c) => c.id === value.id);
       setChatMessages((prev) => {
@@ -245,6 +247,7 @@ export const SocketManager = () => {
     }
 
     function onDirectMessage(value) {
+      soundManager.play("dm_receive");
       setDirectMessages((prev) => {
         const peerId = value.senderId;
         const existing = prev[peerId] || [];
@@ -281,10 +284,12 @@ export const SocketManager = () => {
     }
 
     function onQuestAccepted(value) {
+      soundManager.play("quest_accept");
       setActiveQuests((prev) => [...prev, { questId: value.questId, ...value.quest }]);
     }
 
     function onQuestCompleted(value) {
+      soundManager.play("quest_complete");
       setActiveQuests((prev) => prev.filter(q => q.id !== value.questId));
       setQuestNotifications((prev) => [...prev.slice(-5), {
         id: `${Date.now()}`,
@@ -297,6 +302,7 @@ export const SocketManager = () => {
     }
 
     function onPurchaseComplete(value) {
+      soundManager.play("purchase_complete");
       setCoins(value.coins);
       addActivity("purchase", "You", false, `bought ${value.item} for ${value.price} coins`);
     }
@@ -315,6 +321,7 @@ export const SocketManager = () => {
         // Don't add duplicates
         if (prev.some((c) => c.id === char.id)) return prev;
         addActivity("spawn", char.name || "Player", char.isBot);
+        soundManager.play("player_join");
         return [...prev, char];
       });
     }
@@ -326,6 +333,7 @@ export const SocketManager = () => {
         const idx = prev.findIndex((c) => c.id === value.id);
         if (idx === -1) return prev; // not in our list
         addActivity("despawn", value.name || "Player", value.isBot);
+        soundManager.play("player_leave");
         const next = [...prev];
         next.splice(idx, 1);
         return next;
@@ -421,7 +429,10 @@ export const SocketManager = () => {
     }
 
     function onAvatarPlayerDance(value) {
-      if (value && value.id) avatarDispatch.playerDance.get(value.id)?.(value);
+      if (value && value.id) {
+        soundManager.play("dance_start");
+        avatarDispatch.playerDance.get(value.id)?.(value);
+      }
     }
 
     function onAvatarPlayerChatMessage(value) {
@@ -433,11 +444,17 @@ export const SocketManager = () => {
     }
 
     function onAvatarPlayerWaveAt(value) {
-      if (value && value.id) avatarDispatch.playerWaveAt.get(value.id)?.(value);
+      if (value && value.id) {
+        soundManager.play("wave_emote");
+        avatarDispatch.playerWaveAt.get(value.id)?.(value);
+      }
     }
 
     function onAvatarPlayerSit(value) {
-      if (value && value.id) avatarDispatch.playerSit.get(value.id)?.(value);
+      if (value && value.id) {
+        soundManager.play("sit_down");
+        avatarDispatch.playerSit.get(value.id)?.(value);
+      }
     }
 
     function onAvatarPlayerUnsit(value) {

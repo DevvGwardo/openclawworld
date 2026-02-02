@@ -8,6 +8,7 @@ import { GLTFLoader } from "three-stdlib";
 import { roomItemsAtom } from "./Room";
 import { roomIDAtom, roomsAtom, socket, switchRoom, coinsAtom, activeQuestsAtom, questNotificationsAtom, charactersAtom, itemsAtom } from "./SocketManager";
 import DirectMessagePanel from "./DirectMessagePanel";
+import soundManager from "../audio/SoundManager";
 
 // Offscreen thumbnail renderer — renders each GLB to a data URL image
 const thumbnailCache = {};
@@ -365,7 +366,7 @@ const BotConnectModal = ({ onClose }) => {
           {/* Tabs */}
           <div className="flex gap-2 mb-4">
             <button
-              onClick={() => setActiveTab("molthub")}
+              onClick={() => { soundManager.play("tab_switch"); setActiveTab("molthub"); }}
               className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-colors ${
                 activeTab === "molthub"
                   ? "bg-slate-800 text-white"
@@ -375,7 +376,7 @@ const BotConnectModal = ({ onClose }) => {
               molthub
             </button>
             <button
-              onClick={() => setActiveTab("manual")}
+              onClick={() => { soundManager.play("tab_switch"); setActiveTab("manual"); }}
               className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-colors ${
                 activeTab === "manual"
                   ? "bg-slate-800 text-white"
@@ -528,7 +529,7 @@ const HelpModal = ({ onClose }) => {
           {sections.map((s) => (
             <button
               key={s.id}
-              onClick={() => setActiveSection(s.id)}
+              onClick={() => { soundManager.play("tab_switch"); setActiveSection(s.id); }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${
                 activeSection === s.id
                   ? "bg-slate-800 text-white"
@@ -702,6 +703,7 @@ export const UI = () => {
     setRoomID(targetRoomId);
     setBuildMode(false);
     setShopMode(false);
+    soundManager.play("room_transition");
   };
   // Open room selector when triggered from 3D scene (e.g. clicking Apartment building)
   useEffect(() => {
@@ -726,6 +728,7 @@ export const UI = () => {
     if (chatMessage.length > 0) {
       socket.emit("chatMessage", chatMessage);
       setChatMessage("");
+      soundManager.play("chat_send");
     }
   };
 
@@ -743,6 +746,7 @@ export const UI = () => {
   // Auto-dismiss quest notifications
   useEffect(() => {
     if (questNotifications.length === 0) return;
+    soundManager.play("notification");
     const timer = setTimeout(() => {
       setQuestNotifications((prev) => prev.slice(1));
     }, 4000);
@@ -835,7 +839,7 @@ export const UI = () => {
         <AnimatePresence>
           {characterSelectorMode && (
             <CharacterSelectorModal
-              onClose={() => setCharacterSelectorMode(false)}
+              onClose={() => { soundManager.play("menu_close"); setCharacterSelectorMode(false); }}
               currentAvatarUrl={avatarUrl}
               onSelectAvatar={handleSelectCharacter}
               onCustomAvatar={() => setAvatarMode(true)}
@@ -864,16 +868,16 @@ export const UI = () => {
           />
         )}
         {botConnectMode && (
-          <BotConnectModal onClose={() => setBotConnectMode(false)} />
+          <BotConnectModal onClose={() => { soundManager.play("menu_close"); setBotConnectMode(false); }} />
         )}
         <AnimatePresence>
           {helpMode && (
-            <HelpModal onClose={() => setHelpMode(false)} />
+            <HelpModal onClose={() => { soundManager.play("menu_close"); setHelpMode(false); }} />
           )}
         </AnimatePresence>
         {roomSelectorMode && (
           <RoomSelectorModal
-            onClose={() => setRoomSelectorMode(false)}
+            onClose={() => { soundManager.play("menu_close"); setRoomSelectorMode(false); }}
             currentRoomID={roomID}
             rooms={allRooms}
             onSwitchRoom={handleSwitchRoom}
@@ -933,7 +937,8 @@ export const UI = () => {
               <button
                 className="p-3 sm:p-4 rounded-full bg-white/90 text-gray-700 drop-shadow-md cursor-pointer hover:bg-white hover:text-gray-900 transition-colors border border-gray-200"
                 onClick={() => {
-                  shopMode ? setShopMode(false) : setBuildMode(false);
+                  if (shopMode) { soundManager.play("menu_close"); setShopMode(false); }
+                  else { soundManager.play("build_mode_exit"); setBuildMode(false); }
                 }}
               >
                 <svg
@@ -958,7 +963,7 @@ export const UI = () => {
                 {/* Avatar */}
                 <button
                   className="flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1.5 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors group"
-                  onClick={() => setCharacterSelectorMode(true)}
+                  onClick={() => { soundManager.play("button_click"); setCharacterSelectorMode(true); }}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 sm:w-6 sm:h-6 text-gray-500 group-hover:text-gray-800 transition-colors">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
@@ -970,7 +975,7 @@ export const UI = () => {
                 {roomID && (
                   <button
                     className="flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1.5 rounded-xl cursor-pointer hover:bg-amber-50 transition-colors group"
-                    onClick={() => setRoomSelectorMode(true)}
+                    onClick={() => { soundManager.play("button_click"); setRoomSelectorMode(true); }}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 sm:w-6 sm:h-6 text-amber-500 group-hover:text-amber-700 transition-colors">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
@@ -983,7 +988,7 @@ export const UI = () => {
                 {roomID && (
                   <button
                     className="flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1.5 rounded-xl cursor-pointer hover:bg-pink-50 transition-colors group"
-                    onClick={() => socket.emit("dance")}
+                    onClick={() => { soundManager.play("button_click"); socket.emit("dance"); }}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 sm:w-6 sm:h-6 text-pink-400 group-hover:text-pink-600 transition-colors">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 9l10.5-3m0 6.553v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-.99-3.467l2.31-.66a2.25 2.25 0 001.632-2.163zm0 0V2.25L9 5.25v10.303m0 0v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 01-.99-3.467l2.31-.66A2.25 2.25 0 009 15.553z" />
@@ -996,7 +1001,7 @@ export const UI = () => {
                 {roomID && (
                   <button
                     className="flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1.5 rounded-xl cursor-pointer hover:bg-green-50 transition-colors group"
-                    onClick={() => setBuildMode(true)}
+                    onClick={() => { soundManager.play("build_mode_enter"); setBuildMode(true); }}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 sm:w-6 sm:h-6 text-green-500 group-hover:text-green-700 transition-colors">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
@@ -1011,7 +1016,7 @@ export const UI = () => {
                 {/* Bots */}
                 <button
                   className="flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1.5 rounded-xl cursor-pointer hover:bg-indigo-50 transition-colors group"
-                  onClick={() => setBotConnectMode(true)}
+                  onClick={() => { soundManager.play("button_click"); setBotConnectMode(true); }}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-400 group-hover:text-indigo-600 transition-colors">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h9a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0015.75 4.5h-9A2.25 2.25 0 004.5 6.75v10.5A2.25 2.25 0 006.75 19.5z" />
@@ -1022,7 +1027,7 @@ export const UI = () => {
                 {/* Help */}
                 <button
                   className="flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1.5 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors group"
-                  onClick={() => setHelpMode(true)}
+                  onClick={() => { soundManager.play("button_click"); setHelpMode(true); }}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 sm:w-6 sm:h-6 text-gray-400 group-hover:text-gray-700 transition-colors">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
@@ -1035,7 +1040,7 @@ export const UI = () => {
             {buildMode && !shopMode && draggedItem === null && (
               <button
                 className="p-3 sm:p-4 rounded-full bg-white/90 text-gray-700 drop-shadow-md cursor-pointer hover:bg-white hover:text-gray-900 transition-colors border border-gray-200"
-                onClick={() => setShopMode(true)}
+                onClick={() => { soundManager.play("menu_open"); setShopMode(true); }}
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
