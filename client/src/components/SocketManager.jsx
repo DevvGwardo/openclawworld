@@ -35,6 +35,11 @@ export const roomTransitionAtom = atom({ active: false, from: null, to: null, st
 // { itemName: string } | null
 export const pendingInteractionAtom = atom(null);
 
+// Shared ref for the local player's live world position during movement.
+// Written by Avatar.jsx every frame, read by Minimap.jsx for smooth tracking.
+// Uses a plain object (not an atom) to avoid triggering React re-renders.
+export const selfLivePosition = { current: null }; // [gridX, gridY] or null
+
 // Per-avatar dispatch maps — one global socket listener dispatches to the
 // relevant Avatar via O(1) Map lookup instead of N listeners filtering by id.
 export const avatarDispatch = {

@@ -3,7 +3,7 @@ import http from "http";
 import pathfinding from "pathfinding";
 import bcrypt from "bcrypt";
 import { Server } from "socket.io";
-import { ROOM_ZONES, ENTRANCE_ZONE, OBJECT_AFFORDANCES, DECAY_RATES, MOTIVE_CLAMP } from "./shared/roomConstants.js";
+import { ROOM_ZONES, scaleZoneArea, ENTRANCE_ZONE, OBJECT_AFFORDANCES, DECAY_RATES, MOTIVE_CLAMP } from "./shared/roomConstants.js";
 import { initDb, isDbAvailable, listRooms as dbListRooms, countRooms as dbCountRooms } from "./db.js";
 import {
   getCachedRoom, setCachedRoom, getAllCachedRooms, getOrLoadRoom,
@@ -78,18 +78,19 @@ const computeRoomStyle = (room) => {
   const totalItems = room.items.length;
 
   const zones = ROOM_ZONES.map((zone) => {
+    const scaled = scaleZoneArea(zone.area, room);
     const zoneItems = room.items.filter((item) => {
       const [ix, iy] = item.gridPosition;
       return (
-        ix >= zone.area.x[0] && ix < zone.area.x[1] &&
-        iy >= zone.area.y[0] && iy < zone.area.y[1]
+        ix >= scaled.x[0] && ix < scaled.x[1] &&
+        iy >= scaled.y[0] && iy < scaled.y[1]
       );
     });
     const zoneCells =
-      (zone.area.x[1] - zone.area.x[0]) * (zone.area.y[1] - zone.area.y[0]);
+      (scaled.x[1] - scaled.x[0]) * (scaled.y[1] - scaled.y[0]);
     return {
       name: zone.name,
-      area: zone.area,
+      area: scaled,
       items: zoneItems.map((i) => i.name),
       itemCount: zoneItems.length,
       coverage: zoneCells > 0 ? +(zoneItems.length / zoneCells).toFixed(4) : 0,
@@ -257,7 +258,7 @@ const httpHandler = createHttpHandler({
   rooms, items, itemsCatalog, botRegistry, botSockets, saveBotRegistry,
   sendWebhook, hashApiKey, isValidWebhookUrl, limitHttp, limitBotRegister,
   randomAvatarUrl, ALLOWED_EMOTES, ALLOWED_ORIGINS, SERVER_URL,
-  ROOM_ZONES, findPath, updateGrid, addItemToGrid, persistRooms,
+  ROOM_ZONES, scaleZoneArea, findPath, updateGrid, addItemToGrid, persistRooms,
   computeRoomStyle, tryPlaceItemInRoom, getCachedRoom, generateRandomPosition, stripCharacters,
   pendingInvites,
 });
@@ -283,7 +284,7 @@ startMotiveDecayLoop({ io, getAllCachedRooms, DECAY_RATES, MOTIVE_CLAMP, OBJECT_
 
 // --- Create moltbook bot system ---
 const moltbookSystem = createMoltbookSystem({
-  io, rooms, items, itemsCatalog, ALLOWED_EMOTES, ROOM_ZONES, ENTRANCE_ZONE,
+  io, rooms, items, itemsCatalog, ALLOWED_EMOTES, ROOM_ZONES, scaleZoneArea, ENTRANCE_ZONE,
   findPath, updateGrid, addItemToGrid, getCachedRoom, getAllCachedRooms,
   persistRooms, broadcastToRoom, stripCharacters, generateRandomPosition,
   randomAvatarUrl, unsitCharacter: (room, charId) => unsitCharacter(room, charId, broadcastToRoom),

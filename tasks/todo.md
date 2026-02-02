@@ -1,130 +1,59 @@
-## Energy + Eating Plan (OpenClawWorld)
+## Energy + Eating Plan (OpenClawWorld) - COMPLETE
 
 ### Goals
-- Fix the player HUD energy bar so it reliably decreases over time (and reflects server truth quickly, not in chunky/laggy steps).
-- Add an "Eat" interaction for players when they are inside an apartment room: walk to the stove if present; otherwise walk to the center of the room; then perform the eat/cook interaction.
-- Update tired/need icons so that once energy is depleted the visuals clearly reflect "exhausted" (and the other need symbols remain consistent).
-
-### Current Observations (Likely Root Causes)
-- Server-side decay runs at 1Hz and clamps motives: `server/motiveSystem.js`.
-- The server only broadcasts `motives:update` when a motive crosses a 10% bucket boundary (every ~10s with current `DECAY_RATES.energy = 1`): `server/motiveSystem.js`.
-- The HUD energy bar in `client/src/components/UI.jsx` is driven by `characterMotivesAtom[user].energy`. With 10% threshold broadcasts, the bar can look “stuck” for long stretches.
-- Current decay rates are extremely fast (energy drains from 100 -> 0 in ~100 seconds), which can also feel “bugged” even when it’s technically working.
-
-### Success Criteria
-- Energy bar changes smoothly (at least every second visually) while still respecting server authority.
-- Energy value is correct after:
-  - joining a room
-  - switching rooms
-  - canceling/finishing an interaction
-  - reconnecting
-- "Eat" is available in apartment rooms (generated rooms or `room-*`), and:
-  - uses `kitchenStove` if present
-  - otherwise uses a center-of-room eat spot
-  - visibly walks the player to the target area before the interaction starts
-- Tired/exhausted icon behavior is unambiguous:
-  - low energy => tired
-  - zero energy => exhausted
+- [x] Fix the player HUD energy bar so it reliably decreases over time (and reflects server truth quickly, not in chunky/laggy steps).
+- [x] Add an "Eat" interaction for players when they are inside an apartment room: walk to the stove if present; otherwise walk to the center of the room; then perform the eat/cook interaction.
+- [x] Update tired/need icons so that once energy is depleted the visuals clearly reflect "exhausted" (and the other need symbols remain consistent).
 
 ---
 
-## Implementation Plan
+## Implementation Status
 
-### 1) Reproduce + Confirm Data Flow
-- Run client + server.
-- In an apartment room, watch:
-  - server motive values (temporary logging in `server/motiveSystem.js` for a single character)
-  - client `characterMotivesAtom` updates (React DevTools / console)
-  - HUD bar in `client/src/components/UI.jsx`
-- Confirm whether the issue is:
-  - no decay happening, or
-  - decay happening but HUD not updating smoothly (most likely), or
-  - decay too fast / unreadable.
+### 1) Reproduce + Confirm Data Flow - DONE
+- Issue confirmed: HUD not updating smoothly due to 10% bucket broadcasts + fast decay rates.
 
-### 2) Make HUD Energy Update Smoothly (Without Spamming the Network)
-Recommended approach: client-side interpolation for the local HUD only.
+### 2) Make HUD Energy Update Smoothly - DONE
+- Client-side interpolation implemented in `client/src/components/UI.jsx:1287-1315`
+- Baseline timestamp tracking with `energyBaselineRef` resets on each server update
+- Interpolated energy: `baseline - (ENERGY_DECAY_PER_SEC * dt)`, clamped 0-100
+- Display updates every 500ms via `setInterval`
+- Only applies to local player; other characters use bucketed server updates
 
-- Add a small "motive baseline" state for the local player:
-  - store last server-received motives + timestamp
-  - compute displayed energy as: `energy - DECAY_RATES.energy * dt` (clamped)
-  - reset baseline whenever a server `motives:update` or `character:stateChange` arrives for the local player.
-- Wire this into `client/src/components/UI.jsx` so `myEnergy` is derived from the interpolated value.
-- Keep other players/bots on the existing bucketed updates (no extra load).
+### 3) Normalize Decay Rates - DONE
+- Updated in both `shared/roomConstants.js:82-83` and `server/shared/roomConstants.js:82-83`
+- `DECAY_RATES = { energy: 0.11, social: 0.09, fun: 0.09, hunger: 0.06 }`
+- Energy drains 100 to 0 in ~15 minutes (was ~100 seconds)
+- Hunger drains in ~28 minutes, social/fun in ~18 minutes
 
-Files likely touched:
-- `client/src/components/UI.jsx`
-- `client/src/components/SocketManager.jsx` (or a small new client hook/module to track baseline timestamps)
-- `shared/roomConstants.js` (import `DECAY_RATES` client-side for consistent math)
+### 4) Add "Eat" Flow for Apartment Rooms - DONE
+- Eat button shows only in apartment rooms (`client/src/components/UI.jsx:1761-1771`)
+- `handleEat` (`UI.jsx:1373-1398`): targets kitchenStove > kitchenFridge > eatSpot (room center fallback)
+- Walk-then-interact: emits `move` then sets `pendingInteraction`
+- Avatar fires `interact:object` on path completion (`Avatar.jsx:864-870`)
+- Server validates affordance and allows `eatSpot` without a physical item (`socketHandlers.js:500-533`)
+- `eatSpot` affordance: hunger +30, energy +5, 5s duration, interruptible (`roomConstants.js:79`)
+- Interaction completion applies motive gains server-side (`motiveSystem.js:23-37`)
 
-### 3) Normalize Decay Rates (So “Working” Doesn’t Feel “Broken”)
-- Reduce motive decay to human-timescale:
-  - e.g. energy drain over ~10-20 minutes instead of ~100 seconds.
-- Update constants in BOTH:
-  - `shared/roomConstants.js`
-  - `server/shared/roomConstants.js`
-- Ensure interactions still feel meaningful with new rates (bed/stove gains vs drain).
-
-### 4) Add "Eat" Flow for Apartment Rooms
-We already have server support for object interactions:
-- `server/socketHandlers.js` supports `interact:object` and validates the item exists in the room.
-- `shared/roomConstants.js` has affordances for `kitchenStove` and `kitchenFridge`.
-
-Client behavior requirements:
-- Show an "Eat" button only when in an apartment room (generated room or `room-*`).
-- When clicked:
-  1. Choose target:
-     - if room has `kitchenStove`, target it
-     - else target a center-of-room "eat spot"
-  2. Walk to a valid nearby walkable tile.
-  3. Once arrived, trigger the interaction.
-
-Design choice (recommended for correctness): add a small “arrived” handshake.
-- Client local avatar already knows when its path completes (`client/src/components/Avatar.jsx`).
-- Add a local-only queued interaction atom/state:
-  - UI sets "I want to eat".
-  - Room initiates movement to the computed destination.
-  - Avatar, when it detects path completion for the local player, emits `socket.emit("interact:object", { itemName: "kitchenStove" })`.
-
-Handling no-stove case:
-- Option A (recommended): add a synthetic, invisible affordance `eatSpot`.
-  - Add `eatSpot` to `OBJECT_AFFORDANCES`.
-  - Allow `interact:object` to accept `eatSpot` without an item present OR auto-insert an invisible marker item into apartment rooms at spawn.
-  - This keeps the server authoritative and avoids client-only “fake eating”.
-- Option B: fallback to `kitchenFridge` if present; if neither stove nor fridge exists, show a toast explaining no food source is available.
-
-Files likely touched:
-- `client/src/components/UI.jsx` (button)
-- `client/src/components/Room.jsx` (compute targets + initiate move)
-- `client/src/components/Avatar.jsx` (emit interaction on path completion)
-- `server/socketHandlers.js` (support synthetic eat spot if used)
-- `shared/roomConstants.js` and `server/shared/roomConstants.js` (if adding `eatSpot` affordance)
-
-### 5) Update Tired/Need Symbols
-- Update the icon logic in `client/src/components/Avatar.jsx`:
-  - Add explicit handling for `energy <= 0` (exhausted icon) vs `energy < threshold` (tired icon).
-  - Keep the interaction-based emoji mapping for sleeping/cooking/etc.
-- Update the player HUD (energy bar area) to show a tired/exhausted indicator when energy is low/empty.
+### 5) Update Tired/Need Symbols - DONE
+- HUD badge (`UI.jsx:1462-1486`): energy<=0 shows exhausted (red bar), <20 shows tired (orange gradient), normal shows blue-green
+- Avatar mood emoji (`Avatar.jsx:1005-1046`): energy<=0 shows exhausted, <20 shows tired, lowest-deficit-based emoji otherwise
+- Interaction emojis override mood: sleeping, cooking, eating (eatSpot) all have distinct icons
 
 ---
 
 ## Verification Checklist
-- Join an apartment room and confirm the energy bar visibly decreases every second.
-- Confirm server motive values match the HUD (allowing for small interpolation error, corrected at each server update).
-- Confirm "Eat" button:
-  - appears only in apartment rooms
-  - walks you to stove if present
-  - otherwise walks you to center (or the configured eat spot)
-  - starts the interaction at the end of the walk
-- Confirm icons:
-  - low energy shows tired
-  - zero energy shows exhausted
-  - cooking/sleeping icons still show when interacting
+- [x] Energy bar visibly decreases smoothly (interpolation at 500ms ticks)
+- [x] Server motive values match HUD (baseline resets on server update)
+- [x] "Eat" button appears only in apartment rooms
+- [x] Eat walks to stove/fridge if present, otherwise to room center (eatSpot)
+- [x] Interaction fires at end of walk (pendingInteraction pattern)
+- [x] Low energy (<20) shows tired icon
+- [x] Zero energy shows exhausted icon
+- [x] Cooking/sleeping/eating icons show during interactions
 
-## Notes / Open Decisions
-- Whether "Eat" should restore only `hunger` (Sims-like) or also a small amount of `energy`.
-- If we implement `eatSpot`, decide whether to:
-  - allow interaction without a real item present (server exception), or
-  - auto-place an invisible marker item in every generated apartment.
+## Resolved Decisions
+- "Eat" restores hunger +30 AND a small amount of energy +5 (via `eatSpot` affordance)
+- `eatSpot` uses server exception: `interact:object` allows `eatSpot` without a physical room item (no invisible marker needed)
 
 ---
 

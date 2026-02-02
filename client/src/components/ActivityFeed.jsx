@@ -105,7 +105,7 @@ export const ActivityFeed = () => {
   if (visible.length === 0) return null;
 
   return (
-    <div className="fixed top-14 left-2 sm:left-4 z-[5] pointer-events-none w-48 sm:w-72">
+    <div className="fixed top-[272px] left-3 z-[5] pointer-events-none" style={{ width: 200 }}>
       <AnimatePresence mode="popLayout">
         {visible.map((event) => {
           const config = typeConfig[event.type] || typeConfig.spawn;

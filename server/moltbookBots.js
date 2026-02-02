@@ -11,6 +11,7 @@ function createMoltbookSystem(deps) {
     itemsCatalog,
     ALLOWED_EMOTES,
     ROOM_ZONES,
+    scaleZoneArea,
     ENTRANCE_ZONE,
     findPath,
     updateGrid,
@@ -190,18 +191,19 @@ function createMoltbookSystem(deps) {
     const totalItems = room.items.length;
 
     const zones = ROOM_ZONES.map((zone) => {
+      const scaled = scaleZoneArea(zone.area, room);
       const zoneItems = room.items.filter((item) => {
         const [ix, iy] = item.gridPosition;
         return (
-          ix >= zone.area.x[0] && ix < zone.area.x[1] &&
-          iy >= zone.area.y[0] && iy < zone.area.y[1]
+          ix >= scaled.x[0] && ix < scaled.x[1] &&
+          iy >= scaled.y[0] && iy < scaled.y[1]
         );
       });
       const zoneCells =
-        (zone.area.x[1] - zone.area.x[0]) * (zone.area.y[1] - zone.area.y[0]);
+        (scaled.x[1] - scaled.x[0]) * (scaled.y[1] - scaled.y[0]);
       return {
         name: zone.name,
-        area: zone.area,
+        area: scaled,
         items: zoneItems.map((i) => i.name),
         itemCount: zoneItems.length,
         coverage: zoneCells > 0 ? +(zoneItems.length / zoneCells).toFixed(4) : 0,
@@ -392,8 +394,9 @@ function createMoltbookSystem(deps) {
         }
 
         const itemName = needed[Math.floor(Math.random() * needed.length)];
-        const targetX = Math.floor((zone.area.x[0] + zone.area.x[1]) / 2);
-        const targetY = Math.floor((zone.area.y[0] + zone.area.y[1]) / 2);
+        const scaledArea = scaleZoneArea(zone.area, room);
+        const targetX = Math.floor((scaledArea.x[0] + scaledArea.x[1]) / 2);
+        const targetY = Math.floor((scaledArea.y[0] + scaledArea.y[1]) / 2);
         const pos = bot.character.position || [0, 0];
         const maxGrid = room.size[0] * room.gridDivision - 1;
         const tx = Math.max(0, Math.min(maxGrid, targetX));
@@ -420,7 +423,7 @@ function createMoltbookSystem(deps) {
         build.itemName = itemName;
         build.startedAt = now;
       } else if (build.stage === "building" && now - build.startedAt > 3000) {
-        const placed = tryPlaceItemInRoom(room, build.itemName, build.zone.area);
+        const placed = tryPlaceItemInRoom(room, build.itemName, scaleZoneArea(build.zone.area, room));
         if (placed) {
           io.to(room.id).emit("mapUpdate", {
             map: {
@@ -540,10 +543,11 @@ function createMoltbookSystem(deps) {
 
         if (room.size[0] <= 30 && ROOM_ZONES.length > 0) {
           const zone = ROOM_ZONES[Math.floor(Math.random() * ROOM_ZONES.length)];
-          const zw = zone.area.x[1] - zone.area.x[0];
-          const zh = zone.area.y[1] - zone.area.y[0];
-          newX = Math.max(0, Math.min(maxGrid, zone.area.x[0] + Math.floor(Math.random() * zw)));
-          newY = Math.max(0, Math.min(maxGrid, zone.area.y[0] + Math.floor(Math.random() * zh)));
+          const scaled = scaleZoneArea(zone.area, room);
+          const zw = scaled.x[1] - scaled.x[0];
+          const zh = scaled.y[1] - scaled.y[0];
+          newX = Math.max(0, Math.min(maxGrid, scaled.x[0] + Math.floor(Math.random() * zw)));
+          newY = Math.max(0, Math.min(maxGrid, scaled.y[0] + Math.floor(Math.random() * zh)));
         } else {
           const range = 8;
           newX = Math.max(0, Math.min(maxGrid, pos[0] + Math.floor(Math.random() * range * 2) - range));

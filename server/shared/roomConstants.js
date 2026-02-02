@@ -5,20 +5,32 @@
  */
 
 // Functional zones that bots will gradually fill in (generated rooms)
+// Area values are proportions (0-1) relative to the room grid size,
+// so they scale correctly for any room size (10x10, 15x15, 20x20, etc.)
 export const ROOM_ZONES = [
   // Living area (center-left)
-  { name: "Living Area", items: ["rugRounded", "loungeSofa", "tableCoffee", "televisionModern", "loungeChair", "lampRoundFloor", "plant", "speaker"], area: { x: [10, 40], y: [10, 35] } },
+  { name: "Living Area", items: ["rugRounded", "loungeSofa", "tableCoffee", "televisionModern", "loungeChair", "lampRoundFloor", "plant", "speaker"], area: { x: [0.10, 0.45], y: [0.10, 0.40] } },
   // Kitchen (top-right)
-  { name: "Kitchen", items: ["kitchenFridge", "kitchenCabinet", "kitchenStove", "kitchenSink", "kitchenBar", "kitchenMicrowave", "toaster", "kitchenBlender", "stoolBar", "stoolBar"], area: { x: [55, 90], y: [5, 30] } },
+  { name: "Kitchen", items: ["kitchenFridge", "kitchenCabinet", "kitchenStove", "kitchenSink", "kitchenBar", "kitchenMicrowave", "toaster", "kitchenBlender", "stoolBar", "stoolBar"], area: { x: [0.55, 0.95], y: [0.05, 0.35] } },
   // Bedroom (bottom-left)
-  { name: "Bedroom", items: ["bedDouble", "cabinetBedDrawer", "cabinetBedDrawerTable", "lampSquareTable", "bookcaseClosedWide", "rugRound", "plantSmall", "coatRackStanding"], area: { x: [5, 35], y: [55, 90] } },
+  { name: "Bedroom", items: ["bedDouble", "cabinetBedDrawer", "cabinetBedDrawerTable", "lampSquareTable", "bookcaseClosedWide", "rugRound", "plantSmall", "coatRackStanding"], area: { x: [0.05, 0.40], y: [0.55, 0.95] } },
   // Bathroom (bottom-right)
-  { name: "Bathroom", items: ["bathtub", "toiletSquare", "bathroomSink", "bathroomCabinetDrawer", "trashcan", "bathroomMirror"], area: { x: [60, 90], y: [60, 90] } },
+  { name: "Bathroom", items: ["bathtub", "toiletSquare", "bathroomSink", "bathroomCabinetDrawer", "trashcan", "bathroomMirror"], area: { x: [0.60, 0.95], y: [0.60, 0.95] } },
   // Office/desk area (top-left)
-  { name: "Office", items: ["desk", "chairModernCushion", "laptop", "bookcaseOpenLow", "lampSquareFloor", "plantSmall"], area: { x: [5, 30], y: [5, 25] } },
+  { name: "Office", items: ["desk", "chairModernCushion", "laptop", "bookcaseOpenLow", "lampSquareFloor", "plantSmall"], area: { x: [0.05, 0.35], y: [0.05, 0.30] } },
   // Dining area (center)
-  { name: "Dining", items: ["tableCrossCloth", "chair", "chair", "chair", "chair", "lampRoundTable", "rugSquare"], area: { x: [35, 60], y: [35, 55] } },
+  { name: "Dining", items: ["tableCrossCloth", "chair", "chair", "chair", "chair", "lampRoundTable", "rugSquare"], area: { x: [0.35, 0.65], y: [0.35, 0.60] } },
 ];
+
+// Scale a zone's proportional area to actual grid coordinates for a given room
+export const scaleZoneArea = (zoneArea, room) => {
+  const gw = room.size[0] * (room.gridDivision || 2);
+  const gh = room.size[1] * (room.gridDivision || 2);
+  return {
+    x: [Math.floor(zoneArea.x[0] * gw), Math.floor(zoneArea.x[1] * gw)],
+    y: [Math.floor(zoneArea.y[0] * gh), Math.floor(zoneArea.y[1] * gh)],
+  };
+};
 
 // Building footprints for large plaza rooms (world coordinates: [x, z, width, depth])
 export const getBuildingFootprints = (sz) => [

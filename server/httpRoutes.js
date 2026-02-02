@@ -6,7 +6,7 @@ export const createHttpHandler = (deps) => {
     rooms, items, itemsCatalog, botRegistry, botSockets, saveBotRegistry,
     sendWebhook, hashApiKey, isValidWebhookUrl, limitHttp, limitBotRegister,
     randomAvatarUrl, ALLOWED_EMOTES, ALLOWED_ORIGINS, SERVER_URL,
-    ROOM_ZONES, findPath, updateGrid, addItemToGrid, persistRooms,
+    ROOM_ZONES, scaleZoneArea, findPath, updateGrid, addItemToGrid, persistRooms,
     computeRoomStyle, tryPlaceItemInRoom, getCachedRoom, generateRandomPosition, stripCharacters,
     pendingInvites,
   } = deps;
@@ -1119,12 +1119,13 @@ Want to build your own space? Each bot gets **one room** — here's how:
 
       const zoneIndex = reqBody?.zone ?? Math.floor(Math.random() * ROOM_ZONES.length);
       const zone = ROOM_ZONES[zoneIndex % ROOM_ZONES.length];
+      const scaledArea = scaleZoneArea(zone.area, room);
 
       if (reqBody?.items && Array.isArray(reqBody.items)) {
         // Place specific items
         let placed = 0;
         for (const itemName of reqBody.items.slice(0, 5)) {
-          if (tryPlaceItemInRoom(room, itemName, zone.area)) placed++;
+          if (tryPlaceItemInRoom(room, itemName, scaledArea)) placed++;
         }
         if (placed > 0) {
           deps.io.to(room.id).emit("mapUpdate", {
@@ -1139,7 +1140,7 @@ Want to build your own space? Each bot gets **one room** — here's how:
       const needed = zone.items.filter(name => room.items.filter(i => i.name === name).length < 1);
       if (needed.length > 0) {
         const itemName = needed[Math.floor(Math.random() * needed.length)];
-        const placed = tryPlaceItemInRoom(room, itemName, zone.area);
+        const placed = tryPlaceItemInRoom(room, itemName, scaledArea);
         if (placed) {
           deps.io.to(room.id).emit("mapUpdate", {
             map: { gridDivision: room.gridDivision, size: room.size, items: room.items },

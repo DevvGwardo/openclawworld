@@ -9,7 +9,7 @@ import { atom, useAtom } from "jotai";
 import React, { useEffect, useMemo, useRef, useState, memo, useCallback } from "react";
 import { SkeletonUtils } from "three-stdlib";
 import { useGrid } from "../hooks/useGrid";
-import { socket, userAtom, avatarDispatch, bondsAtom, charactersAtom, characterMotivesAtom, characterInteractionStatesAtom, pendingInteractionAtom, dmInboxOpenAtom } from "./SocketManager";
+import { socket, userAtom, avatarDispatch, bondsAtom, charactersAtom, characterMotivesAtom, characterInteractionStatesAtom, pendingInteractionAtom, dmInboxOpenAtom, selfLivePosition, mapAtom } from "./SocketManager";
 import { dmPanelTargetAtom } from "./DirectMessagePanel";
 import soundManager from "../audio/SoundManager";
 
@@ -576,16 +576,28 @@ export const Avatar = memo(function Avatar({
   const [pendingInteraction, setPendingInteraction] = useAtom(pendingInteractionAtom);
   const pendingInteractionRef = useRef(null);
   useEffect(() => { pendingInteractionRef.current = pendingInteraction; }, [pendingInteraction]);
+  const [mapData] = useAtom(mapAtom);
   const bondsRef = useRef(bonds);
   const charactersRef = useRef(characters);
+  const mapDataRef = useRef(mapData);
   useEffect(() => { bondsRef.current = bonds; }, [bonds]);
   useEffect(() => { charactersRef.current = characters; }, [characters]);
+  useEffect(() => { mapDataRef.current = mapData; }, [mapData]);
 
   // Throttle visibility checks — only run every N frames
   const frameCountRef = useRef(0);
 
   useFrame(({ scene: threeScene }, delta) => {
     if (!avatar.current || !group.current) return;
+
+    // Update shared live position ref for the local player (read by Minimap)
+    if (id === user && group.current) {
+      const gd = mapDataRef.current?.gridDivision || 1;
+      selfLivePosition.current = [
+        Math.floor(group.current.position.x * gd),
+        Math.floor(group.current.position.z * gd),
+      ];
+    }
 
     // Distance-based culling — check every 15 frames
     frameCountRef.current++;
