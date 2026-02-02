@@ -42,6 +42,7 @@ export const Item = ({
   return (
     <group
       onPointerDown={(e) => {
+        if (e.nativeEvent?.button !== undefined && e.nativeEvent.button !== 0) return;
         if (onSitClick) {
           e.stopPropagation();
           onSitClick();

@@ -134,6 +134,8 @@ export const Room = () => {
   }, [map]);
 
   const onPlaneClicked = (e) => {
+    // Only respond to left-click (button 0); ignore right-click used for camera rotation
+    if (e.nativeEvent?.button !== undefined && e.nativeEvent.button !== 0) return;
     if (!buildMode) {
       const character = scene.getObjectByName(`character-${user}`);
       if (!character) {
