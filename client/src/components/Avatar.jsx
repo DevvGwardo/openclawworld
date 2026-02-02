@@ -181,6 +181,7 @@ export const Avatar = memo(function Avatar({
   avatarUrl = "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
   name = "Player",
   isBot = false,
+  leaving = false,
   gridPosition,
   showHtmlOverlay = true,
 }) {
@@ -306,6 +307,14 @@ export const Avatar = memo(function Avatar({
   const walkGraceRef = useRef(0);
   // Staggered entrance delay so characters pop in at different times
   const entranceDelayRef = useRef(0.05 + Math.random() * 0.5);
+  // Fade-in/fade-out opacity tracking
+  const opacityRef = useRef(0); // start at 0 for fade-in
+  const fadeStartedRef = useRef(false); // delay fade-in until entrance delay elapses
+  const fadeTimerRef = useRef(0);
+  const leavingRef = useRef(false);
+  useEffect(() => { leavingRef.current = leaving; }, [leaving]);
+  // Cache mesh materials for efficient per-frame opacity updates
+  const meshMaterialsRef = useRef([]);
   // Idle look-around state — characters periodically glance in different directions
   const idleLookTimerRef = useRef(2 + Math.random() * 5); // seconds until next look
   const idleLookTargetRef = useRef(null); // target quaternion for idle glance
@@ -330,12 +339,22 @@ export const Avatar = memo(function Avatar({
   }, [actions]);
 
   useEffect(() => {
+    const materials = [];
     clone.traverse((child) => {
       if (child.isMesh) {
         child.castShadow = false;
         child.receiveShadow = true;
+        // Clone material per-avatar so opacity changes don't leak to other instances
+        if (child.material) {
+          child.material = child.material.clone();
+          child.material.transparent = true;
+          child.material.depthWrite = true;
+          child.material.opacity = 0;
+          materials.push(child.material);
+        }
       }
     });
+    meshMaterialsRef.current = materials;
   }, [clone]);
 
   // Reset all cached refs when the model changes so animation state starts fresh
@@ -596,6 +615,25 @@ export const Avatar = memo(function Avatar({
       }
     }
 
+    // Fade-in / fade-out opacity animation
+    fadeTimerRef.current += delta;
+    const isLeaving = leavingRef.current;
+    if (isLeaving) {
+      // Fade out over ~0.6s
+      opacityRef.current = Math.max(0, opacityRef.current - delta * 1.7);
+    } else if (fadeTimerRef.current > entranceDelayRef.current) {
+      // Fade in over ~0.5s (starts after entrance delay)
+      fadeStartedRef.current = true;
+      opacityRef.current = Math.min(1, opacityRef.current + delta * 2.0);
+    }
+    if (fadeStartedRef.current || isLeaving) {
+      const mats = meshMaterialsRef.current;
+      const op = opacityRef.current;
+      for (let i = 0; i < mats.length; i++) {
+        mats[i].opacity = op;
+      }
+    }
+
     // Bond proximity hearts — check every 60 frames (~1s) for local player only
     if (id === user && frameCountRef.current % 60 === 0 && group.current) {
       const curBonds = bondsRef.current;
@@ -834,7 +872,7 @@ export const Avatar = memo(function Avatar({
       onPointerOver={() => { document.body.style.cursor = "pointer"; if (id !== user) setHovered(true); }}
       onPointerOut={() => { document.body.style.cursor = "auto"; setHovered(false); }}
     >
-      {(showHtmlOverlay || id === user) && (
+      {(showHtmlOverlay || id === user) && !leaving && (
         <>
           {/* Always-visible name label — clickable to open character menu */}
           <Html position-y={isNonHumanoid ? 1.1 : 2.1} center distanceFactor={8} zIndexRange={[1, 0]} style={{ overflow: 'visible', pointerEvents: 'none' }}>
@@ -970,17 +1008,14 @@ export const Avatar = memo(function Avatar({
           rotateY: Math.PI * 2,
           scale: 0,
         }}
-        animate={{
-          y: 0,
-          rotateY: 0,
-          scale: 1,
-        }}
-        transition={{
-          delay: entranceDelayRef.current,
-          mass: 2,
-          stiffness: 300,
-          damping: 30,
-        }}
+        animate={leaving
+          ? { y: 0.5, rotateY: Math.PI, scale: 0 }
+          : { y: 0, rotateY: 0, scale: 1 }
+        }
+        transition={leaving
+          ? { duration: 0.7, ease: "easeIn" }
+          : { delay: entranceDelayRef.current, mass: 2, stiffness: 300, damping: 30 }
+        }
       >
         {avatarUrl.startsWith("/") ? (
           <primitive object={clone} ref={avatar} scale={0.63} position-y={0.6} />

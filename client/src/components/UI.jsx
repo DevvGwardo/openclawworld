@@ -784,7 +784,7 @@ export const UI = () => {
           <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-full px-3 py-1.5 flex items-center gap-2 shadow-sm">
             <img src="/favicon.ico" alt="" className="w-4 h-4" />
             <span className="text-gray-800 font-bold text-sm">{totalOnline}</span>
-            <span className="text-gray-400 text-xs">online</span>
+            <span className="text-gray-400 text-xs">in apartment</span>
             <div className="w-px h-3.5 bg-gray-200" />
             <div className="flex items-center gap-1.5">
               <div className="flex items-center gap-0.5">

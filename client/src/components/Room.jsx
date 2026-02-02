@@ -105,6 +105,7 @@ const CharacterList = React.memo(() => {
               avatarUrl={character.avatarUrl}
               name={character.name}
               isBot={character.isBot}
+              leaving={character.leaving}
               showHtmlOverlay={htmlVisibleSet.has(character.id)}
             />
           </Suspense>

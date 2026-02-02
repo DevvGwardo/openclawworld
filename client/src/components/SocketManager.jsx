@@ -332,15 +332,21 @@ export const SocketManager = () => {
     function onCharacterLeft(value) {
       // value = { id, name, isBot, roomName }
       if (!value || !value.id) return;
+      // Mark the character as leaving so the Avatar can fade out,
+      // then actually remove it after the animation completes.
       setCharacters((prev) => {
         const idx = prev.findIndex((c) => c.id === value.id);
         if (idx === -1) return prev; // not in our list
         addActivity("despawn", value.name || "Player", value.isBot);
         soundManager.play("player_leave");
         const next = [...prev];
-        next.splice(idx, 1);
+        next[idx] = { ...next[idx], leaving: true };
         return next;
       });
+      // Remove the character after the fade-out animation duration
+      setTimeout(() => {
+        setCharacters((prev) => prev.filter((c) => c.id !== value.id));
+      }, 800);
     }
 
     // Flush batched position updates to the characters atom so the
