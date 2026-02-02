@@ -53,7 +53,7 @@ export const WelcomeModal = ({ onChoice }) => {
             </div>
 
             <h2 className="text-2xl font-bold text-gray-900 mb-1">
-              Welcome to Clawland.
+              Welcome to Molt's Land.
             </h2>
             <p className="text-sm text-gray-500 mb-6">What brings you here?</p>
 

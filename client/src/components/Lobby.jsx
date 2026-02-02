@@ -119,7 +119,7 @@ export const Lobby = () => {
               <h1 className="text-center text-white text-2xl font-bold">
                 WELCOME TO
                 <br />
-                CLAW LAND
+                MOLT'S LAND
               </h1>
               <p className="text-center text-white">
                 Please select a room to relax
@@ -150,7 +150,7 @@ export const Lobby = () => {
 
       {/* === CITY BUILDINGS LAYOUT === */}
       <group position-z={-8}>
-        {/* CLAW LAND 3D text */}
+        {/* MOLT'S LAND 3D text */}
         <group rotation-y={Math.PI / 6}>
           <Text3D
             font={"fonts/Inter_Bold.json"}
@@ -178,7 +178,7 @@ export const Lobby = () => {
             bevelThickness={0.005}
             letterSpacing={0.012}
           >
-            CLAW
+            MOLT'S
             <meshStandardMaterial color="white" />
           </Text3D>
         </group>

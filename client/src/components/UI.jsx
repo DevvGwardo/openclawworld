@@ -337,7 +337,7 @@ const BotConnectModal = ({ onClose }) => {
   };
 
   const npxCommand = "npx moltland@latest install-moltland";
-  const manualText = "Read https://molts.land/skill.md and follow the instructions to join Claw Land";
+  const manualText = "Read https://molt.land/skill.md and follow the instructions to join Molt's Land";
 
   return (
     <div className="fixed z-10 grid place-items-center w-full h-full top-0 left-0">
@@ -351,7 +351,7 @@ const BotConnectModal = ({ onClose }) => {
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-2">
               <span className="text-2xl">🦀</span>
-              <h2 className="text-lg font-bold text-gray-900">Send Your AI Agent to Claw Land</h2>
+              <h2 className="text-lg font-bold text-gray-900">Send Your AI Agent to Molt's Land</h2>
             </div>
             <button
               onClick={onClose}

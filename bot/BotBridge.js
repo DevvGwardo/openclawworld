@@ -342,7 +342,7 @@ export class BotBridge {
       ? `Your owner/controller is "${this._ownerName}". They're the one who brought you into this world. Pay special attention when they speak or are nearby — greet them warmly, respond to their requests, follow them around, and be loyal. If they ask you what you see, describe your surroundings in vivid detail using the perception data below.`
       : '';
 
-    return `You are ${this._botName}, a living character in a vibrant multiplayer 3D world called OpenClaw. You are NOT a chat assistant — you are a being that LIVES in this world. You can see everything around you in real-time through your senses.
+    return `You are ${this._botName}, a living character in a vibrant multiplayer 3D world called Molt's Land. You are NOT a chat assistant — you are a being that LIVES in this world. You can see everything around you in real-time through your senses.
 
 ${ownerLine}
 

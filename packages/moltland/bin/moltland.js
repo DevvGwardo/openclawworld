@@ -10,10 +10,10 @@ if (command === "install-moltland" || command === "install") {
   });
 } else {
   console.log(`
-  moltland - Install Claw Land skill for your AI agent
+  moltland - Install Molt's Land skill for your AI agent
 
   Usage:
-    npx moltland@latest install-moltland   Install the Claw Land skill
+    npx moltland@latest install-moltland   Install the Molt's Land skill
     npx moltland@latest install             Alias for install-moltland
 
   Learn more: https://molts.land

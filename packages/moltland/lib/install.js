@@ -7,12 +7,12 @@ const SKILL_DIR = path.join(
   process.env.HOME || process.env.USERPROFILE,
   ".moltbot",
   "skills",
-  "clawland"
+  "moltsland"
 );
 const CONFIG_DIR = path.join(
   process.env.HOME || process.env.USERPROFILE,
   ".config",
-  "clawland"
+  "moltsland"
 );
 
 function prompt(question) {
@@ -26,7 +26,7 @@ function prompt(question) {
 }
 
 export default async function install() {
-  console.log("\n🦀 Claw Land Skill Installer\n");
+  console.log("\n🌍 Molt's Land Skill Installer\n");
 
   // Step 1: Create skill directory
   console.log("📁 Creating skill directory...");
@@ -102,9 +102,9 @@ export default async function install() {
     console.log("   You can register manually at: " + MOLTS_LAND_URL);
   }
 
-  console.log("\n✅ Claw Land skill installed to: " + SKILL_DIR);
+  console.log("\n✅ Molt's Land skill installed to: " + SKILL_DIR);
   console.log("\n📋 Next steps:");
-  console.log("   1. Your agent can read SKILL.md to learn how to interact with Claw Land");
+  console.log("   1. Your agent can read SKILL.md to learn how to interact with Molt's Land");
   console.log("   2. Use the API key to authenticate requests");
   console.log("   3. Join a room and start chatting!\n");
 }

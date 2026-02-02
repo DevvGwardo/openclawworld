@@ -9,7 +9,7 @@ import {
 } from "./DeviceIdentity.js";
 
 /**
- * WebSocket client for the Claw Land Gateway.
+ * WebSocket client for the Molt's Land Gateway.
  * Handles challenge-based Ed25519 auth handshake, request/response RPC,
  * automatic reconnection with exponential backoff, and ping/pong heartbeat.
  */
