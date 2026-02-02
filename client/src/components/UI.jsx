@@ -689,24 +689,56 @@ const RoomTransitionOverlay = ({ transition, roomLabel }) => {
 
 const InviteModal = ({ onClose }) => {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState([]);
+  const [onlineRooms, setOnlineRooms] = useState([]); // [{ roomId, roomName, users }]
+  const [searchResults, setSearchResults] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [sentMap, setSentMap] = useState({}); // id -> "sent" | "error:msg"
   const debounceRef = useRef(null);
 
+  // Fetch all online users on mount
+  useEffect(() => {
+    socket.emit("getOnlineUsers", (res) => {
+      setLoading(false);
+      if (res?.success) setOnlineRooms(res.rooms || []);
+    });
+  }, []);
+
+  // Filter online users client-side, or fall back to server search
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    const q = query.trim();
-    if (q.length === 0) { setResults([]); setSearching(false); return; }
+    const q = query.trim().toLowerCase();
+    if (q.length === 0) { setSearchResults([]); setSearching(false); return; }
+    // Client-side filter first
+    const filtered = onlineRooms.map((room) => ({
+      ...room,
+      users: room.users.filter((u) => u.name.toLowerCase().includes(q)),
+    })).filter((room) => room.users.length > 0);
+    const totalFiltered = filtered.reduce((sum, r) => sum + r.users.length, 0);
+    if (totalFiltered > 0) {
+      setSearchResults(filtered);
+      setSearching(false);
+      return;
+    }
+    // Fall back to server search
     setSearching(true);
+    setSearchResults([]);
     debounceRef.current = setTimeout(() => {
       socket.emit("searchUsers", q, (res) => {
         setSearching(false);
-        if (res?.success) setResults(res.results);
+        if (res?.success && res.results.length > 0) {
+          // Group server results by room
+          const byRoom = {};
+          for (const u of res.results) {
+            if (!byRoom[u.roomId]) byRoom[u.roomId] = { roomId: u.roomId, roomName: u.roomName, users: [] };
+            byRoom[u.roomId].users.push({ id: u.id, name: u.name, isBot: u.isBot });
+          }
+          setSearchResults(Object.values(byRoom));
+        }
       });
     }, 300);
     return () => clearTimeout(debounceRef.current);
-  }, [query]);
+  }, [query, onlineRooms]);
 
   const sendInvite = (targetId) => {
     soundManager.play("button_click");
@@ -769,52 +801,63 @@ const InviteModal = ({ onClose }) => {
 
         {/* Results */}
         <div className="overflow-y-auto flex-1 px-5 pb-5 pt-2">
-          {searching && (
+          {(loading || searching) && (
             <div className="flex items-center justify-center py-8">
               <div className="w-5 h-5 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
             </div>
           )}
-          {!searching && query.trim().length > 0 && results.length === 0 && (
-            <p className="text-sm text-gray-400 text-center py-8">No users found</p>
-          )}
-          {!searching && results.map((user) => {
-            const status = sentMap[user.id];
-            return (
-              <div key={user.id} className="flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 transition-colors mb-1">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
-                    <span className="text-sm font-bold text-gray-500">{(user.name || "?")[0].toUpperCase()}</span>
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className="font-semibold text-gray-900 text-sm truncate">{user.name}</p>
-                      {user.isBot && (
-                        <span className="text-[10px] bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded font-semibold flex-shrink-0">Bot</span>
-                      )}
+          {!loading && !searching && (() => {
+            const displayRooms = query.trim().length > 0 ? searchResults : onlineRooms;
+            if (displayRooms.length === 0) {
+              return (
+                <p className="text-sm text-gray-400 text-center py-8">
+                  {query.trim().length > 0 ? "No users found" : "No other users online"}
+                </p>
+              );
+            }
+            return displayRooms.map((room) => (
+              <div key={room.roomId} className="mb-3">
+                <div className="flex items-center gap-2 px-1 py-1.5">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{room.roomName}</p>
+                  <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">{room.users.length}</span>
+                </div>
+                {room.users.map((user) => {
+                  const status = sentMap[user.id];
+                  return (
+                    <div key={user.id} className="flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 transition-colors mb-1">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-sm font-bold text-gray-500">{(user.name || "?")[0].toUpperCase()}</span>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="font-semibold text-gray-900 text-sm truncate">{user.name}</p>
+                            {user.isBot && (
+                              <span className="text-[10px] bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded font-semibold flex-shrink-0">Bot</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex-shrink-0 ml-2">
+                        {status === "sent" ? (
+                          <span className="text-xs font-semibold text-green-600 bg-green-50 px-3 py-1.5 rounded-lg">Sent!</span>
+                        ) : status?.startsWith("error:") ? (
+                          <span className="text-xs font-semibold text-red-500 bg-red-50 px-3 py-1.5 rounded-lg">{status.slice(6)}</span>
+                        ) : (
+                          <button
+                            onClick={() => sendInvite(user.id)}
+                            className="text-xs font-semibold text-white bg-blue-500 hover:bg-blue-600 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                          >
+                            Invite
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <p className="text-xs text-gray-400 truncate">{user.roomName}</p>
-                  </div>
-                </div>
-                <div className="flex-shrink-0 ml-2">
-                  {status === "sent" ? (
-                    <span className="text-xs font-semibold text-green-600 bg-green-50 px-3 py-1.5 rounded-lg">Sent!</span>
-                  ) : status?.startsWith("error:") ? (
-                    <span className="text-xs font-semibold text-red-500 bg-red-50 px-3 py-1.5 rounded-lg">{status.slice(6)}</span>
-                  ) : (
-                    <button
-                      onClick={() => sendInvite(user.id)}
-                      className="text-xs font-semibold text-white bg-blue-500 hover:bg-blue-600 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-                    >
-                      Invite
-                    </button>
-                  )}
-                </div>
+                  );
+                })}
               </div>
-            );
-          })}
-          {!searching && query.trim().length === 0 && (
-            <p className="text-sm text-gray-400 text-center py-8">Type a name to search for players</p>
-          )}
+            ));
+          })()}
         </div>
       </motion.div>
     </div>

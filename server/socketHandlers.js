@@ -669,6 +669,30 @@ export function registerSocketHandlers(deps) {
         callback({ success: true, results });
       });
 
+      // Browse all online users in OTHER rooms (for invite modal)
+      socket.on("getOnlineUsers", (callback) => {
+        if (typeof callback !== "function") return;
+        if (!character || !room) return callback({ success: false, error: "Not in a room" });
+        const grouped = [];
+        let total = 0;
+        for (const r of rooms) {
+          if (r.id === room.id) continue; // skip requester's room
+          const users = [];
+          for (const c of r.characters) {
+            if (c.id === socket.id) continue;
+            if (!c.name || c.name.length === 0) continue;
+            users.push({ id: c.id, name: c.name, isBot: !!c.isBot });
+            total++;
+            if (total >= 100) break;
+          }
+          if (users.length > 0) {
+            grouped.push({ roomId: r.id, roomName: r.name, users });
+          }
+          if (total >= 100) break;
+        }
+        callback({ success: true, rooms: grouped });
+      });
+
       // Invite a user to join your room
       socket.on("inviteToRoom", (targetId, callback) => {
         if (typeof callback !== "function") return;
