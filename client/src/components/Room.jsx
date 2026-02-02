@@ -80,7 +80,7 @@ const CharacterList = React.memo(() => {
   }, [characters, user]);
 
   // Compute nearest 20 IDs for HTML overlay rendering (Task 3)
-  useMemo(() => {
+  useEffect(() => {
     // nearestCharacters is already sorted by distance (user first, then by proximity)
     // Take the first 20 (user + nearest 19 others)
     const nearest20 = new Set();
@@ -89,7 +89,7 @@ const CharacterList = React.memo(() => {
       nearest20.add(nearestCharacters[i].id);
     }
     setHtmlVisibleSet(nearest20);
-  }, [nearestCharacters]);
+  }, [nearestCharacters, setHtmlVisibleSet]);
 
   return (
     <>

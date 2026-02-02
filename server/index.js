@@ -861,7 +861,8 @@ const moltbookBotTick = () => {
       if (sittableItems.length > 0) {
         const pick = sittableItems[Math.floor(Math.random() * sittableItems.length)];
         ensureSeatMaps(room);
-        const allSpots = getSitSpots(room, pick.item, pick.sittable);
+        const facingOffset = pick.sittable.facingOffset ?? DEFAULT_SIT_FACING_OFFSET;
+        const allSpots = getSitSpots(room, pick.item, pick.sittable, facingOffset);
         // Filter available spots
         let occupiedCount = 0;
         for (const [key] of room.seatOccupancy) {
@@ -2330,7 +2331,20 @@ const ensureSeatMaps = (room) => {
 // walkTo = adjacent cell the character walks to (must be walkable)
 // seatPos = grid cell on the furniture where the character sits
 // seatRotation = Y rotation in radians so they face outward from furniture
-const getSitSpots = (room, item, sittable) => {
+// Most item models in this project face -Z in their bind pose, so if we use the
+// naive world-facing rotation, avatars sit "backwards" on many chairs/benches.
+// This offset flips the avatar so it aligns with the furniture's visual facing.
+const DEFAULT_SIT_FACING_OFFSET = Math.PI;
+
+const normalizeAngle = (a) => {
+  const twoPi = Math.PI * 2;
+  let x = a % twoPi;
+  if (x <= -Math.PI) x += twoPi;
+  else if (x > Math.PI) x -= twoPi;
+  return x;
+};
+
+const getSitSpots = (room, item, sittable, facingOffset = DEFAULT_SIT_FACING_OFFSET) => {
   const rot = item.rotation || 0;
   const w = rot === 1 || rot === 3 ? item.size[1] : item.size[0];
   const h = rot === 1 || rot === 3 ? item.size[0] : item.size[1];
@@ -2350,7 +2364,7 @@ const getSitSpots = (room, item, sittable) => {
     const adjY = gy + h;
     const seatX = gx + x;
     const seatY = gy + h - 1;
-    const faceRot = 0;
+    const faceRot = normalizeAngle(0 + facingOffset);
     if (adjY <= maxY) {
       spots.push({ walkTo: [adjX, adjY], seatPos: [seatX, seatY], seatHeight, seatRotation: faceRot, seatIdx: seatIdx++ });
     }
@@ -2361,7 +2375,7 @@ const getSitSpots = (room, item, sittable) => {
     const adjY = gy - 1;
     const seatX = gx + x;
     const seatY = gy;
-    const faceRot = Math.PI;
+    const faceRot = normalizeAngle(Math.PI + facingOffset);
     if (adjY >= 0) {
       spots.push({ walkTo: [adjX, adjY], seatPos: [seatX, seatY], seatHeight, seatRotation: faceRot, seatIdx: seatIdx++ });
     }
@@ -2372,7 +2386,8 @@ const getSitSpots = (room, item, sittable) => {
     const adjY = gy + y;
     const seatX = gx;
     const seatY = gy + y;
-    const faceRot = Math.PI / 2;
+    // Facing outward (toward -X)
+    const faceRot = normalizeAngle(-Math.PI / 2 + facingOffset);
     if (adjX >= 0) {
       spots.push({ walkTo: [adjX, adjY], seatPos: [seatX, seatY], seatHeight, seatRotation: faceRot, seatIdx: seatIdx++ });
     }
@@ -2383,7 +2398,8 @@ const getSitSpots = (room, item, sittable) => {
     const adjY = gy + y;
     const seatX = gx + w - 1;
     const seatY = gy + y;
-    const faceRot = -Math.PI / 2;
+    // Facing outward (toward +X)
+    const faceRot = normalizeAngle(Math.PI / 2 + facingOffset);
     if (adjX <= maxX) {
       spots.push({ walkTo: [adjX, adjY], seatPos: [seatX, seatY], seatHeight, seatRotation: faceRot, seatIdx: seatIdx++ });
     }
@@ -2962,12 +2978,13 @@ io.on("connection", async (socket) => {
       if (!itemDef || !itemDef.sittable) return;
       // Use catalog sittable data
       const sittable = itemDef.sittable;
+      const facingOffset = sittable.facingOffset ?? DEFAULT_SIT_FACING_OFFSET;
       ensureSeatMaps(room);
 
       // Already sitting? unsit first
       unsitCharacter(room, socket.id);
 
-      const allSpots = getSitSpots(room, item, sittable);
+      const allSpots = getSitSpots(room, item, sittable, facingOffset);
       // Filter to walkable & unoccupied spots
       const available = allSpots.filter((s) => {
         if (room.seatOccupancy.has(`${itemIndex}-${s.seatIdx}`)) return false;
@@ -2983,13 +3000,31 @@ io.on("connection", async (socket) => {
 
       if (available.length === 0) return;
 
-      // Pick nearest spot to character
+      // Pick spot.
+      // For single-seat furniture (chairs/ottomans), prefer the side that matches the
+      // furniture rotation so the avatar faces the same direction as the chair.
       const pos = character.position || [0, 0];
-      available.sort((a, b) => {
-        const da = (a.walkTo[0] - pos[0]) ** 2 + (a.walkTo[1] - pos[1]) ** 2;
-        const db = (b.walkTo[0] - pos[0]) ** 2 + (b.walkTo[1] - pos[1]) ** 2;
-        return da - db;
-      });
+
+      const distSq = (s) => (s.walkTo[0] - pos[0]) ** 2 + (s.walkTo[1] - pos[1]) ** 2;
+      const angleDelta = (a, b) => {
+        // smallest absolute difference between two angles (wrap at 2PI)
+        const d = Math.abs(a - b) % (Math.PI * 2);
+        return d > Math.PI ? (Math.PI * 2) - d : d;
+      };
+
+      if (sittable.seats === 1) {
+        const desired = normalizeAngle(((item.rotation || 0) * Math.PI) / 2 + facingOffset);
+        available.sort((a, b) => {
+          const da = angleDelta(a.seatRotation, desired);
+          const db = angleDelta(b.seatRotation, desired);
+          if (da !== db) return da - db;
+          return distSq(a) - distSq(b);
+        });
+      } else {
+        // Default: nearest spot to character
+        available.sort((a, b) => distSq(a) - distSq(b));
+      }
+
       const spot = available[0];
 
       // Pathfind to walkTo position

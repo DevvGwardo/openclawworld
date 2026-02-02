@@ -45,10 +45,13 @@ const _idleGlanceQuat = new THREE.Quaternion();
 const _lookMatrix = new THREE.Matrix4();
 const _up = new THREE.Vector3(0, 1, 0);
 const _zero = new THREE.Vector3();
-// Pre-computed quaternions for sitting pose
-// Thigh (UpLeg): rotate -90° around X to point legs forward
-const _thighSitQuat = new THREE.Quaternion()
+// Pre-computed quaternions for sitting pose.
+// NOTE: Some rigs have mirrored local axes between left/right leg bones, so we keep
+// both +90 and -90 variants and apply them per-leg.
+const _thighSitQuatNeg = new THREE.Quaternion()
   .setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+const _thighSitQuatPos = new THREE.Quaternion()
+  .setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
 // Shin (Leg): bend knee 90° around local X
 const _kneeBendPos = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
 const _kneeBendNeg = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
@@ -203,6 +206,10 @@ export const Avatar = memo(function Avatar({
   const rightUpLegRef = useRef(null);
   const leftLegRef = useRef(null);
   const rightLegRef = useRef(null);
+  const leftUpLegRestRef = useRef(null);
+  const rightUpLegRestRef = useRef(null);
+  const leftLegRestRef = useRef(null);
+  const rightLegRestRef = useRef(null);
   const pathRef = useRef([]);
   const pathIndexRef = useRef(0); // index pointer instead of shift()
 
@@ -363,6 +370,10 @@ export const Avatar = memo(function Avatar({
     rightUpLegRef.current = null;
     leftLegRef.current = null;
     rightLegRef.current = null;
+    leftUpLegRestRef.current = null;
+    rightUpLegRestRef.current = null;
+    leftLegRestRef.current = null;
+    rightLegRestRef.current = null;
     proceduralBonesRef.current = null;
     restPosesRef.current = null;
     proceduralTimeRef.current = 0;
@@ -682,6 +693,12 @@ export const Avatar = memo(function Avatar({
         rightUpLegRef.current = avatar.current.getObjectByName("RightUpLeg");
         leftLegRef.current = avatar.current.getObjectByName("LeftLeg");
         rightLegRef.current = avatar.current.getObjectByName("RightLeg");
+
+        // Cache rest pose rotations so our sit overrides are applied as deltas.
+        if (leftUpLegRef.current && !leftUpLegRestRef.current) leftUpLegRestRef.current = leftUpLegRef.current.quaternion.clone();
+        if (rightUpLegRef.current && !rightUpLegRestRef.current) rightUpLegRestRef.current = rightUpLegRef.current.quaternion.clone();
+        if (leftLegRef.current && !leftLegRestRef.current) leftLegRestRef.current = leftLegRef.current.quaternion.clone();
+        if (rightLegRef.current && !rightLegRestRef.current) rightLegRestRef.current = rightLegRef.current.quaternion.clone();
       }
       const hips = hipsRef.current;
       // Only reset hips X/Z drift when NOT sitting — standing/walking root motion fix
@@ -703,10 +720,23 @@ export const Avatar = memo(function Avatar({
       applyAnimation("M_Sitting_001");
       // Override full leg rotation for humanoid rigs only
       if (!isNonHumanoid) {
-        if (leftUpLegRef.current) leftUpLegRef.current.quaternion.copy(_thighSitQuat);
-        if (rightUpLegRef.current) rightUpLegRef.current.quaternion.copy(_thighSitQuat);
-        if (leftLegRef.current) leftLegRef.current.quaternion.copy(_kneeBendPos);
-        if (rightLegRef.current) rightLegRef.current.quaternion.copy(_kneeBendPos);
+        // Apply as delta from rest pose (prevents hips->leg flips on mirrored rigs).
+        if (leftUpLegRef.current) {
+          if (leftUpLegRestRef.current) leftUpLegRef.current.quaternion.copy(leftUpLegRestRef.current).multiply(_thighSitQuatNeg);
+          else leftUpLegRef.current.quaternion.copy(_thighSitQuatNeg);
+        }
+        if (rightUpLegRef.current) {
+          if (rightUpLegRestRef.current) rightUpLegRef.current.quaternion.copy(rightUpLegRestRef.current).multiply(_thighSitQuatPos);
+          else rightUpLegRef.current.quaternion.copy(_thighSitQuatPos);
+        }
+        if (leftLegRef.current) {
+          if (leftLegRestRef.current) leftLegRef.current.quaternion.copy(leftLegRestRef.current).multiply(_kneeBendPos);
+          else leftLegRef.current.quaternion.copy(_kneeBendPos);
+        }
+        if (rightLegRef.current) {
+          if (rightLegRestRef.current) rightLegRef.current.quaternion.copy(rightLegRestRef.current).multiply(_kneeBendNeg);
+          else rightLegRef.current.quaternion.copy(_kneeBendNeg);
+        }
       }
     } else {
       const path = pathRef.current;

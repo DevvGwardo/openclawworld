@@ -127,6 +127,34 @@ export const SocketManager = () => {
     });
   }, [items]);
   useEffect(() => {
+    const hydrateMotiveAndInteractionState = (chars) => {
+      if (!Array.isArray(chars) || chars.length === 0) return;
+
+      // Motives are used by Avatar.jsx for Sims-style mood indicators.
+      // The server includes motives/interactionState in the initial character list,
+      // but the client previously only populated these atoms from incremental events.
+      const motiveEntries = [];
+      const interactionEntries = [];
+      for (const c of chars) {
+        if (!c || !c.id) continue;
+        if (c.motives) motiveEntries.push([c.id, c.motives]);
+        if (c.interactionState !== undefined) interactionEntries.push([c.id, c.interactionState ?? null]);
+      }
+
+      if (motiveEntries.length > 0) {
+        setCharacterMotives((prev) => ({
+          ...prev,
+          ...Object.fromEntries(motiveEntries),
+        }));
+      }
+      if (interactionEntries.length > 0) {
+        setCharacterInteractionStates((prev) => ({
+          ...prev,
+          ...Object.fromEntries(interactionEntries),
+        }));
+      }
+    };
+
     function onConnect() {
       console.log("connected");
     }
@@ -161,6 +189,7 @@ export const SocketManager = () => {
       setMap(value.map);
       setUser(value.id);
       setCharacters(value.characters);
+      hydrateMotiveAndInteractionState(value.characters);
       setChatMessages([]);
       if (value.coins !== undefined) setCoins(value.coins);
       setRoomHasPassword(value.hasPassword !== false);
@@ -210,6 +239,7 @@ export const SocketManager = () => {
 
     function onCharacters(value) {
       mergeCharacters(value);
+      hydrateMotiveAndInteractionState(value);
     }
 
     function onMapUpdate(value) {
@@ -361,6 +391,7 @@ export const SocketManager = () => {
       // value = { character: { id, position, avatarUrl, name, isBot, ... }, roomName }
       const char = value.character;
       if (!char || !char.id) return;
+      hydrateMotiveAndInteractionState([char]);
       setCharacters((prev) => {
         // Don't add duplicates
         if (prev.some((c) => c.id === char.id)) return prev;
