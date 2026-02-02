@@ -8,6 +8,7 @@ import { GLTFLoader } from "three-stdlib";
 import { roomItemsAtom } from "./Room";
 import { roomIDAtom, roomsAtom, socket, switchRoom, coinsAtom, activeQuestsAtom, questNotificationsAtom, charactersAtom, itemsAtom } from "./SocketManager";
 import DirectMessagePanel from "./DirectMessagePanel";
+import { renderAvatarPortrait } from "./Avatar";
 import soundManager from "../audio/SoundManager";
 
 // Offscreen thumbnail renderer — renders each GLB to a data URL image
@@ -161,6 +162,16 @@ const getAvatarThumbnail = (glbUrl) => {
 };
 
 const CharacterSelectorModal = ({ onClose, currentAvatarUrl, onSelectAvatar, onCustomAvatar }) => {
+  const [localThumbs, setLocalThumbs] = useState({});
+
+  useEffect(() => {
+    AVATAR_URLS.filter((url) => url.startsWith("/")).forEach((url) => {
+      renderAvatarPortrait(url, (dataUrl) => {
+        if (dataUrl) setLocalThumbs((prev) => ({ ...prev, [url]: dataUrl }));
+      });
+    });
+  }, []);
+
   return (
     <div className="fixed inset-0 z-[100] grid place-items-center">
       <motion.div
@@ -215,10 +226,18 @@ const CharacterSelectorModal = ({ onClose, currentAvatarUrl, onSelectAvatar, onC
                 >
                   <div className="w-full h-full bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
                     {isLocalModel ? (
-                      <div className="flex flex-col items-center justify-center gap-1">
-                        <span className="text-3xl">🐱</span>
-                        <span className="text-[10px] font-semibold text-gray-500">Nub Cat</span>
-                      </div>
+                      localThumbs[url] ? (
+                        <img
+                          src={localThumbs[url]}
+                          alt={label}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center justify-center gap-1">
+                          <div className="w-6 h-6 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
+                          <span className="text-[10px] font-semibold text-gray-500">{label}</span>
+                        </div>
+                      )
                     ) : (
                       <img
                         src={thumbUrl}

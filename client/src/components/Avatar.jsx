@@ -996,7 +996,7 @@ export const Avatar = memo(function Avatar({
 // Renders a close-up face portrait of a character model off-screen
 const avatarPortraitCache = {};
 
-const renderAvatarPortrait = (avatarUrl, callback) => {
+export const renderAvatarPortrait = (avatarUrl, callback) => {
   if (!avatarUrl) return;
   if (avatarPortraitCache[avatarUrl]) {
     callback(avatarPortraitCache[avatarUrl]);
