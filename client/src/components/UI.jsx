@@ -324,7 +324,7 @@ const PasswordInput = ({ onClose, onSuccess }) => {
 
 const SERVER_URL =
   import.meta.env.VITE_SERVER_URL ||
-  "https://clawland-production.up.railway.app";
+  "https://openclawworld-production.up.railway.app";
 
 const BotConnectModal = ({ onClose }) => {
   const [copied, setCopied] = useState(null);

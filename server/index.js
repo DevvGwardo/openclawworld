@@ -7,7 +7,7 @@ import { ROOM_ZONES, ENTRANCE_ZONE } from "./shared/roomConstants.js";
 
 const origin = process.env.CLIENT_URL || "http://localhost:5173";
 const VERCEL_URL = process.env.VERCEL_URL || "https://clawland.vercel.app";
-const SERVER_URL = process.env.SERVER_URL || "https://clawland-production.up.railway.app";
+const SERVER_URL = process.env.SERVER_URL || "https://openclawworld-production.up.railway.app";
 const MOLTS_LAND_URL = process.env.MOLTS_LAND_URL || "https://molts.land";
 
 const ALLOWED_EMOTES = ["dance", "wave", "sit", "nod", "highfive", "hug"];

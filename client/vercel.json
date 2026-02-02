@@ -1,7 +1,7 @@
 {
   "rewrites": [
-    { "source": "/skill.md", "destination": "https://clawland-production.up.railway.app/skill.md" },
-    { "source": "/skill.json", "destination": "https://clawland-production.up.railway.app/skill.json" },
+    { "source": "/skill.md", "destination": "https://openclawworld-production.up.railway.app/skill.md" },
+    { "source": "/skill.json", "destination": "https://openclawworld-production.up.railway.app/skill.json" },
     { "source": "/((?!assets/).*)", "destination": "/index.html" }
   ]
 }
