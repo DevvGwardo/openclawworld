@@ -1,7 +1,6 @@
 import {
   Grid,
   Html,
-  ScrollControls,
   useCursor,
 } from "@react-three/drei";
 
@@ -32,13 +31,13 @@ class AvatarErrorBoundary extends Component {
 }
 import { Item } from "./Item";
 import { ProximityItem } from "./ProximityItem";
-import { Shop } from "./Shop";
 import { charactersAtom, mapAtom, socket, userAtom, htmlVisibleSetAtom, itemsAtom } from "./SocketManager";
 import {
   buildModeAtom,
   draggedItemAtom,
   draggedItemRotationAtom,
   shopModeAtom,
+  selectedShopItemAtom,
 } from "./UI";
 
 export const roomItemsAtom = atom([]);
@@ -114,7 +113,7 @@ const CharacterList = React.memo(() => {
 });
 
 export const Room = () => {
-  const [buildMode] = useAtom(buildModeAtom);
+  const [buildMode, setBuildMode] = useAtom(buildModeAtom);
   const [shopMode, setShopMode] = useAtom(shopModeAtom);
   const [map] = useAtom(mapAtom);
   const [items, setItems] = useAtom(roomItemsAtom);
@@ -245,6 +244,8 @@ export const Room = () => {
     }
   }, [buildMode]);
 
+  const [selectedShopItem, setSelectedShopItem] = useAtom(selectedShopItemAtom);
+
   const onItemSelected = (item) => {
     setShopMode(false);
 
@@ -260,15 +261,17 @@ export const Room = () => {
     setDraggedItemRotation(item.rotation || 0);
   };
 
+  // Watch for item selections from the HTML shop panel
+  useEffect(() => {
+    if (selectedShopItem) {
+      onItemSelected(selectedShopItem);
+      setSelectedShopItem(null);
+    }
+  }, [selectedShopItem]);
+
   return (
     <>
-      {shopMode && (
-        <ScrollControls pages={4}>
-          <Shop onItemSelected={onItemSelected} />
-        </ScrollControls>
-      )}
-      {!shopMode &&
-        buildMode &&
+      {buildMode &&
         items.map((item, idx) => (
           <Item
             key={`${item.name}-${idx}`}
@@ -283,8 +286,7 @@ export const Room = () => {
             canDrop={canDrop}
           />
         ))}
-      {!shopMode &&
-        !buildMode &&
+      {!buildMode &&
         map.items.map((item, idx) => {
           const def = itemsCatalog?.[item.name];
           const isSittable = def && def.sittable;
@@ -303,7 +305,7 @@ export const Room = () => {
           );
         })}
 
-      {!shopMode && buildMode && (
+      {buildMode && (
         <mesh
           rotation-x={-Math.PI / 2}
           position-y={-0.002}
@@ -325,15 +327,16 @@ export const Room = () => {
           receiveShadow
         >
           <planeGeometry args={map.size} />
-          <meshStandardMaterial color="#c2b280" />
+          <meshStandardMaterial color="#7a7a7a" />
         </mesh>
       )}
-      {(buildMode || shopMode) && (
+      {buildMode && (
         <Grid infiniteGrid fadeDistance={50} fadeStrength={5} />
       )}
       {!buildMode && <CharacterList />}
 
       {/* === CITY SURROUNDINGS (large plaza rooms) === */}
+      {/* Ground plane + interactive labels: only when NOT building */}
       {!buildMode && !shopMode && map.size[0] > 30 && (
         <group>
           <mesh
@@ -374,17 +377,45 @@ export const Room = () => {
             </Html>
           </group>
 
-          <group onPointerOver={null} raycast={() => null}>
-            <TownHall scale={4.1} position={[map.size[0] / 2, 0, 4]} />
-            <ShopBuilding scale={5.9} position={[map.size[0] - 4, 0, map.size[1] / 2]} rotation-y={-Math.PI / 2} />
-            <SmallBuilding scale={5.9} position={[11, 0, 11]} rotation-y={Math.PI * 1.5} />
-            <SmallBuilding scale={5.9} position={[map.size[0] - 11, 0, 11]} rotation-y={-Math.PI / 4} />
-            <Skyscraper scale={5.9} position={[map.size[0] / 2 + 14, 0, 4]} />
-            <Skyscraper scale={5.9} position={[2, 0, 2]} />
-            <Skyscraper scale={5.9} position={[map.size[0] - 2, 0, 2]} />
-            <Skyscraper scale={5.9} position={[2, 0, map.size[1] - 2]} />
-            <Skyscraper scale={5.9} position={[map.size[0] - 2, 0, map.size[1] - 2]} />
+          {/* Town Hall - clickable, enters build mode */}
+          <group
+            position={[map.size[0] / 2, 0, 4]}
+            onClick={(e) => {
+              e.stopPropagation();
+              setBuildMode(true);
+            }}
+            onPointerOver={(e) => {
+              e.stopPropagation();
+              document.body.style.cursor = "pointer";
+            }}
+            onPointerOut={() => {
+              document.body.style.cursor = "auto";
+            }}
+          >
+            <TownHall scale={4.1} />
+            <Html position={[0, 4.5, 0]} center distanceFactor={20} zIndexRange={[1, 0]} style={{ pointerEvents: "none" }}>
+              <div className="bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-lg shadow-lg border border-green-200 whitespace-nowrap">
+                <p className="text-sm font-bold text-green-700 text-center">BUILD</p>
+                <p className="text-[10px] text-green-500 text-center">Click to place items</p>
+              </div>
+            </Html>
           </group>
+        </group>
+      )}
+      {/* City buildings as landmarks: always visible in large rooms (non-interactive in build mode) */}
+      {!shopMode && map.size[0] > 30 && (
+        <group onPointerOver={null} raycast={() => null}>
+          {/* Only show apartment/town hall models in build mode (they're already rendered interactively above when not building) */}
+          {buildMode && <Apartment scale={5.9} position={[4, 0, map.size[1] / 2]} rotation-y={Math.PI / 2} />}
+          {buildMode && <TownHall scale={4.1} position={[map.size[0] / 2, 0, 4]} />}
+          <ShopBuilding scale={5.9} position={[map.size[0] - 4, 0, map.size[1] / 2]} rotation-y={-Math.PI / 2} />
+          <SmallBuilding scale={5.9} position={[11, 0, 11]} rotation-y={Math.PI * 1.5} />
+          <SmallBuilding scale={5.9} position={[map.size[0] - 11, 0, 11]} rotation-y={-Math.PI / 4} />
+          <Skyscraper scale={5.9} position={[map.size[0] / 2 + 14, 0, 4]} />
+          <Skyscraper scale={5.9} position={[2, 0, 2]} />
+          <Skyscraper scale={5.9} position={[map.size[0] - 2, 0, 2]} />
+          <Skyscraper scale={5.9} position={[2, 0, map.size[1] - 2]} />
+          <Skyscraper scale={5.9} position={[map.size[0] - 2, 0, map.size[1] - 2]} />
         </group>
       )}
 

@@ -4,15 +4,24 @@ Command: npx gltfjsx@6.2.3 public/models/Animated Woman.glb -o src/components/An
 */
 
 import { useAnimations, useGLTF } from "@react-three/drei";
+import { useFrame } from "@react-three/fiber";
 import { useAtom } from "jotai";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { avatarUrlAtom } from "./UI";
+import { getModelConfig, applyProceduralAnimation } from "./Avatar";
 
 export function LobbyAvatar({ ...props }) {
   const [avatarUrl] = useAtom(avatarUrlAtom);
   const avatar = useRef();
   const group = useRef();
   const { scene } = useGLTF(avatarUrl);
+
+  // Detect non-humanoid model
+  const modelConfig = useMemo(() => getModelConfig(avatarUrl), [avatarUrl]);
+  const isNonHumanoid = !!modelConfig;
+  const proceduralBonesRef = useRef(null);
+  const restPosesRef = useRef(null);
+  const proceduralTimeRef = useRef(0);
 
   const { animations: waveAnimation } = useGLTF(
     "/animations/M_Standing_Expressions_001.glb"
@@ -22,20 +31,24 @@ export function LobbyAvatar({ ...props }) {
   );
 
   const { actions } = useAnimations(
-    [waveAnimation[0], idleAnimation[0]],
+    isNonHumanoid ? [] : [waveAnimation[0], idleAnimation[0]],
     avatar
   );
   const [animation, setAnimation] = useState("M_Standing_Idle_001");
   const [init, setInit] = useState(avatarUrl);
 
   useEffect(() => {
-    actions[animation]
-      .reset()
-      .fadeIn(init === avatarUrl ? 0.32 : 0)
-      .play();
+    // Skip mixer-based animation for non-humanoid models
+    if (isNonHumanoid) return;
+    if (actions[animation]) {
+      actions[animation]
+        .reset()
+        .fadeIn(init === avatarUrl ? 0.32 : 0)
+        .play();
+    }
     setInit(avatarUrl);
     return () => actions[animation]?.fadeOut(0.32);
-  }, [animation, avatarUrl]);
+  }, [animation, avatarUrl, isNonHumanoid]);
 
   const delayWave = (delay) => {
     setTimeout(() => {
@@ -50,6 +63,39 @@ export function LobbyAvatar({ ...props }) {
   useEffect(() => {
     delayWave(12);
   }, []);
+
+  // Reset bone refs when avatar URL changes (new model loaded)
+  useEffect(() => {
+    proceduralBonesRef.current = null;
+    restPosesRef.current = null;
+    proceduralTimeRef.current = 0;
+  }, [avatarUrl]);
+
+  // Procedural animation loop for non-humanoid models
+  useFrame((_, delta) => {
+    if (!isNonHumanoid || !avatar.current) return;
+
+    // Cache bone references on first access
+    if (!proceduralBonesRef.current && modelConfig) {
+      const bones = {};
+      const rests = {};
+      for (const [key, boneName] of Object.entries(modelConfig.bones)) {
+        const bone = avatar.current.getObjectByName(boneName);
+        if (bone) {
+          bones[key] = bone;
+          rests[key] = bone.quaternion.clone();
+        }
+      }
+      proceduralBonesRef.current = bones;
+      restPosesRef.current = rests;
+    }
+
+    if (proceduralBonesRef.current) {
+      proceduralTimeRef.current += delta;
+      const procState = animation === "M_Standing_Expressions_001" ? "wave" : "idle";
+      applyProceduralAnimation(procState, proceduralTimeRef.current, proceduralBonesRef.current, restPosesRef.current);
+    }
+  });
 
   return (
     <group ref={group} {...props} dispose={null}>

@@ -39,9 +39,140 @@ const MID_EXIT_SQ = RENDER_DISTANCE_HIDE_SQ;
 // Reusable vectors to avoid allocations in the hot loop
 const _direction = new THREE.Vector3();
 const _targetQuat = new THREE.Quaternion();
+const _idleGlanceQuat = new THREE.Quaternion();
 const _lookMatrix = new THREE.Matrix4();
 const _up = new THREE.Vector3(0, 1, 0);
 const _zero = new THREE.Vector3();
+// Pre-computed quaternions for sitting pose
+// Thigh (UpLeg): rotate 180° around Y to flip orientation, then 90° forward around X
+const _thighSitQuat = new THREE.Quaternion()
+  .setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI)
+  .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2));
+// Shin (Leg): bend knee 90° around local X
+const _kneeBendPos = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+const _kneeBendNeg = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+
+// Non-humanoid model configurations — maps bone names for procedural animation
+const MODEL_CONFIGS = {
+  nubcat: {
+    test: (url) => url.includes("sillyNubCat"),
+    bones: {
+      body: "body_00",
+      pawR: "paw.R_01",
+      pawL: "paw.L_02",
+      legR: "leg.R_03",
+      legL: "leg.L_04",
+      cheekR: "cheek.R_05",
+      cheekL: "cheek.L_06",
+      head: "head_07",
+    },
+  },
+};
+
+export function getModelConfig(url) {
+  for (const config of Object.values(MODEL_CONFIGS)) {
+    if (config.test(url)) return config;
+  }
+  return null;
+}
+
+// Reusable quaternion/euler for procedural bone offsets
+const _procQuat = new THREE.Quaternion();
+const _procEuler = new THREE.Euler();
+
+/**
+ * Apply procedural bone animation for non-humanoid models.
+ * Resets bones to rest pose, then applies sine-wave-driven rotations.
+ */
+export function applyProceduralAnimation(state, time, bones, restPoses) {
+  if (!bones || !restPoses) return;
+
+  // Reset all bones to rest pose
+  for (const key in bones) {
+    if (bones[key] && restPoses[key]) {
+      bones[key].quaternion.copy(restPoses[key]);
+    }
+  }
+
+  // Apply rotation offset relative to rest pose
+  const offset = (key, rx, ry, rz) => {
+    const bone = bones[key];
+    if (!bone || !restPoses[key]) return;
+    _procQuat.setFromEuler(_procEuler.set(rx, ry, rz));
+    bone.quaternion.multiply(_procQuat);
+  };
+
+  // body_00 has 90° X rest rotation, paws have ~90° Z rest rotations,
+  // legs have ~180° Z rest rotation. Offsets are in each bone's local space.
+  // For this rig: body Y = world forward, paw/leg Y = swing axis.
+  switch (state) {
+    case "walk": {
+      const t = time * 8;
+      const s = Math.sin(t);
+      // Body side-to-side waddle + slight forward bob
+      offset("body", s * 0.08, 0, Math.sin(t * 2) * 0.05);
+      // Front paws paddle alternating
+      offset("pawR", 0, s * 0.4, 0);
+      offset("pawL", 0, -s * 0.4, 0);
+      // Back legs waddle opposite to body sway
+      offset("legR", 0, -s * 0.35, 0);
+      offset("legL", 0, s * 0.35, 0);
+      // Head bobs side to side with body + slight nod
+      offset("head", s * 0.06, 0, Math.sin(t * 2) * 0.04);
+      // Cheeks jiggle with the waddle
+      offset("cheekR", 0, Math.abs(s) * 0.06, 0);
+      offset("cheekL", 0, Math.abs(s) * 0.06, 0);
+      break;
+    }
+    case "idle": {
+      const t = time * 2;
+      offset("body", 0, 0, Math.sin(t) * 0.015);
+      offset("head", Math.sin(t * 0.5) * 0.06, Math.sin(t * 0.3) * 0.04, 0);
+      break;
+    }
+    case "dance": {
+      const t = time * 6;
+      // Bouncy body
+      offset("body", 0, 0, Math.abs(Math.sin(t * 2)) * 0.08);
+      offset("body", Math.sin(t) * 0.12, 0, 0);
+      // Exaggerated paw alternation
+      offset("pawR", 0, Math.sin(t) * 0.7, 0);
+      offset("pawL", 0, Math.sin(t + Math.PI) * 0.7, 0);
+      // Back legs bounce
+      offset("legR", 0, Math.sin(t * 0.5) * 0.4, 0);
+      offset("legL", 0, Math.sin(t * 0.5 + Math.PI) * 0.4, 0);
+      // Head wobble
+      offset("head", Math.sin(t * 2) * 0.2, 0, Math.sin(t) * 0.15);
+      // Cheek puff
+      offset("cheekR", 0, Math.sin(t * 3) * 0.12, 0);
+      offset("cheekL", 0, Math.sin(t * 3 + Math.PI) * 0.12, 0);
+      break;
+    }
+    case "wave": {
+      const t = time * 3;
+      offset("head", Math.sin(t * 0.7) * 0.15, 0, Math.sin(t) * 0.2);
+      offset("body", 0, 0, Math.sin(t * 0.5) * 0.04);
+      offset("pawR", 0, 0, Math.sin(t * 2) * 0.4);
+      offset("cheekR", 0, Math.sin(t * 2) * 0.15, 0);
+      offset("cheekL", 0, Math.sin(t * 2 + Math.PI) * 0.15, 0);
+      break;
+    }
+    case "sit": {
+      // Lower the body forward
+      offset("body", 0, 0, 0.15);
+      // Tuck back legs
+      offset("legR", 0, -0.4, 0);
+      offset("legL", 0, -0.4, 0);
+      // Slight paw tuck
+      offset("pawR", 0, -0.1, 0);
+      offset("pawL", 0, -0.1, 0);
+      // Subtle idle while sitting
+      const t = time * 1.5;
+      offset("head", Math.sin(t) * 0.06, Math.sin(t * 0.6) * 0.04, 0);
+      break;
+    }
+  }
+}
 
 export const Avatar = memo(function Avatar({
   id,
@@ -64,6 +195,10 @@ export const Avatar = memo(function Avatar({
 
   const avatar = useRef();
   const hipsRef = useRef(null);
+  const leftUpLegRef = useRef(null);
+  const rightUpLegRef = useRef(null);
+  const leftLegRef = useRef(null);
+  const rightLegRef = useRef(null);
   const pathRef = useRef([]);
   const pathIndexRef = useRef(0); // index pointer instead of shift()
 
@@ -106,6 +241,13 @@ export const Avatar = memo(function Avatar({
   // useGraph creates two flat object collections for nodes and materials
   const { nodes } = useGraph(clone);
 
+  // Detect non-humanoid model type for procedural animation
+  const modelConfig = useMemo(() => getModelConfig(avatarUrl), [avatarUrl]);
+  const isNonHumanoid = !!modelConfig;
+  const proceduralBonesRef = useRef(null);
+  const restPosesRef = useRef(null);
+  const proceduralTimeRef = useRef(0);
+
   const { animations: walkAnimation } = useGLTF("/animations/M_Walk_001.glb");
   const { animations: danceAnimation } = useGLTF(
     "/animations/M_Dances_001.glb"
@@ -120,8 +262,22 @@ export const Avatar = memo(function Avatar({
     "/animations/M_Sitting_001.glb"
   );
 
+  // Remove all leg tracks from sitting animation — the animation has incorrect
+  // leg rotation values for this rig. We override leg pose manually in useFrame.
+  const fixedSitClip = useMemo(() => {
+    const clip = sitAnimation[0].clone();
+    clip.tracks = clip.tracks.filter(
+      (track) =>
+        !track.name.startsWith("LeftUpLeg.") &&
+        !track.name.startsWith("RightUpLeg.") &&
+        !track.name.startsWith("LeftLeg.") &&
+        !track.name.startsWith("RightLeg.")
+    );
+    return clip;
+  }, [sitAnimation]);
+
   const { actions, mixer } = useAnimations(
-    [walkAnimation[0], idleAnimation[0], danceAnimation[0], waveAnimation[0], sitAnimation[0]],
+    isNonHumanoid ? [] : [walkAnimation[0], idleAnimation[0], danceAnimation[0], waveAnimation[0], fixedSitClip],
     avatar
   );
 
@@ -137,6 +293,14 @@ export const Avatar = memo(function Avatar({
   const initRef = useRef(false);
   // Random offset so characters don't animate in lockstep
   const animOffsetRef = useRef(Math.random());
+  // Random initial facing direction so characters don't all face the same way
+  const initialRotationRef = useRef(Math.random() * Math.PI * 2);
+  // Staggered entrance delay so characters pop in at different times
+  const entranceDelayRef = useRef(0.05 + Math.random() * 0.5);
+  // Idle look-around state — characters periodically glance in different directions
+  const idleLookTimerRef = useRef(2 + Math.random() * 5); // seconds until next look
+  const idleLookTargetRef = useRef(null); // target quaternion for idle glance
+  const idleTimeRef = useRef(0); // how long character has been idle
   const [showChatBubble, setShowChatBubble] = useState(false);
 
   // Apply animation changes via ref — only triggers React state when animation actually changes
@@ -164,7 +328,19 @@ export const Avatar = memo(function Avatar({
     });
   }, [clone]);
 
-  // Initial animation play
+  // Reset cached bone refs when the model changes so they get re-looked up
+  useEffect(() => {
+    hipsRef.current = null;
+    leftUpLegRef.current = null;
+    rightUpLegRef.current = null;
+    leftLegRef.current = null;
+    rightLegRef.current = null;
+    proceduralBonesRef.current = null;
+    restPosesRef.current = null;
+    proceduralTimeRef.current = 0;
+  }, [clone]);
+
+  // Initial animation play + random facing direction
   useEffect(() => {
     const anim = animationRef.current;
     if (actions[anim]) {
@@ -174,6 +350,10 @@ export const Avatar = memo(function Avatar({
       const clip = action.getClip();
       if (clip) action.time = animOffsetRef.current * clip.duration;
       initRef.current = true;
+    }
+    // Apply random initial facing direction
+    if (group.current) {
+      group.current.quaternion.setFromAxisAngle(_up, initialRotationRef.current);
     }
   }, [actions, avatarUrl]);
 
@@ -374,33 +554,54 @@ export const Avatar = memo(function Avatar({
     // Skip all movement/animation for non-visible distant avatars
     if (!isNearbyRef.current && id !== user) return;
 
-    if (!hipsRef.current) {
-      hipsRef.current = avatar.current.getObjectByName("Hips");
-    }
-    const hips = hipsRef.current;
-    // Only reset hips X/Z drift, preserve Y for vertical bob (skip when sitting)
-    if (hips && !isSittingRef.current) {
-      // Clamp rather than zero — prevents walk root motion from drifting
-      // the character away, but allows small hip sway from animation
-      const hx = hips.position.x;
-      const hz = hips.position.z;
-      if (Math.abs(hx) > 0.05 || Math.abs(hz) > 0.05) {
-        hips.position.set(0, hips.position.y, 0);
+    if (isNonHumanoid) {
+      // Cache non-humanoid bone references on first access
+      if (!proceduralBonesRef.current && modelConfig) {
+        const bones = {};
+        const rests = {};
+        for (const [key, boneName] of Object.entries(modelConfig.bones)) {
+          const bone = avatar.current.getObjectByName(boneName);
+          if (bone) {
+            bones[key] = bone;
+            rests[key] = bone.quaternion.clone();
+          }
+        }
+        proceduralBonesRef.current = bones;
+        restPosesRef.current = rests;
+      }
+    } else {
+      if (!hipsRef.current) {
+        hipsRef.current = avatar.current.getObjectByName("Hips");
+        leftUpLegRef.current = avatar.current.getObjectByName("LeftUpLeg");
+        rightUpLegRef.current = avatar.current.getObjectByName("RightUpLeg");
+        leftLegRef.current = avatar.current.getObjectByName("LeftLeg");
+        rightLegRef.current = avatar.current.getObjectByName("RightLeg");
+      }
+      const hips = hipsRef.current;
+      // Only reset hips X/Z drift when NOT sitting — standing/walking root motion fix
+      if (hips && !isSittingRef.current) {
+        const hx = hips.position.x;
+        const hz = hips.position.z;
+        if (Math.abs(hx) > 0.05 || Math.abs(hz) > 0.05) {
+          hips.position.set(0, hips.position.y, 0);
+        }
       }
     }
 
     // Handle sitting state — skip normal movement when seated
     if (isSittingRef.current && seatDataRef.current) {
-      // Snap position to seat
       const seatWorldPos = gridToVector3(seatDataRef.current.seatPos);
+      const rot = seatDataRef.current.seatRotation;
       group.current.position.set(seatWorldPos.x, seatDataRef.current.seatHeight, seatWorldPos.z);
-      // Set rotation to face outward
-      group.current.quaternion.setFromAxisAngle(_up, seatDataRef.current.seatRotation);
-      // Skip hips reset for sitting animation
-      if (hips) {
-        hips.position.y = hips.position.y; // preserve Y, let animation drive it
-      }
+      group.current.quaternion.setFromAxisAngle(_up, rot);
       applyAnimation("M_Sitting_001");
+      // Override full leg rotation for humanoid rigs only
+      if (!isNonHumanoid) {
+        if (leftUpLegRef.current) leftUpLegRef.current.quaternion.copy(_thighSitQuat);
+        if (rightUpLegRef.current) rightUpLegRef.current.quaternion.copy(_thighSitQuat);
+        if (leftLegRef.current) leftLegRef.current.quaternion.copy(_kneeBendPos);
+        if (rightLegRef.current) rightLegRef.current.quaternion.copy(_kneeBendPos);
+      }
     } else {
       const path = pathRef.current;
       const idx = pathIndexRef.current;
@@ -425,6 +626,8 @@ export const Avatar = memo(function Avatar({
           applyAnimation("M_Walk_001");
           isDancingRef.current = false;
           isWavingRef.current = false;
+          idleTimeRef.current = 0;
+          idleLookTargetRef.current = null;
         } else {
           group.current.position.copy(target);
           pathIndexRef.current++;
@@ -436,6 +639,8 @@ export const Avatar = memo(function Avatar({
           }
         }
       } else if (isWavingRef.current) {
+        idleTimeRef.current = 0;
+        idleLookTargetRef.current = null;
         if (waveTargetIdRef.current) {
           const targetObj = threeScene.getObjectByName(`character-${waveTargetIdRef.current}`);
           if (targetObj && group.current) {
@@ -453,14 +658,44 @@ export const Avatar = memo(function Avatar({
       } else {
         if (isDancingRef.current) {
           applyAnimation("M_Dances_001");
+          idleTimeRef.current = 0;
         } else {
           applyAnimation("M_Standing_Idle_001");
+
+          // Idle look-around: characters periodically glance in a new direction
+          idleTimeRef.current += delta;
+          if (idleTimeRef.current >= idleLookTimerRef.current) {
+            // Pick a new random direction to glance toward
+            const glanceAngle = initialRotationRef.current + (Math.random() - 0.5) * Math.PI * 0.8;
+            _idleGlanceQuat.setFromAxisAngle(_up, glanceAngle);
+            idleLookTargetRef.current = idleLookTargetRef.current || new THREE.Quaternion();
+            idleLookTargetRef.current.copy(_idleGlanceQuat);
+            idleTimeRef.current = 0;
+            idleLookTimerRef.current = 3 + Math.random() * 6; // next glance in 3-9 seconds
+          }
+
+          // Smoothly rotate toward the idle glance target
+          if (idleLookTargetRef.current) {
+            group.current.quaternion.slerp(idleLookTargetRef.current, Math.min(1, 1.5 * delta));
+          }
         }
       }
     }
 
+    // Apply procedural animation for non-humanoid models
+    if (isNonHumanoid && proceduralBonesRef.current) {
+      proceduralTimeRef.current += delta;
+      let procState = "idle";
+      const anim = animationRef.current;
+      if (anim === "M_Walk_001") procState = "walk";
+      else if (anim === "M_Dances_001") procState = "dance";
+      else if (anim === "M_Standing_Expressions_001") procState = "wave";
+      else if (anim === "M_Sitting_001") procState = "sit";
+      applyProceduralAnimation(procState, proceduralTimeRef.current, proceduralBonesRef.current, restPosesRef.current);
+    }
+
     // Task 4: Throttle animation mixer for "mid" distance tier (4 fps)
-    if (distanceTierRef.current === "mid" && mixer) {
+    if (!isNonHumanoid && distanceTierRef.current === "mid" && mixer) {
       midAnimAccRef.current += delta;
       if (midAnimAccRef.current >= 0.25) {
         mixer.update(midAnimAccRef.current);
@@ -468,7 +703,7 @@ export const Avatar = memo(function Avatar({
       }
       // Prevent drei's automatic mixer.update by setting timeScale to 0
       if (mixer.timeScale !== 0) mixer.timeScale = 0;
-    } else if (mixer) {
+    } else if (!isNonHumanoid && mixer) {
       // Near tier: normal speed — flush any accumulated mid-tier time first
       if (mixer.timeScale !== 1) {
         if (midAnimAccRef.current > 0) {
@@ -499,7 +734,7 @@ export const Avatar = memo(function Avatar({
       {(showHtmlOverlay || id === user) && (
         <>
           {/* Always-visible name label — clickable to open character menu */}
-          <Html position-y={2.3} center distanceFactor={8} zIndexRange={[1, 0]} style={{ overflow: 'visible', pointerEvents: 'none' }}>
+          <Html position-y={isNonHumanoid ? 1.3 : 2.3} center distanceFactor={8} zIndexRange={[1, 0]} style={{ overflow: 'visible', pointerEvents: 'none' }}>
             <div
               className="select-none cursor-pointer"
               style={{ pointerEvents: 'auto' }}
@@ -529,7 +764,7 @@ export const Avatar = memo(function Avatar({
             </div>
           </Html>
           {/* Chat bubble + action status */}
-          <Html position-y={2} center distanceFactor={8} zIndexRange={[1, 0]} style={{ overflow: 'visible', pointerEvents: 'none' }}>
+          <Html position-y={isNonHumanoid ? 1.0 : 2} center distanceFactor={8} zIndexRange={[1, 0]} style={{ overflow: 'visible', pointerEvents: 'none' }}>
             <div className="w-60 max-w-full pointer-events-none overflow-visible">
               {/* Action status indicator — hidden for bots to reduce visual noise */}
               {actionStatus && !showChatBubble && !isBot && (
@@ -588,13 +823,17 @@ export const Avatar = memo(function Avatar({
           scale: 1,
         }}
         transition={{
-          delay: 0.15,
+          delay: entranceDelayRef.current,
           mass: 2,
           stiffness: 300,
           damping: 30,
         }}
       >
-        <primitive object={clone} ref={avatar} />
+        {avatarUrl.startsWith("/") ? (
+          <primitive object={clone} ref={avatar} scale={0.63} position-y={0.6} />
+        ) : (
+          <primitive object={clone} ref={avatar} />
+        )}
       </motion.group>
     </group>
   );
@@ -615,7 +854,8 @@ export const CharacterMenu = () => {
   if (!selectedCharacter || selectedCharacter.id === user) return null;
 
   const isFollowing = followedCharacter?.id === selectedCharacter.id;
-  const thumbnailUrl = selectedCharacter.avatarUrl
+  const isLocalAvatar = selectedCharacter.avatarUrl?.startsWith("/");
+  const thumbnailUrl = selectedCharacter.avatarUrl && !isLocalAvatar
     ? selectedCharacter.avatarUrl.split("?")[0].replace(".glb", ".png") + "?size=256"
     : "";
 

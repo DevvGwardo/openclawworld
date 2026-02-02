@@ -32,6 +32,10 @@ export const Experience = ({ loaded }) => {
   const characterRef = useRef(null);
   const followedRef = useRef(null);
   const frameCount = useRef(0);
+  // Build mode camera state
+  const buildCamTarget = useRef({ x: 0, z: 0 });
+  const buildZoom = useRef(30);
+  const buildDragging = useRef(false);
 
   // Clear cached character ref when user changes
   useEffect(() => {
@@ -48,24 +52,39 @@ export const Experience = ({ loaded }) => {
   useEffect(() => {
     const canvas = gl.domElement;
     const handleWheel = (e) => {
-      if (buildMode || shopMode || !roomID) return;
+      if (shopMode || !roomID) return;
       e.preventDefault();
+      if (buildMode) {
+        const delta = e.deltaY > 0 ? 2 : -2;
+        buildZoom.current = Math.max(10, Math.min(60, buildZoom.current + delta));
+        return;
+      }
       const delta = e.deltaY > 0 ? ZOOM_SPEED : -ZOOM_SPEED;
       zoomLevel.current = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomLevel.current + delta));
     };
     const handleMouseDown = (e) => {
       if (e.button === 2) { // Right-click
-        isDragging.current = true;
+        if (buildMode) {
+          buildDragging.current = true;
+        } else {
+          isDragging.current = true;
+        }
       }
     };
     const handleMouseMove = (e) => {
-      if (isDragging.current) {
+      if (buildDragging.current && buildMode) {
+        // Pan build camera — scale movement by zoom level for consistent feel
+        const panSpeed = buildZoom.current * 0.004;
+        buildCamTarget.current.x -= e.movementX * panSpeed;
+        buildCamTarget.current.z -= e.movementY * panSpeed;
+      } else if (isDragging.current) {
         cameraAngle.current -= e.movementX * ROTATE_SPEED;
       }
     };
     const handleMouseUp = (e) => {
       if (e.button === 2) {
         isDragging.current = false;
+        buildDragging.current = false;
       }
     };
     const handleContextMenu = (e) => {
@@ -108,14 +127,15 @@ export const Experience = ({ loaded }) => {
     if (!roomID) {
       return;
     }
-    if (shopMode) {
-      controls.current.setPosition(0, 1, 6, true);
-      controls.current.setTarget(0, 0, 0, true);
-      return;
-    }
     if (buildMode) {
-      controls.current.setPosition(50, 40, 50, true);
-      controls.current.setTarget(25, 0, 25, true);
+      // Center build camera on where the user's character currently is
+      const char = characterRef.current;
+      const cx = char ? char.position.x : (map ? map.size[0] / 2 : 25);
+      const cz = char ? char.position.z : (map ? map.size[1] / 2 : 25);
+      buildCamTarget.current = { x: cx, z: cz };
+      buildZoom.current = 30;
+      controls.current.setPosition(cx + 20, 30, cz + 20, true);
+      controls.current.setTarget(cx, 0, cz, true);
       return;
     }
 
@@ -128,9 +148,29 @@ export const Experience = ({ loaded }) => {
   }, [buildMode, roomID, shopMode, loaded]);
 
   useFrame(({ scene }, delta) => {
-    if (!user) {
+    if (!user) return;
+
+    // Build mode: WASD/arrow key panning + zoom
+    if (buildMode) {
+      const panSpeed = 30 * delta;
+      if (keysPressed.current["w"] || keysPressed.current["arrowup"])
+        buildCamTarget.current.z -= panSpeed;
+      if (keysPressed.current["s"] || keysPressed.current["arrowdown"])
+        buildCamTarget.current.z += panSpeed;
+      if (keysPressed.current["a"] || keysPressed.current["arrowleft"])
+        buildCamTarget.current.x -= panSpeed;
+      if (keysPressed.current["d"] || keysPressed.current["arrowright"])
+        buildCamTarget.current.x += panSpeed;
+
+      const z = buildZoom.current;
+      const tx = buildCamTarget.current.x;
+      const tz = buildCamTarget.current.z;
+      controls.current.setTarget(tx, 0, tz, true);
+      controls.current.setPosition(tx + z * 0.7, z, tz + z * 0.7, true);
       return;
     }
+
+    if (shopMode) return;
 
     frameCount.current++;
 

@@ -2,7 +2,7 @@
   {
     "id": "plaza",
     "name": "Town Square",
-    "password": "WAWA",
+    "password": "",
     "items": [
       {
         "name": "bench",

@@ -1,17 +1,156 @@
 import { atom, useAtom } from "jotai";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
+import * as THREE from "three";
 
 import { AvatarCreator } from "@readyplayerme/react-avatar-creator";
 import { motion, AnimatePresence } from "framer-motion";
+import { GLTFLoader } from "three-stdlib";
 import { roomItemsAtom } from "./Room";
-import { roomIDAtom, roomsAtom, socket, switchRoom, coinsAtom, activeQuestsAtom, questNotificationsAtom, roomHasPasswordAtom, charactersAtom } from "./SocketManager";
+import { roomIDAtom, roomsAtom, socket, switchRoom, coinsAtom, activeQuestsAtom, questNotificationsAtom, charactersAtom, itemsAtom } from "./SocketManager";
 import DirectMessagePanel from "./DirectMessagePanel";
+
+// Offscreen thumbnail renderer — renders each GLB to a data URL image
+const thumbnailCache = {};
+
+const renderThumbnails = (itemNames, onThumbnail, signal) => {
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setSize(128, 128);
+  renderer.setPixelRatio(1);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+  const camera = new THREE.OrthographicCamera(-0.5, 0.5, 0.5, -0.5, 0.01, 100);
+  camera.position.set(1, 0.8, 1);
+  camera.lookAt(0, 0, 0);
+
+  const scene = new THREE.Scene();
+  scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+  dir.position.set(2, 3, 2);
+  scene.add(dir);
+
+  const loader = new GLTFLoader();
+
+  let i = 0;
+  const next = () => {
+    if (signal.aborted || i >= itemNames.length) {
+      renderer.dispose();
+      return;
+    }
+    const name = itemNames[i++];
+    if (thumbnailCache[name]) {
+      onThumbnail(name, thumbnailCache[name]);
+      next();
+      return;
+    }
+    loader.load(
+      `/models/items/${name}.glb`,
+      (gltf) => {
+        const model = gltf.scene;
+        const box = new THREE.Box3().setFromObject(model);
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const s = maxDim > 0 ? 0.55 / maxDim : 1;
+        model.scale.setScalar(s);
+        model.position.set(-center.x * s, -center.y * s, -center.z * s);
+        scene.add(model);
+        renderer.render(scene, camera);
+        const dataUrl = renderer.domElement.toDataURL();
+        scene.remove(model);
+        // Dispose model geometry/materials to free memory
+        model.traverse((child) => {
+          if (child.isMesh) {
+            child.geometry?.dispose();
+            if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+            else child.material?.dispose();
+          }
+        });
+        thumbnailCache[name] = dataUrl;
+        onThumbnail(name, dataUrl);
+        // Yield to main thread between renders
+        setTimeout(next, 0);
+      },
+      undefined,
+      () => {
+        // Skip failed loads
+        setTimeout(next, 0);
+      }
+    );
+  };
+  next();
+};
+
+const ShopPanel = ({ itemsCatalog, onClose, onSelect }) => {
+  const [thumbnails, setThumbnails] = useState(() => ({ ...thumbnailCache }));
+  const items = useMemo(() => Object.values(itemsCatalog), [itemsCatalog]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const names = items.map((it) => it.name).filter((n) => !thumbnailCache[n]);
+    if (names.length === 0) return;
+    renderThumbnails(
+      names,
+      (name, url) => {
+        setThumbnails((prev) => ({ ...prev, [name]: url }));
+      },
+      controller.signal
+    );
+    return () => controller.abort();
+  }, [items]);
+
+  return (
+    <div className="fixed inset-0 z-20 flex items-center justify-center pointer-events-none">
+      <div
+        className="pointer-events-auto bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-gray-200 w-[90vw] max-w-lg max-h-[70vh] flex flex-col"
+        onWheel={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+          <h2 className="text-lg font-bold text-gray-800">Shop</h2>
+          <button
+            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+            onClick={onClose}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-gray-500">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="overflow-y-auto p-3 grid grid-cols-3 sm:grid-cols-4 gap-2">
+          {items.map((item) => (
+            <button
+              key={item.name}
+              className="flex flex-col items-center gap-1 p-2 rounded-xl hover:bg-green-50 border border-gray-100 hover:border-green-300 transition-colors cursor-pointer"
+              onClick={() => onSelect(item)}
+            >
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-lg bg-gray-50 flex items-center justify-center overflow-hidden">
+                {thumbnails[item.name] ? (
+                  <img
+                    src={thumbnails[item.name]}
+                    alt={item.name}
+                    className="w-full h-full object-contain"
+                    draggable={false}
+                  />
+                ) : (
+                  <div className="w-5 h-5 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
+                )}
+              </div>
+              <span className="text-[10px] sm:text-xs text-gray-600 text-center leading-tight truncate w-full">
+                {item.name.replace(/([A-Z])/g, " $1").trim()}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const AVATAR_URLS = [
   "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
   "https://models.readyplayer.me/663833cf6c79010563b91e1b.glb",
   "https://models.readyplayer.me/64bfa15f0e72c63d7c3934a6.glb",
   "https://models.readyplayer.me/64a3f54c1d64e9f3dbc832ac.glb",
+  "/models/sillyNubCat.glb",
 ];
 
 // Helper to get a 2D render thumbnail from a Ready Player Me avatar URL
@@ -60,7 +199,9 @@ const CharacterSelectorModal = ({ onClose, currentAvatarUrl, onSelectAvatar, onC
           <div className="grid grid-cols-3 gap-3">
             {AVATAR_URLS.map((url, idx) => {
               const isActive = currentAvatarUrl?.split("?")[0] === url.split("?")[0];
-              const thumbUrl = getAvatarThumbnail(url);
+              const isLocalModel = url.startsWith("/");
+              const thumbUrl = isLocalModel ? null : getAvatarThumbnail(url);
+              const label = isLocalModel ? "Nub Cat" : `Character ${idx + 1}`;
               return (
                 <button
                   key={idx}
@@ -72,14 +213,21 @@ const CharacterSelectorModal = ({ onClose, currentAvatarUrl, onSelectAvatar, onC
                   }`}
                 >
                   <div className="w-full h-full bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
-                    <img
-                      src={thumbUrl}
-                      alt={`Character ${idx + 1}`}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        e.target.style.display = "none";
-                      }}
-                    />
+                    {isLocalModel ? (
+                      <div className="flex flex-col items-center justify-center gap-1">
+                        <span className="text-3xl">🐱</span>
+                        <span className="text-[10px] font-semibold text-gray-500">Nub Cat</span>
+                      </div>
+                    ) : (
+                      <img
+                        src={thumbUrl}
+                        alt={label}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.target.style.display = "none";
+                        }}
+                      />
+                    )}
                   </div>
                   {isActive && (
                     <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-slate-800 rounded-full flex items-center justify-center">
@@ -114,6 +262,7 @@ export const shopModeAtom = atom(false);
 export const draggedItemAtom = atom(null);
 export const draggedItemRotationAtom = atom(0);
 export const showRoomSelectorAtom = atom(false);
+export const selectedShopItemAtom = atom(null);
 
 export const avatarUrlAtom = atom(
   localStorage.getItem("avatarURL") ||
@@ -525,7 +674,6 @@ export const UI = () => {
     draggedItemRotationAtom
   );
   const [_roomItems, setRoomItems] = useAtom(roomItemsAtom);
-  const [passwordMode, setPasswordMode] = useState(false);
   const [avatarMode, setAvatarMode] = useState(false);
   const [botConnectMode, setBotConnectMode] = useState(false);
   const [roomSelectorMode, setRoomSelectorMode] = useState(false);
@@ -539,8 +687,8 @@ export const UI = () => {
   const [characters] = useAtom(charactersAtom);
   const [activeQuests] = useAtom(activeQuestsAtom);
   const [questNotifications, setQuestNotifications] = useAtom(questNotificationsAtom);
-  const [passwordCorrectForRoom, setPasswordCorrectForRoom] = useState(false);
-  const [roomHasPassword] = useAtom(roomHasPasswordAtom);
+  const [itemsCatalog] = useAtom(itemsAtom);
+  const [, setSelectedShopItem] = useAtom(selectedShopItemAtom);
   const leaveRoom = () => {
     socket.emit("leaveRoom");
     setRoomID(null);
@@ -555,10 +703,6 @@ export const UI = () => {
     setBuildMode(false);
     setShopMode(false);
   };
-  useEffect(() => {
-    setPasswordCorrectForRoom(false); // PS: this is an ugly shortcut
-  }, [roomID]);
-
   // Open room selector when triggered from 3D scene (e.g. clicking Apartment building)
   useEffect(() => {
     if (showRoomSelector) {
@@ -568,7 +712,7 @@ export const UI = () => {
   }, [showRoomSelector]);
 
   const handleSelectCharacter = (url) => {
-    const newUrl = url + (url.includes("?") ? "&" : "?") + "meshlod=1&quality=medium";
+    const newUrl = url.startsWith("/") ? url : url + (url.includes("?") ? "&" : "?") + "meshlod=1&quality=medium";
     setAvatarUrl(newUrl);
     localStorage.setItem("avatarURL", newUrl);
     if (roomID) {
@@ -735,12 +879,14 @@ export const UI = () => {
             onSwitchRoom={handleSwitchRoom}
           />
         )}
-        {passwordMode && (
-          <PasswordInput
-            onClose={() => setPasswordMode(false)}
-            onSuccess={() => {
-              setBuildMode(true);
-              setPasswordCorrectForRoom(true);
+        {/* Shop grid panel — HTML overlay with 3D item previews */}
+        {shopMode && itemsCatalog && (
+          <ShopPanel
+            itemsCatalog={itemsCatalog}
+            onClose={() => setShopMode(false)}
+            onSelect={(item) => {
+              setSelectedShopItem(item);
+              setShopMode(false);
             }}
           />
         )}
@@ -850,13 +996,7 @@ export const UI = () => {
                 {roomID && (
                   <button
                     className="flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1.5 rounded-xl cursor-pointer hover:bg-green-50 transition-colors group"
-                    onClick={() => {
-                      if (!roomHasPassword || passwordCorrectForRoom) {
-                        setBuildMode(true);
-                      } else {
-                        setPasswordMode(true);
-                      }
-                    }}
+                    onClick={() => setBuildMode(true)}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 sm:w-6 sm:h-6 text-green-500 group-hover:text-green-700 transition-colors">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />

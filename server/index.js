@@ -17,6 +17,7 @@ const AVATAR_URLS = [
   "https://models.readyplayer.me/663833cf6c79010563b91e1b.glb",
   "https://models.readyplayer.me/64bfa15f0e72c63d7c3934a6.glb",
   "https://models.readyplayer.me/64a3f54c1d64e9f3dbc832ac.glb",
+  "/models/sillyNubCat.glb",
 ];
 const randomAvatarUrl = () => AVATAR_URLS[Math.floor(Math.random() * AVATAR_URLS.length)];
 const DEFAULT_AVATAR_URL = AVATAR_URLS[0];
@@ -443,9 +444,7 @@ const moltbookBotTick = () => {
             items: room.items,
           },
         });
-        if (!room.generated) {
-          fs.writeFileSync("rooms.json", JSON.stringify(rooms.filter(r => !r.generated), null, 2));
-        }
+        persistRooms();
         const pretty = build.itemName.replace(/([A-Z])/g, " $1").toLowerCase().trim();
         broadcastToRoom(room.id, "playerAction", {
           id: botId,
@@ -490,7 +489,8 @@ const moltbookBotTick = () => {
     const action = Math.random();
 
     // Unsit bot before any action (if sitting without pending timer, clean up)
-    if (room.characterSeats && room.characterSeats.has(botId)) {
+    ensureSeatMaps(room);
+    if (room.characterSeats.has(botId)) {
       unsitCharacter(room, botId);
       if (pendingBotSits.has(botId)) {
         clearTimeout(pendingBotSits.get(botId));
@@ -1701,8 +1701,8 @@ console.log(`Server started on port ${PORT}, allowed cors origin: ${origin}`);
 // room.characterSeats: Map of characterId → { itemIndex, seatIdx, seatPos, seatHeight, seatRotation }
 
 const ensureSeatMaps = (room) => {
-  if (!room.seatOccupancy) room.seatOccupancy = new Map();
-  if (!room.characterSeats) room.characterSeats = new Map();
+  if (!(room.seatOccupancy instanceof Map)) room.seatOccupancy = new Map();
+  if (!(room.characterSeats instanceof Map)) room.characterSeats = new Map();
 };
 
 // Compute sit spots for a sittable item.
@@ -1903,6 +1903,14 @@ const removeItemFromGrid = (room, item) => {
 // ROOMS MANAGEMENT
 const rooms = [];
 
+const persistRooms = () => {
+  // Save non-generated rooms + generated rooms that have items placed in them
+  const toPersist = rooms
+    .filter(r => !r.generated || (r.generated && r.items && r.items.length > 0))
+    .map(({ characters, grid, seatOccupancy, characterSeats, ...rest }) => rest);
+  fs.writeFileSync("rooms.json", JSON.stringify(toPersist, null, 2));
+};
+
 const loadRooms = async () => {
   let data;
   try {
@@ -1917,12 +1925,40 @@ const loadRooms = async () => {
     }
   }
   data = JSON.parse(data);
+
+  // Separate saved generated rooms from regular rooms
+  const savedGeneratedRooms = new Map();
   data.forEach((roomItem) => {
+    if (roomItem.generated) {
+      savedGeneratedRooms.set(roomItem.id, roomItem);
+    } else {
+      const room = {
+        ...roomItem,
+        size: [150, 150], // Large city plaza with room beyond buildings
+        gridDivision: 2,
+        characters: [],
+      };
+      room.grid = new pathfinding.Grid(
+        room.size[0] * room.gridDivision,
+        room.size[1] * room.gridDivision
+      );
+      updateGrid(room);
+      rooms.push(room);
+    }
+  });
+
+  // Generate 100 additional rooms, restoring saved items if any
+  for (let i = 1; i <= 100; i++) {
+    const roomId = `room-${i}`;
+    const saved = savedGeneratedRooms.get(roomId);
     const room = {
-      ...roomItem,
-      size: [150, 150], // Large city plaza with room beyond buildings
+      id: roomId,
+      name: `Room ${i}`,
+      size: [15, 15],
       gridDivision: 2,
+      items: saved ? saved.items : [],
       characters: [],
+      generated: true,
     };
     room.grid = new pathfinding.Grid(
       room.size[0] * room.gridDivision,
@@ -1930,26 +1966,9 @@ const loadRooms = async () => {
     );
     updateGrid(room);
     rooms.push(room);
-  });
-
-  // Generate 100 additional rooms (not persisted)
-  for (let i = 1; i <= 100; i++) {
-    const room = {
-      id: `room-${i}`,
-      name: `Room ${i}`,
-      size: [15, 15],
-      gridDivision: 2,
-      items: [],
-      characters: [],
-      generated: true, // flag to exclude from persistence
-    };
-    room.grid = new pathfinding.Grid(
-      room.size[0] * room.gridDivision,
-      room.size[1] * room.gridDivision
-    );
-    rooms.push(room);
   }
-  console.log(`Loaded ${rooms.length} rooms (${rooms.length - 100} persisted + 100 generated)`);
+  const withItems = [...savedGeneratedRooms.values()].length;
+  console.log(`Loaded ${rooms.length} rooms (${rooms.length - 100} persisted + 100 generated, ${withItems} with saved items)`);
 };
 
 loadRooms();
@@ -2494,7 +2513,7 @@ io.on("connection", (socket) => {
         },
       });
 
-      fs.writeFileSync("rooms.json", JSON.stringify(rooms.filter(r => !r.generated), null, 2));
+      persistRooms();
       // Check quest completion
       checkQuestCompletion(socket.id, room);
     });
@@ -2578,7 +2597,7 @@ io.on("connection", (socket) => {
       }, 2500);
 
       // Persist
-      fs.writeFileSync("rooms.json", JSON.stringify(rooms.filter(r => !r.generated), null, 2));
+      persistRooms();
       // Check quest completion for all players in the room
       room.characters.forEach(c => {
         if (!c.isBot) checkQuestCompletion(c.id, room);

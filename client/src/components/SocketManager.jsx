@@ -46,6 +46,7 @@ const AVATAR_URLS = [
   "https://models.readyplayer.me/663833cf6c79010563b91e1b.glb",
   "https://models.readyplayer.me/64bfa15f0e72c63d7c3934a6.glb",
   "https://models.readyplayer.me/64a3f54c1d64e9f3dbc832ac.glb",
+  "/models/sillyNubCat.glb",
 ];
 const randomAvatarUrl = () => AVATAR_URLS[Math.floor(Math.random() * AVATAR_URLS.length)];
 
