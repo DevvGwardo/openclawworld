@@ -732,8 +732,8 @@ export const Avatar = memo(function Avatar({
           else rightUpLegRef.current.quaternion.copy(_thighSitQuatNeg);
         }
         if (leftLegRef.current) {
-          if (leftLegRestRef.current) leftLegRef.current.quaternion.copy(leftLegRestRef.current).multiply(_kneeBendPos);
-          else leftLegRef.current.quaternion.copy(_kneeBendPos);
+          if (leftLegRestRef.current) leftLegRef.current.quaternion.copy(leftLegRestRef.current).multiply(_kneeBendNeg);
+          else leftLegRef.current.quaternion.copy(_kneeBendNeg);
         }
         if (rightLegRef.current) {
           if (rightLegRestRef.current) rightLegRef.current.quaternion.copy(rightLegRestRef.current).multiply(_kneeBendPos);
