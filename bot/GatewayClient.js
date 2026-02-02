@@ -12,6 +12,7 @@ import {
  * WebSocket client for the Molt's Land Gateway.
  * Handles challenge-based Ed25519 auth handshake, request/response RPC,
  * automatic reconnection with exponential backoff, and ping/pong heartbeat.
+ * Includes connection pooling and health monitoring for improved performance.
  */
 export class GatewayClient extends EventEmitter {
   /**
@@ -20,6 +21,11 @@ export class GatewayClient extends EventEmitter {
    * @param {string} [options.token] - Auth token
    * @param {string} [options.identityPath] - Path to .device-keys.json
    * @param {number} [options.heartbeatIntervalMs=15000] - Heartbeat ping interval
+   * @param {number} [options.connectionTimeoutMs=10000] - Connection timeout
+   * @param {number} [options.maxPoolSize=5] - Maximum connections in pool
+   * @param {number} [options.maxIdleTimeMs=300000] - Max idle time before pool cleanup
+   * @param {boolean} [options.enableHealthCheck=true] - Enable health monitoring
+   * @param {number} [options.healthCheckIntervalMs=30000] - Health check interval
    */
   constructor(options = {}) {
     super();
@@ -35,6 +41,26 @@ export class GatewayClient extends EventEmitter {
     this._ws = null;
     this._connectPromise = null;
 
+    // Connection pooling
+    this._connectionPool = [];
+    this._maxPoolSize = options.maxPoolSize ?? 5;
+    this._maxIdleTimeMs = options.maxIdleTimeMs ?? 300000;
+    this._poolCleanupInterval = null;
+    this._connectionTimeoutMs = options.connectionTimeoutMs ?? 10000;
+
+    // Health monitoring
+    this._enableHealthCheck = options.enableHealthCheck ?? true;
+    this._healthCheckIntervalMs = options.healthCheckIntervalMs ?? 30000;
+    this._healthCheckInterval = null;
+    this._lastHealthCheck = null;
+    this._connectionStats = {
+      created: 0,
+      reused: 0,
+      closed: 0,
+      failed: 0,
+      responseTime: [],
+    };
+
     // Reconnection state
     this._reconnectAttempt = 0;
     this._maxReconnectAttempts = 10;
@@ -44,7 +70,7 @@ export class GatewayClient extends EventEmitter {
       initial: 1000,
       max: 30000,
       factor: 2,
-      jitter: 0.2, // 0-20% random jitter
+      jitter: 0.2,
     };
 
     // Heartbeat state
@@ -53,6 +79,12 @@ export class GatewayClient extends EventEmitter {
     this._heartbeatIntervalMs = options.heartbeatIntervalMs ?? 15000;
 
     this._identity = loadOrCreateIdentity(this._identityPath);
+    
+    // Start pool management
+    this._startPoolCleanup();
+    if (this._enableHealthCheck) {
+      this._startHealthMonitoring();
+    }
   }
 
   /** @returns {boolean} Whether the client is connected and authenticated */
@@ -60,11 +92,195 @@ export class GatewayClient extends EventEmitter {
     return this._state === "connected";
   }
 
+  /** @returns {object} Connection statistics for monitoring */
+  get connectionStats() {
+    return {
+      ...this._connectionStats,
+      poolSize: this._connectionPool.length,
+      isConnected: this.connected,
+      currentState: this._state,
+    };
+  }
+
+  /**
+   * Get a healthy connection from the pool or create a new one
+   * @returns {Promise<WebSocket>} Healthy WebSocket connection
+   */
+  async _getConnection() {
+    // First, try to find a healthy connection in the pool
+    const now = Date.now();
+    const healthyConnection = this._connectionPool.find(conn => {
+      return conn.readyState === WebSocket.OPEN && 
+             conn._gatewayHealthy &&
+             (now - conn._lastUsed) < this._maxIdleTimeMs;
+    });
+
+    if (healthyConnection) {
+      healthyConnection._lastUsed = now;
+      this._connectionStats.reused++;
+      return healthyConnection;
+    }
+
+    // Clean up unhealthy connections
+    this._cleanupPool();
+
+    // Create new connection if pool isn't full
+    if (this._connectionPool.length < this._maxPoolSize) {
+      const newConnection = await this._createNewConnection();
+      this._connectionPool.push(newConnection);
+      this._connectionStats.created++;
+      return newConnection;
+    }
+
+    // Wait for an existing connection to become available
+    return this._waitForConnection();
+  }
+
+  /**
+   * Create a new WebSocket connection to the Gateway
+   * @returns {Promise<WebSocket>} New WebSocket connection
+   */
+  async _createNewConnection() {
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(this._url);
+      const timeout = setTimeout(() => {
+        ws.terminate();
+        reject(new Error("Connection timeout"));
+      }, this._connectionTimeoutMs);
+
+      ws.on("open", () => {
+        clearTimeout(timeout);
+        ws._gatewayHealthy = true;
+        ws._lastUsed = Date.now();
+        ws._createdAt = Date.now();
+        resolve(ws);
+      });
+
+      ws.on("error", (err) => {
+        clearTimeout(timeout);
+        this._connectionStats.failed++;
+        reject(err);
+      });
+
+      ws.on("close", () => {
+        ws._gatewayHealthy = false;
+        this._connectionStats.closed++;
+      });
+
+      // Health monitoring for pooled connections
+      ws.on("pong", () => {
+        ws._lastPong = Date.now();
+        ws._gatewayHealthy = true;
+      });
+
+      ws.on("ping", () => {
+        ws.pong();
+      });
+    });
+  }
+
+  /**
+   * Wait for an available connection in the pool
+   * @returns {Promise<WebSocket>} Available WebSocket connection
+   */
+  async _waitForConnection() {
+    return new Promise((resolve, reject) => {
+      const checkInterval = 100;
+      const maxWait = this._connectionTimeoutMs;
+      let waited = 0;
+
+      const interval = setInterval(() => {
+        const available = this._connectionPool.find(conn => 
+          conn.readyState === WebSocket.OPEN && conn._gatewayHealthy
+        );
+
+        if (available) {
+          clearInterval(interval);
+          available._lastUsed = Date.now();
+          this._connectionStats.reused++;
+          resolve(available);
+        }
+
+        waited += checkInterval;
+        if (waited >= maxWait) {
+          clearInterval(interval);
+          reject(new Error("Timeout waiting for available connection"));
+        }
+      }, checkInterval);
+    });
+  }
+
+  /**
+   * Clean up unhealthy connections from the pool
+   */
+  _cleanupPool() {
+    const now = Date.now();
+    this._connectionPool = this._connectionPool.filter(conn => {
+      const isHealthy = conn.readyState === WebSocket.OPEN && 
+                       conn._gatewayHealthy &&
+                       (now - conn._lastUsed) < this._maxIdleTimeMs;
+      
+      if (!isHealthy) {
+        conn.terminate();
+        return false;
+      }
+      return true;
+    });
+  }
+
+  /**
+   * Start periodic pool cleanup
+   */
+  _startPoolCleanup() {
+    if (this._poolCleanupInterval) return;
+    
+    this._poolCleanupInterval = setInterval(() => {
+      this._cleanupPool();
+    }, 60000); // Clean every minute
+  }
+
+  /**
+   * Start health monitoring for pooled connections
+   */
+  _startHealthMonitoring() {
+    if (this._healthCheckInterval) return;
+
+    this._healthCheckInterval = setInterval(() => {
+      this._performHealthCheck();
+    }, this._healthCheckIntervalMs);
+  }
+
+  /**
+   * Perform health check on pooled connections
+   */
+  _performHealthCheck() {
+    const now = Date.now();
+    this._lastHealthCheck = now;
+
+    this._connectionPool.forEach(conn => {
+      if (conn.readyState === WebSocket.OPEN) {
+        // Check if connection responded to last ping
+        if (conn._lastPong && (now - conn._lastPong) > this._heartbeatIntervalMs * 2) {
+          conn._gatewayHealthy = false;
+          conn.terminate();
+        } else {
+          // Send health check ping
+          conn.ping();
+        }
+      } else {
+        conn._gatewayHealthy = false;
+      }
+    });
+
+    this._cleanupPool();
+  }
+
   /**
    * Open a WebSocket connection and complete the auth handshake.
+   * Uses connection pooling for improved performance.
    * @returns {Promise<void>} Resolves when hello-ok is received.
    */
-  connect() {
+  async connect() {
     // Re-enable auto-reconnect for fresh connections
     this._autoReconnect = true;
 
@@ -78,59 +294,71 @@ export class GatewayClient extends EventEmitter {
 
     const isReconnect = this._reconnectAttempt > 0;
 
-    this._connectPromise = new Promise((resolve, reject) => {
+    this._connectPromise = new Promise(async (resolve, reject) => {
       // Only store resolve/reject for initial connect (not reconnects)
       if (!isReconnect) {
         this._connectResolve = resolve;
         this._connectReject = reject;
       }
 
-      this._ws = new WebSocket(this._url);
+      try {
+        // Try to get a connection from pool or create new one
+        this._ws = await this._getConnection();
+        
+        // Remove from pool if it was pooled
+        this._connectionPool = this._connectionPool.filter(conn => conn !== this._ws);
 
-      this._ws.on("open", () => {
+        this._ws.on("message", (raw) => {
+          this._handleMessage(raw);
+        });
+
+        this._ws.on("pong", () => {
+          this._alive = true;
+        });
+
+        this._ws.on("close", (code, reason) => {
+          const wasConnecting = this._state !== "connected" && this._state !== "disconnected";
+          this._state = "disconnected";
+
+          // Clear heartbeat
+          this._clearHeartbeat();
+
+          // Reject all pending requests so callers do not hang
+          this._rejectAllPending("WebSocket closed");
+
+          this.emit("disconnected", { code, reason: reason?.toString() });
+
+          if (wasConnecting && !isReconnect) {
+            reject(new Error(`WebSocket closed during auth (code ${code})`));
+          }
+
+          // Auto-reconnect on non-intentional close
+          if (code !== 1000 && this._autoReconnect) {
+            this._scheduleReconnect();
+          }
+        });
+
+        this._ws.on("error", (err) => {
+          this.emit("error", err);
+          if (this._state !== "connected" && !isReconnect) {
+            reject(err);
+          }
+        });
+
+        // Start authentication flow
         this._state = "awaiting_challenge";
-      });
+        this._ws.on("open", () => {
+          // Already opened via _getConnection/_createNewConnection
+        });
 
-      this._ws.on("message", (raw) => {
-        this._handleMessage(raw);
-      });
-
-      this._ws.on("pong", () => {
-        this._alive = true;
-      });
-
-      this._ws.on("close", (code, reason) => {
-        const wasConnecting = this._state !== "connected" && this._state !== "disconnected";
-        this._state = "disconnected";
-
-        // Clear heartbeat
-        this._clearHeartbeat();
-
-        // Reject all pending requests so callers do not hang
-        this._rejectAllPending("WebSocket closed");
-
-        this.emit("disconnected", { code, reason: reason?.toString() });
-
-        if (wasConnecting && !isReconnect) {
-          reject(new Error(`WebSocket closed during auth (code ${code})`));
+        // For reconnects, resolve immediately (the reconnect flow is event-driven)
+        if (isReconnect) {
+          resolve();
         }
-
-        // Auto-reconnect on non-intentional close
-        if (code !== 1000 && this._autoReconnect) {
-          this._scheduleReconnect();
-        }
-      });
-
-      this._ws.on("error", (err) => {
-        this.emit("error", err);
-        if (this._state !== "connected" && !isReconnect) {
+      } catch (err) {
+        if (!isReconnect) {
           reject(err);
         }
-      });
-
-      // For reconnects, resolve immediately (the reconnect flow is event-driven)
-      if (isReconnect) {
-        resolve();
       }
     });
 
@@ -327,21 +555,35 @@ export class GatewayClient extends EventEmitter {
   }
 
   /**
-   * Send an RPC request to the Gateway.
+   * Send an RPC request to the Gateway with connection pooling optimization.
    * @param {string} method
    * @param {object} [params={}]
    * @returns {Promise<any>} Resolves with the response payload.
    */
-  request(method, params = {}) {
+  async request(method, params = {}) {
     const id = String(this._nextId++);
+    const startTime = Date.now();
 
     if (this._state !== "connected") {
       return new Promise((resolve, reject) => {
-        this._queue.push({ id, method, params, resolve, reject });
+        this._queue.push({ id, method, params, resolve, reject, startTime });
       });
     }
 
-    return this._sendRequest(id, method, params);
+    try {
+      const result = await this._sendRequest(id, method, params);
+      const responseTime = Date.now() - startTime;
+      this._connectionStats.responseTime.push(responseTime);
+      
+      // Keep only last 100 response times for metrics
+      if (this._connectionStats.responseTime.length > 100) {
+        this._connectionStats.responseTime = this._connectionStats.responseTime.slice(-100);
+      }
+      
+      return result;
+    } catch (error) {
+      throw error;
+    }
   }
 
   /**
@@ -428,6 +670,25 @@ export class GatewayClient extends EventEmitter {
     // Clear heartbeat
     this._clearHeartbeat();
 
+    // Clear pool management intervals
+    if (this._poolCleanupInterval) {
+      clearInterval(this._poolCleanupInterval);
+      this._poolCleanupInterval = null;
+    }
+
+    if (this._healthCheckInterval) {
+      clearInterval(this._healthCheckInterval);
+      this._healthCheckInterval = null;
+    }
+
+    // Clean up connection pool
+    this._connectionPool.forEach(conn => {
+      if (conn.readyState === WebSocket.OPEN) {
+        conn.close(1000);
+      }
+    });
+    this._connectionPool = [];
+
     if (this._ws && this._ws.readyState === WebSocket.OPEN) {
       this._ws.close(1000);
     }
@@ -452,5 +713,33 @@ export class GatewayClient extends EventEmitter {
     for (const { reject } of queued) {
       reject(new Error(reason));
     }
+  }
+
+  /**
+   * Get connection health metrics
+   * @returns {object} Health metrics including average response time and success rate
+   */
+  getHealthMetrics() {
+    const responseTimes = this._connectionStats.responseTime;
+    const avgResponseTime = responseTimes.length > 0 
+      ? responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length 
+      : 0;
+
+    const totalAttempts = this._connectionStats.created + this._connectionStats.reused;
+    const failureRate = totalAttempts > 0 
+      ? this._connectionStats.failed / totalAttempts 
+      : 0;
+
+    return {
+      poolSize: this._connectionPool.length,
+      avgResponseTime: Math.round(avgResponseTime),
+      failureRate: Math.round(failureRate * 100),
+      totalConnections: this._connectionStats.created,
+      reusedConnections: this._connectionStats.reused,
+      closedConnections: this._connectionStats.closed,
+      failedConnections: this._connectionStats.failed,
+      lastHealthCheck: this._lastHealthCheck,
+      isConnected: this.connected,
+    };
   }
 }
