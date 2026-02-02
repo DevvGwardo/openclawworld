@@ -1,5 +1,5 @@
 import { atom, useAtom } from "jotai";
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import * as THREE from "three";
 
 import { AvatarCreator } from "@readyplayerme/react-avatar-creator";
@@ -23,6 +23,8 @@ import {
   characterMotivesAtom,
   roomTransitionAtom,
   avatarUrlAtom,
+  mapAtom,
+  pendingInteractionAtom,
 } from "./SocketManager";
 import DirectMessagePanel from "./DirectMessagePanel";
 import { renderAvatarPortrait } from "./Avatar";
@@ -1056,7 +1058,8 @@ export const UI = () => {
   const [draggedItemRotation, setDraggedItemRotation] = useAtom(
     draggedItemRotationAtom
   );
-  const [_roomItems, setRoomItems] = useAtom(roomItemsAtom);
+  const [roomItems, setRoomItems] = useAtom(roomItemsAtom);
+  const [, setPendingInteraction] = useAtom(pendingInteractionAtom);
   const [avatarMode, setAvatarMode] = useState(false);
   const [botConnectMode, setBotConnectMode] = useState(false);
   const [roomSelectorMode, setRoomSelectorMode] = useState(false);
@@ -1077,6 +1080,7 @@ export const UI = () => {
   const [itemsCatalog] = useAtom(itemsAtom);
   const [, setSelectedShopItem] = useAtom(selectedShopItemAtom);
   const [roomTransition, setRoomTransition] = useAtom(roomTransitionAtom);
+  const [map] = useAtom(mapAtom);
 
   // Safety timeout: force-clear the transition overlay if it stays active too long
   useEffect(() => {
@@ -1087,8 +1091,37 @@ export const UI = () => {
     return () => clearTimeout(timeout);
   }, [roomTransition?.active, roomTransition?.startedAt]);
 
+  // --- Client-side energy interpolation for smooth HUD ---
+  // Mirror the server DECAY_RATES.energy so we can predict locally between server ticks
+  const ENERGY_DECAY_PER_SEC = 0.11;
   const myEnergyRaw = user ? characterMotives?.[user]?.energy : undefined;
-  const myEnergy = typeof myEnergyRaw === "number" ? Math.max(0, Math.min(100, myEnergyRaw)) : null;
+  const energyBaselineRef = useRef({ value: null, time: 0 });
+
+  // Reset baseline whenever server sends a new value
+  useEffect(() => {
+    if (typeof myEnergyRaw === "number") {
+      energyBaselineRef.current = { value: myEnergyRaw, time: Date.now() };
+    }
+  }, [myEnergyRaw]);
+
+  const [interpolatedEnergy, setInterpolatedEnergy] = useState(null);
+  useEffect(() => {
+    if (typeof myEnergyRaw !== "number") {
+      setInterpolatedEnergy(null);
+      return;
+    }
+    const tick = () => {
+      const { value, time } = energyBaselineRef.current;
+      if (value === null) return;
+      const dt = (Date.now() - time) / 1000;
+      setInterpolatedEnergy(Math.max(0, Math.min(100, value - ENERGY_DECAY_PER_SEC * dt)));
+    };
+    tick();
+    const id = setInterval(tick, 500); // update display every 500ms
+    return () => clearInterval(id);
+  }, [myEnergyRaw]);
+
+  const myEnergy = interpolatedEnergy;
   const leaveRoom = () => {
     setRoomTransition({ active: true, from: roomID, to: null, startedAt: Date.now() });
     socket.emit("leaveRoom");
@@ -1144,6 +1177,33 @@ export const UI = () => {
     }
   };
 
+  // --- Eat handler: walk to stove (or room center) then interact ---
+  const handleEat = useCallback(() => {
+    if (!roomID || !map || !user) return;
+    const stove = roomItems.find((it) => it.name === "kitchenStove");
+    const fridge = roomItems.find((it) => it.name === "kitchenFridge");
+    const target = stove || fridge;
+    let targetPos;
+    let interactionItem;
+
+    if (target) {
+      // Walk to the item's grid position
+      targetPos = target.gridPosition || target.position;
+      interactionItem = target.name;
+    } else {
+      // No food source — walk to room center and use virtual eatSpot
+      targetPos = [Math.floor(map.size[0] / 2), Math.floor(map.size[1] / 2)];
+      interactionItem = "eatSpot";
+    }
+
+    // Emit move to the target, set pending interaction for Avatar to fire on arrival
+    const me = characters.find((c) => c.id === user);
+    const from = me?.position || [0, 0];
+    socket.emit("move", from, targetPos);
+    setPendingInteraction({ itemName: interactionItem });
+    soundManager.play("button_click");
+  }, [roomID, map, user, roomItems, characters, setPendingInteraction]);
+
   // Keyboard shortcut for help modal
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -1170,6 +1230,7 @@ export const UI = () => {
   const playerCount = totalOnline - botCount;
   const currentRoom = allRooms.find((r) => r.id === roomID);
   const isPlaza = currentRoom && !currentRoom.generated && !currentRoom.id.startsWith("room-");
+  const isApartment = currentRoom && (currentRoom.generated || currentRoom.id.startsWith("room-"));
   const locationLabel = isPlaza ? "online" : "in apartment";
   const toRoom = roomTransition?.to ? allRooms.find((r) => r.id === roomTransition.to) : null;
   const toRoomLabel = toRoom?.name || toRoom?.id || (roomTransition?.to ? `room ${roomTransition.to}` : null);
@@ -1203,12 +1264,25 @@ export const UI = () => {
           </div>
           {myEnergy !== null && (
             <div className="bg-sky-50/90 backdrop-blur-sm border border-sky-200 rounded-full px-4 py-1.5 flex items-center gap-2 shadow-sm">
-              <span className="text-sky-500 text-sm">&#9889;</span>
-              <span className="text-sky-700 text-xs font-semibold">energy</span>
+              <span className="text-sky-500 text-sm">
+                {myEnergy <= 0 ? "\u{1F635}" : myEnergy < 20 ? "\u{1F62B}" : "\u26A1"}
+              </span>
+              <span className="text-sky-700 text-xs font-semibold">
+                {myEnergy <= 0 ? "exhausted" : myEnergy < 20 ? "tired" : "energy"}
+              </span>
               <div className="w-20 h-2 rounded-full bg-sky-100 overflow-hidden border border-sky-200">
                 <div
-                  className="h-full bg-gradient-to-r from-sky-500 to-emerald-400"
-                  style={{ width: `${myEnergy}%` }}
+                  className="h-full transition-all duration-500"
+                  style={{
+                    width: `${myEnergy}%`,
+                    background: myEnergy <= 0
+                      ? "#ef4444"
+                      : myEnergy < 20
+                        ? "linear-gradient(to right, #ef4444, #f59e0b)"
+                        : myEnergy < 50
+                          ? "linear-gradient(to right, #f59e0b, #84cc16)"
+                          : "linear-gradient(to right, #0ea5e9, #34d399)",
+                  }}
                 />
               </div>
             </div>
@@ -1456,6 +1530,19 @@ export const UI = () => {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 9l10.5-3m0 6.553v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-.99-3.467l2.31-.66a2.25 2.25 0 001.632-2.163zm0 0V2.25L9 5.25v10.303m0 0v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 01-.99-3.467l2.31-.66A2.25 2.25 0 009 15.553z" />
                     </svg>
                     <span className="text-[10px] sm:text-xs text-pink-400 group-hover:text-pink-600 font-medium transition-colors">Dance</span>
+                  </button>
+                )}
+
+                {/* Eat (apartment rooms only) */}
+                {roomID && isApartment && (
+                  <button
+                    className="flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1.5 rounded-xl cursor-pointer hover:bg-orange-50 transition-colors group"
+                    onClick={handleEat}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 sm:w-6 sm:h-6 text-orange-400 group-hover:text-orange-600 transition-colors">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8.25v-1.5m0 1.5c-1.355 0-2.697.056-4.024.166C6.845 8.51 6 9.473 6 10.608v2.513m6-4.871c1.355 0 2.697.056 4.024.166C17.155 8.51 18 9.473 18 10.608v2.513M15 8.25v-1.5m-6 1.5v-1.5m12 9.75l-1.5.75a3.354 3.354 0 01-3 0 3.354 3.354 0 00-3 0 3.354 3.354 0 01-3 0 3.354 3.354 0 00-3 0 3.354 3.354 0 01-3 0L3 16.5m15-3.379a48.474 48.474 0 00-6-.371c-2.032 0-4.034.126-6 .371m12 0c.39.049.777.102 1.163.16 1.07.16 1.837 1.094 1.837 2.175v5.169c0 .621-.504 1.125-1.125 1.125H4.125A1.125 1.125 0 013 20.625v-5.17c0-1.08.768-2.014 1.837-2.174A47.78 47.78 0 016 13.12M12.265 3.11a.375.375 0 11-.53 0L12 2.845l.265.265zm-3 0a.375.375 0 11-.53 0L9 2.845l.265.265zm6 0a.375.375 0 11-.53 0L15 2.845l.265.265z" />
+                    </svg>
+                    <span className="text-[10px] sm:text-xs text-orange-400 group-hover:text-orange-600 font-medium transition-colors">Eat</span>
                   </button>
                 )}
 

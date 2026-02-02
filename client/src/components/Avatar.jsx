@@ -9,7 +9,7 @@ import { atom, useAtom } from "jotai";
 import React, { useEffect, useMemo, useRef, useState, memo, useCallback } from "react";
 import { SkeletonUtils } from "three-stdlib";
 import { useGrid } from "../hooks/useGrid";
-import { socket, userAtom, avatarDispatch, bondsAtom, charactersAtom, characterMotivesAtom, characterInteractionStatesAtom } from "./SocketManager";
+import { socket, userAtom, avatarDispatch, bondsAtom, charactersAtom, characterMotivesAtom, characterInteractionStatesAtom, pendingInteractionAtom } from "./SocketManager";
 import { dmPanelTargetAtom } from "./DirectMessagePanel";
 import soundManager from "../audio/SoundManager";
 
@@ -573,6 +573,9 @@ export const Avatar = memo(function Avatar({
   const [characters] = useAtom(charactersAtom);
   const [characterMotives] = useAtom(characterMotivesAtom);
   const [characterInteractionStates] = useAtom(characterInteractionStatesAtom);
+  const [pendingInteraction, setPendingInteraction] = useAtom(pendingInteractionAtom);
+  const pendingInteractionRef = useRef(null);
+  useEffect(() => { pendingInteractionRef.current = pendingInteraction; }, [pendingInteraction]);
   const bondsRef = useRef(bonds);
   const charactersRef = useRef(characters);
   useEffect(() => { bondsRef.current = bonds; }, [bonds]);
@@ -858,6 +861,14 @@ export const Avatar = memo(function Avatar({
             isSittingRef.current = true;
           }
 
+          // Fire pending interaction when the local player's path completes
+          if (pathIndexRef.current >= path.length && id === user && pendingInteractionRef.current) {
+            const { itemName } = pendingInteractionRef.current;
+            pendingInteractionRef.current = null;
+            setPendingInteraction(null);
+            socket.emit("interact:object", { itemName });
+          }
+
           // Keep walk animation active while there are more waypoints
           // so we don't flash idle for a frame between waypoints
           if (pathIndexRef.current < path.length) {
@@ -1006,16 +1017,23 @@ export const Avatar = memo(function Avatar({
                     else if (t === 'speaker') moodEmoji = '\u{1F3B5}';
                     else if (t === 'desk') moodEmoji = '\u{1F4BB}';
                     else if (t === 'tableCrossCloth') moodEmoji = '\u{1F37D}\uFE0F';
+                    else if (t === 'eatSpot') moodEmoji = '\u{1F37D}\uFE0F';
                     else moodEmoji = '\u{2699}\uFE0F';
-                  } else if (motives && isBot) {
-                    // Deficit-based mood emoji (bots only; players get a cleaner HUD-style indicator)
+                  } else if (motives) {
+                    // Deficit-based mood emoji for all characters
                     const { energy = 100, social = 100, fun = 100, hunger = 100 } = motives;
-                    const lowest = Math.min(energy, social, fun, hunger);
-                    if (lowest < 30) {
-                      if (energy <= social && energy <= fun && energy <= hunger) moodEmoji = '\u{1F4A4}';
-                      else if (hunger <= social && hunger <= fun) moodEmoji = '\u{1F37D}\uFE0F';
-                      else if (fun <= social) moodEmoji = '\u{1F611}';
-                      else moodEmoji = '\u{1FAC2}';
+                    if (energy <= 0) {
+                      moodEmoji = '\u{1F635}'; // exhausted
+                    } else if (energy < 20) {
+                      moodEmoji = '\u{1F62B}'; // tired
+                    } else {
+                      const lowest = Math.min(energy, social, fun, hunger);
+                      if (lowest < 30) {
+                        if (hunger <= social && hunger <= fun && hunger <= energy) moodEmoji = '\u{1F37D}\uFE0F';
+                        else if (energy <= social && energy <= fun) moodEmoji = '\u{1F4A4}';
+                        else if (fun <= social) moodEmoji = '\u{1F611}';
+                        else moodEmoji = '\u{1FAC2}';
+                      }
                     }
                   }
                   // Fallback: bots get crab if no mood data

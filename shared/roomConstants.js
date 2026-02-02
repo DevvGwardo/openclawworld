@@ -76,9 +76,11 @@ export const OBJECT_AFFORDANCES = {
   tableCrossCloth:  { satisfies: { social: 15 }, duration: 4000, interruptible: true },
   desk:             { satisfies: { fun: 10 }, duration: 5000, interruptible: true },
   speaker:          { satisfies: { fun: 20 }, duration: 4000, interruptible: true },
+  eatSpot:          { satisfies: { hunger: 30, energy: 5 }, duration: 5000, interruptible: true },
 };
 
-export const DECAY_RATES = { energy: 1, social: 0.8, fun: 0.8, hunger: 0.5 };
+// Decay per second — tuned so energy drains from 100→0 in ~15 minutes
+export const DECAY_RATES = { energy: 0.11, social: 0.09, fun: 0.09, hunger: 0.06 };
 
 export const MOTIVE_CLAMP = { min: 0, max: 100 };
 

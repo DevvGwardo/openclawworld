@@ -481,11 +481,13 @@ export function registerSocketHandlers(deps) {
           socket.emit("interactError", { error: "No affordance for item" });
           return;
         }
-        // Check the item exists in the room
-        const roomItem = room.items.find(i => i.name === itemName);
-        if (!roomItem) {
-          socket.emit("interactError", { error: "Item not in room" });
-          return;
+        // Check the item exists in the room (eatSpot is a virtual affordance — always allowed)
+        if (itemName !== "eatSpot") {
+          const roomItem = room.items.find(i => i.name === itemName);
+          if (!roomItem) {
+            socket.emit("interactError", { error: "Item not in room" });
+            return;
+          }
         }
         character.interactionState = {
           target: itemName,

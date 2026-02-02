@@ -28,6 +28,9 @@ export const roomInvitesAtom = atom([]); // pending room invites
 export const characterMotivesAtom = atom({}); // keyed by character id -> { energy, social, fun, hunger }
 export const characterInteractionStatesAtom = atom({}); // keyed by character id -> interactionState | null
 export const roomTransitionAtom = atom({ active: false, from: null, to: null, startedAt: 0 });
+// Pending interaction: set by UI, consumed by Avatar.jsx when path completes
+// { itemName: string } | null
+export const pendingInteractionAtom = atom(null);
 
 // Per-avatar dispatch maps — one global socket listener dispatches to the
 // relevant Avatar via O(1) Map lookup instead of N listeners filtering by id.
