@@ -366,8 +366,10 @@ export const Avatar = memo(function Avatar({
     proceduralBonesRef.current = null;
     restPosesRef.current = null;
     proceduralTimeRef.current = 0;
-    // Reset animation state so humanoid animations re-initialize properly
-    animationRef.current = "M_Standing_Idle_001";
+    // Reset animation state so humanoid animations re-initialize properly.
+    // Use empty string (not the idle animation name) so the next applyAnimation()
+    // call from useFrame doesn't early-return thinking the animation is already active.
+    animationRef.current = "";
     initRef.current = false;
     isDancingRef.current = false;
     isWavingRef.current = false;
