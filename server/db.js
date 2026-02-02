@@ -1,10 +1,13 @@
 import pg from "pg";
+import bcrypt from "bcrypt";
 const { Pool } = pg;
 
 const pool = process.env.DATABASE_URL
   ? new Pool({
       connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
+      ssl: process.env.DB_SSL_REJECT_UNAUTHORIZED === "false"
+        ? { rejectUnauthorized: false }
+        : true,
     })
   : null;
 
@@ -31,6 +34,18 @@ export async function initDb() {
     CREATE INDEX IF NOT EXISTS idx_rooms_generated ON rooms(generated);
     CREATE INDEX IF NOT EXISTS idx_rooms_claimed_by ON rooms(claimed_by) WHERE claimed_by IS NOT NULL;
   `);
+
+  // Migrate plaintext passwords to bcrypt
+  const { rows } = await pool.query(
+    `SELECT id, password FROM rooms WHERE password IS NOT NULL AND password NOT LIKE '$2b$%'`
+  );
+  for (const row of rows) {
+    const hashed = await bcrypt.hash(row.password, 10);
+    await pool.query(`UPDATE rooms SET password = $1, updated_at = NOW() WHERE id = $2`, [hashed, row.id]);
+  }
+  if (rows.length > 0) {
+    console.log(`Migrated ${rows.length} room password(s) to bcrypt`);
+  }
 }
 
 function rowToRoom(row) {

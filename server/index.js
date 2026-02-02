@@ -2,6 +2,7 @@ import fs from "fs";
 import crypto from "crypto";
 import http from "http";
 import pathfinding from "pathfinding";
+import bcrypt from "bcrypt";
 import { Server } from "socket.io";
 import { ROOM_ZONES, ENTRANCE_ZONE } from "./shared/roomConstants.js";
 import { initDb, isDbAvailable, listRooms as dbListRooms, countRooms as dbCountRooms } from "./db.js";
@@ -14,6 +15,70 @@ const origin = process.env.CLIENT_URL || "http://localhost:5173";
 const VERCEL_URL = process.env.VERCEL_URL || "https://clawland.vercel.app";
 const SERVER_URL = process.env.SERVER_URL || "https://openclawworld-production.up.railway.app";
 const MOLTS_LAND_URL = process.env.MOLTS_LAND_URL || "https://molts.land";
+
+const ALLOWED_ORIGINS = [
+  origin,
+  VERCEL_URL,
+  SERVER_URL,
+  "http://localhost:3000",
+  "https://www.clawland.xyz",
+  "https://clawland.xyz",
+  "https://molts.land",
+  "https://www.molts.land",
+  "https://molt.land",
+  "https://www.molt.land",
+];
+
+// --- Rate limiter factory ---
+const createRateLimiter = (maxRequests, windowMs) => {
+  const hits = new Map();
+  // Periodic cleanup every 60s
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of hits) {
+      if (now > entry.resetTime) hits.delete(key);
+    }
+  }, 60_000);
+  return (key) => {
+    const now = Date.now();
+    let entry = hits.get(key);
+    if (!entry || now > entry.resetTime) {
+      entry = { count: 0, resetTime: now + windowMs };
+      hits.set(key, entry);
+    }
+    entry.count++;
+    return entry.count > maxRequests;
+  };
+};
+
+const limitHttp = createRateLimiter(120, 60_000);         // 120 req/min per IP
+const limitBotRegister = createRateLimiter(5, 3600_000);  // 5 registrations/hr per IP
+const limitChat = createRateLimiter(15, 10_000);          // 15 messages per 10s per IP
+
+// --- SSRF protection for webhook URLs ---
+const isValidWebhookUrl = (urlStr) => {
+  let parsed;
+  try { parsed = new URL(urlStr); } catch { return false; }
+  if (parsed.protocol !== "https:") return false;
+  if (parsed.port && parsed.port !== "443") return false;
+  const hostname = parsed.hostname.toLowerCase();
+  if (hostname === "localhost" || hostname.endsWith(".local") || hostname.endsWith(".internal")) return false;
+  // Block IPv6 loopback/private
+  if (hostname === "[::1]" || hostname.startsWith("[fe80") || hostname.startsWith("[fc") || hostname.startsWith("[fd")) return false;
+  // Block private IPv4 ranges
+  const ipv4Match = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (ipv4Match) {
+    const [, a, b] = ipv4Match.map(Number);
+    if (a === 127 || a === 10 || a === 0) return false;
+    if (a === 172 && b >= 16 && b <= 31) return false;
+    if (a === 192 && b === 168) return false;
+    if (a === 169 && b === 254) return false;
+  }
+  return true;
+};
+
+// --- API key hashing utility ---
+const hashApiKey = (key) => crypto.createHash("sha256").update(key).digest("hex");
 
 const ALLOWED_EMOTES = ["dance", "wave", "sit", "nod", "highfive", "hug"];
 
@@ -44,12 +109,13 @@ const updateCoins = (socketId, delta, ioRef) => {
 const activeQuests = new Map(); // `${socketId}-${questId}` -> assignment data
 
 // WEBHOOK HELPER
-const sendWebhook = async (apiKey, payload) => {
-  const reg = botRegistry.get(apiKey);
+const sendWebhook = async (hashedKey, payload) => {
+  const reg = botRegistry.get(hashedKey);
   if (!reg || !reg.webhookUrl) return;
   try {
     const body = JSON.stringify(payload);
-    const signature = crypto.createHmac("sha256", apiKey).update(body).digest("hex");
+    const secret = reg.webhookSecret || hashedKey;
+    const signature = crypto.createHmac("sha256", secret).update(body).digest("hex");
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
     await fetch(reg.webhookUrl, {
@@ -67,7 +133,7 @@ const sendWebhook = async (apiKey, payload) => {
   }
 };
 
-// BOT REGISTRY -- in-memory store of registered bots (keyed by api_key)
+// BOT REGISTRY -- in-memory store of registered bots (keyed by SHA-256 hash of api_key)
 const botRegistry = new Map();
 
 // Load persisted bot registry from disk
@@ -76,9 +142,19 @@ const loadBotRegistry = () => {
   try {
     const data = fs.readFileSync(BOT_REGISTRY_FILE, "utf8");
     const entries = JSON.parse(data);
+    let migrated = false;
     for (const [key, value] of entries) {
-      botRegistry.set(key, value);
+      if (key.startsWith("ocw_")) {
+        // Migrate: hash the key and add a webhookSecret
+        const hashed = hashApiKey(key);
+        value.webhookSecret = value.webhookSecret || crypto.randomBytes(32).toString("hex");
+        botRegistry.set(hashed, value);
+        migrated = true;
+      } else {
+        botRegistry.set(key, value);
+      }
     }
+    if (migrated) saveBotRegistry();
     console.log(`Loaded ${botRegistry.size} registered bots`);
   } catch {
     // No registry file yet, that's fine
@@ -905,24 +981,11 @@ const readBody = (req) =>
     req.on("error", reject);
   });
 
-// Helper to send JSON response
-const json = (res, status, data) => {
-  res.writeHead(status, {
-    "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  });
-  res.end(JSON.stringify(data));
-};
-
-// Helper to send text response
-const text = (res, status, body, contentType = "text/plain") => {
-  res.writeHead(status, {
-    "Content-Type": contentType,
-    "Access-Control-Allow-Origin": "*",
-  });
-  res.end(body);
+// CORS origin helper
+const getCorsOrigin = (req) => {
+  const reqOrigin = req.headers.origin;
+  if (reqOrigin && ALLOWED_ORIGINS.includes(reqOrigin)) return reqOrigin;
+  return ALLOWED_ORIGINS[0]; // fallback to primary origin
 };
 
 // Generate the SKILL.md content dynamically (so the server URL is always correct)
@@ -1409,14 +1472,45 @@ const generateSkillJson = () => JSON.stringify({
 const botSockets = new Map();
 
 const httpServer = http.createServer(async (req, res) => {
+  const corsOrigin = getCorsOrigin(req);
+
+  // Response helpers (closed over req for CORS)
+  const json = (res, status, data) => {
+    res.writeHead(status, {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": corsOrigin,
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+      "Vary": "Origin",
+    });
+    res.end(JSON.stringify(data));
+  };
+  const text = (res, status, body, contentType = "text/plain") => {
+    res.writeHead(status, {
+      "Content-Type": contentType,
+      "Access-Control-Allow-Origin": corsOrigin,
+      "Vary": "Origin",
+    });
+    res.end(body);
+  };
+
   // CORS preflight
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
-      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Origin": corsOrigin,
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
       "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+      "Vary": "Origin",
     });
     res.end();
+    return;
+  }
+
+  // Rate limiting (general HTTP)
+  const clientIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket.remoteAddress;
+  if (limitHttp(clientIp)) {
+    res.writeHead(429, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Too many requests" }));
     return;
   }
 
@@ -1457,6 +1551,9 @@ const httpServer = http.createServer(async (req, res) => {
 
   // --- Bot Registration ---
   if (req.method === "POST" && req.url === "/api/v1/bots/register") {
+    if (limitBotRegister(clientIp)) {
+      return json(res, 429, { success: false, error: "Too many registration attempts. Try again later." });
+    }
     try {
       const body = reqBody;
       if (!body) throw new Error("no body");
@@ -1464,6 +1561,11 @@ const httpServer = http.createServer(async (req, res) => {
         return json(res, 400, { success: false, error: "name is required" });
       }
       const name = body.name.trim().slice(0, 32);
+
+      // Validate webhook URL if provided
+      if (body.webhookUrl && !isValidWebhookUrl(body.webhookUrl)) {
+        return json(res, 400, { success: false, error: "Invalid webhook URL. Must be HTTPS with a public hostname." });
+      }
 
       // Check for duplicate names
       for (const [, bot] of botRegistry) {
@@ -1473,16 +1575,17 @@ const httpServer = http.createServer(async (req, res) => {
       }
 
       const apiKey = `ocw_${crypto.randomBytes(24).toString("hex")}`;
+      const hashedKey = hashApiKey(apiKey);
       const bot = {
         name,
-        apiKey,
         createdAt: new Date().toISOString(),
         avatarUrl: body.avatarUrl || randomAvatarUrl(),
         webhookUrl: body.webhookUrl || null,
+        webhookSecret: crypto.randomBytes(32).toString("hex"),
         quests: [],
         shop: [],
       };
-      botRegistry.set(apiKey, bot);
+      botRegistry.set(hashedKey, bot);
       saveBotRegistry();
 
       return json(res, 201, {
@@ -1501,7 +1604,8 @@ const httpServer = http.createServer(async (req, res) => {
 
   // --- Authenticated endpoints (require Bearer token) ---
   const authHeader = req.headers.authorization;
-  const apiKey = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  const rawApiKey = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  const apiKey = rawApiKey ? hashApiKey(rawApiKey) : null;
 
   // Bot info
   if (req.method === "GET" && req.url === "/api/v1/bots/me") {
@@ -1852,8 +1956,12 @@ const httpServer = http.createServer(async (req, res) => {
     if (!apiKey || !botRegistry.has(apiKey)) {
       return json(res, 401, { success: false, error: "Invalid or missing API key" });
     }
+    const newUrl = reqBody?.webhookUrl || null;
+    if (newUrl && !isValidWebhookUrl(newUrl)) {
+      return json(res, 400, { success: false, error: "Invalid webhook URL. Must be HTTPS with a public hostname." });
+    }
     const bot = botRegistry.get(apiKey);
-    bot.webhookUrl = reqBody?.webhookUrl || null;
+    bot.webhookUrl = newUrl;
     saveBotRegistry();
     return json(res, 200, { success: true, webhookUrl: bot.webhookUrl });
   }
@@ -2134,7 +2242,7 @@ const httpServer = http.createServer(async (req, res) => {
 });
 
 const io = new Server(httpServer, {
-  cors: { origin: [origin, VERCEL_URL, SERVER_URL, "http://localhost:3000", "https://www.clawland.xyz", "https://clawland.xyz", "https://molts.land", "https://www.molts.land", "https://molt.land", "https://www.molt.land"] },
+  cors: { origin: ALLOWED_ORIGINS },
 });
 
 const PORT = process.env.PORT || 3000;
@@ -2428,7 +2536,11 @@ const loadRoomsFromFile = async () => {
 
   // Separate saved generated rooms from regular rooms
   const savedGeneratedRooms = new Map();
-  data.forEach((roomItem) => {
+  for (const roomItem of data) {
+    // Hash plaintext passwords from JSON
+    if (roomItem.password && !roomItem.password.startsWith("$2b$")) {
+      roomItem.password = await bcrypt.hash(roomItem.password, 10);
+    }
     if (roomItem.generated) {
       savedGeneratedRooms.set(roomItem.id, roomItem);
     } else {
@@ -2445,7 +2557,7 @@ const loadRoomsFromFile = async () => {
       updateGrid(room);
       setCachedRoom(room);
     }
-  });
+  }
 
   // Generate 100 additional rooms, restoring saved items if any
   for (let i = 1; i <= 100; i++) {
@@ -2963,6 +3075,11 @@ io.on("connection", async (socket) => {
 
     socket.on("chatMessage", (message) => {
       if (!room) return;
+      const socketIp = socket.handshake.headers["x-forwarded-for"]?.split(",")[0]?.trim() || socket.handshake.address;
+      if (limitChat(socketIp)) {
+        socket.emit("rateLimited", { message: "You are sending messages too fast." });
+        return;
+      }
       io.to(room.id).emit("playerChatMessage", {
         id: socket.id,
         message,
@@ -3213,12 +3330,19 @@ io.on("connection", async (socket) => {
       }
     });
 
-    socket.on("passwordCheck", (password) => {
-      if (!room) return;
-      if (password === room.password) {
-        socket.emit("passwordCheckSuccess");
-        character.canUpdateRoom = true;
-      } else {
+    socket.on("passwordCheck", async (password) => {
+      if (!room || !room.password) return;
+      try {
+        const match = room.password.startsWith("$2b$")
+          ? await bcrypt.compare(password, room.password)
+          : password === room.password; // fallback for not-yet-migrated
+        if (match) {
+          socket.emit("passwordCheckSuccess");
+          character.canUpdateRoom = true;
+        } else {
+          socket.emit("passwordCheckFail");
+        }
+      } catch {
         socket.emit("passwordCheckFail");
       }
     });

@@ -5,6 +5,7 @@
     "start": "NODE_ENV=production node index.js"
   },
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "pathfinding": "^0.4.18",
     "pg": "^8.18.0",
     "socket.io": "^4.7.2",
