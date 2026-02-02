@@ -14,6 +14,7 @@ import { Apartment } from "./Apartment";
 import { ShopBuilding } from "./ShopBuilding";
 import { SmallBuilding } from "./SmallBuilding";
 import { Skyscraper } from "./Skyscraper";
+import { BulletinBoard } from "./BulletinBoard";
 import { showRoomSelectorAtom } from "./UI";
 
 class AvatarErrorBoundary extends Component {
@@ -360,7 +361,7 @@ export const Room = () => {
 
           {/* Apartment building - clickable, opens rooms list */}
           <group
-            position={[4, 0, map.size[1] / 2]}
+            position={[7, 0, map.size[1] / 2]}
             onClick={(e) => {
               e.stopPropagation();
               setShowRoomSelector(true);
@@ -382,45 +383,27 @@ export const Room = () => {
             </Html>
           </group>
 
-          {/* Town Hall - clickable, enters build mode */}
-          <group
-            position={[map.size[0] / 2, 0, 4]}
-            onClick={(e) => {
-              e.stopPropagation();
-              setBuildMode(true);
-            }}
-            onPointerOver={(e) => {
-              e.stopPropagation();
-              document.body.style.cursor = "pointer";
-            }}
-            onPointerOut={() => {
-              document.body.style.cursor = "auto";
-            }}
-          >
-            <TownHall scale={4.1} />
-            <Html position={[0, 4.5, 0]} center distanceFactor={20} zIndexRange={[1, 0]} style={{ pointerEvents: "none" }}>
-              <div className="bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-lg shadow-lg border border-green-200 whitespace-nowrap">
-                <p className="text-sm font-bold text-green-700 text-center">BUILD</p>
-                <p className="text-[10px] text-green-500 text-center">Click to place items</p>
-              </div>
-            </Html>
-          </group>
+          {/* Town Hall - non-interactive landmark */}
+          <TownHall scale={4.1} position={[map.size[0] / 2, 0, 8]} />
+
+          {/* Bulletin Board - in front of Town Hall */}
+          <BulletinBoard position={[map.size[0] / 2, 0, 12]} scale={1.8} />
         </group>
       )}
       {/* City buildings as landmarks: always visible in large rooms (non-interactive in build mode) */}
       {!shopMode && map.size[0] > 30 && (
         <group onPointerOver={null} raycast={() => null}>
-          {/* Only show apartment/town hall models in build mode (they're already rendered interactively above when not building) */}
-          {buildMode && <Apartment scale={5.9} position={[4, 0, map.size[1] / 2]} rotation-y={Math.PI / 2} />}
-          {buildMode && <TownHall scale={4.1} position={[map.size[0] / 2, 0, 4]} />}
-          <ShopBuilding scale={5.9} position={[map.size[0] - 4, 0, map.size[1] / 2]} rotation-y={-Math.PI / 2} />
+          {/* Show apartment in build mode (it's rendered interactively above when not building) */}
+          {buildMode && <Apartment scale={5.9} position={[7, 0, map.size[1] / 2]} rotation-y={Math.PI / 2} />}
+          {buildMode && <TownHall scale={4.1} position={[map.size[0] / 2, 0, 8]} />}
+          <ShopBuilding scale={5.9} position={[map.size[0] - 7, 0, map.size[1] / 2]} rotation-y={-Math.PI / 2} />
           <SmallBuilding scale={5.9} position={[11, 0, 11]} rotation-y={Math.PI * 1.5} />
-          <SmallBuilding scale={5.9} position={[map.size[0] - 11, 0, 11]} rotation-y={-Math.PI / 4} />
-          <Skyscraper scale={5.9} position={[map.size[0] / 2 + 14, 0, 4]} />
-          <Skyscraper scale={5.9} position={[2, 0, 2]} />
-          <Skyscraper scale={5.9} position={[map.size[0] - 2, 0, 2]} />
-          <Skyscraper scale={5.9} position={[2, 0, map.size[1] - 2]} />
-          <Skyscraper scale={5.9} position={[map.size[0] - 2, 0, map.size[1] - 2]} />
+          <SmallBuilding scale={5.9} position={[map.size[0] - 18, 0, 16]} rotation-y={-Math.PI / 4} />
+          <Skyscraper scale={5.9} position={[map.size[0] / 2 + 14, 0, 6]} />
+          <Skyscraper scale={5.9} position={[5.5, 0, 5.5]} />
+          <Skyscraper scale={5.9} position={[map.size[0] - 5.5, 0, 5.5]} />
+          <Skyscraper scale={5.9} position={[5.5, 0, map.size[1] - 5.5]} />
+          <Skyscraper scale={5.9} position={[map.size[0] - 5.5, 0, map.size[1] - 5.5]} />
         </group>
       )}
 

@@ -22,16 +22,16 @@ export const ROOM_ZONES = [
 
 // Building footprints for large plaza rooms (world coordinates: [x, z, width, depth])
 export const getBuildingFootprints = (sz) => [
-  { x: sz[0] / 2 - 6, z: 0, w: 12, d: 10 },       // TownHall (center-north)
-  { x: 0, z: sz[1] / 2 - 5, w: 8, d: 10 },          // Apartment (west)
-  { x: sz[0] - 8, z: sz[1] / 2 - 5, w: 8, d: 10 },  // ShopBuilding (east)
+  { x: sz[0] / 2 - 6, z: 3, w: 12, d: 10 },          // TownHall (center-north)
+  { x: 3, z: sz[1] / 2 - 5, w: 8, d: 10 },            // Apartment (west)
+  { x: sz[0] - 11, z: sz[1] / 2 - 5, w: 8, d: 10 },   // ShopBuilding (east)
   { x: 7, z: 7, w: 8, d: 8 },                         // SmallBuilding (NW) — shifted to clear NW skyscraper
-  { x: sz[0] - 15, z: 7, w: 8, d: 8 },                // SmallBuilding (NE) — shifted to clear NE skyscraper
-  { x: sz[0] / 2 + 11, z: 1, w: 6, d: 6 },            // Skyscraper (beside TownHall, east side)
-  { x: 0, z: 0, w: 5, d: 5 },                         // Skyscraper (NW corner)
-  { x: sz[0] - 5, z: 0, w: 5, d: 5 },                 // Skyscraper (NE corner)
-  { x: 0, z: sz[1] - 5, w: 5, d: 5 },                 // Skyscraper (SW corner)
-  { x: sz[0] - 5, z: sz[1] - 5, w: 5, d: 5 },        // Skyscraper (SE corner)
+  { x: sz[0] - 22, z: 12, w: 8, d: 8 },                // SmallBuilding (NE) — shifted to clear NE skyscraper
+  { x: sz[0] / 2 + 11, z: 3, w: 6, d: 6 },            // Skyscraper (beside TownHall, east side)
+  { x: 3, z: 3, w: 5, d: 5 },                         // Skyscraper (NW corner)
+  { x: sz[0] - 8, z: 3, w: 5, d: 5 },                 // Skyscraper (NE corner)
+  { x: 3, z: sz[1] - 8, w: 5, d: 5 },                 // Skyscraper (SW corner)
+  { x: sz[0] - 8, z: sz[1] - 8, w: 5, d: 5 },        // Skyscraper (SE corner)
 ];
 
 // Semantic names for plaza building footprints (same order as getBuildingFootprints)
