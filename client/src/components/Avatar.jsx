@@ -9,7 +9,7 @@ import { atom, useAtom } from "jotai";
 import React, { useEffect, useMemo, useRef, useState, memo, useCallback } from "react";
 import { SkeletonUtils } from "three-stdlib";
 import { useGrid } from "../hooks/useGrid";
-import { socket, userAtom, avatarDispatch, bondsAtom, charactersAtom } from "./SocketManager";
+import { socket, userAtom, avatarDispatch, bondsAtom, charactersAtom, characterMotivesAtom, characterInteractionStatesAtom } from "./SocketManager";
 import { dmPanelTargetAtom } from "./DirectMessagePanel";
 import soundManager from "../audio/SoundManager";
 
@@ -552,6 +552,8 @@ export const Avatar = memo(function Avatar({
   const [user] = useAtom(userAtom);
   const [bonds] = useAtom(bondsAtom);
   const [characters] = useAtom(charactersAtom);
+  const [characterMotives] = useAtom(characterMotivesAtom);
+  const [characterInteractionStates] = useAtom(characterInteractionStatesAtom);
   const bondsRef = useRef(bonds);
   const charactersRef = useRef(characters);
   useEffect(() => { bondsRef.current = bonds; }, [bonds]);
@@ -884,11 +886,41 @@ export const Avatar = memo(function Avatar({
               }}
             >
               <div className="flex flex-col items-center justify-center gap-0.5 whitespace-nowrap">
-                {isBot && (
-                  <span className="text-lg leading-none" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.5))" }}>
-                    🦀
-                  </span>
-                )}
+                {(() => {
+                  const motives = characterMotives[id];
+                  const interactionState = characterInteractionStates[id];
+                  let moodEmoji = null;
+                  if (interactionState) {
+                    // Activity-based emoji when interacting
+                    const t = interactionState.interactionType;
+                    if (t === 'bedDouble' || t === 'bedSingle') moodEmoji = '\u{1F4A4}';
+                    else if (t === 'kitchenStove') moodEmoji = '\u{1F373}';
+                    else if (t === 'kitchenFridge') moodEmoji = '\u{1F354}';
+                    else if (t === 'televisionModern' || t === 'televisionVintage') moodEmoji = '\u{1F4FA}';
+                    else if (t === 'bathtub') moodEmoji = '\u{1F6C1}';
+                    else if (t === 'speaker') moodEmoji = '\u{1F3B5}';
+                    else if (t === 'desk') moodEmoji = '\u{1F4BB}';
+                    else if (t === 'tableCrossCloth') moodEmoji = '\u{1F37D}\uFE0F';
+                    else moodEmoji = '\u{2699}\uFE0F';
+                  } else if (motives) {
+                    // Deficit-based mood emoji
+                    const { energy = 100, social = 100, fun = 100, hunger = 100 } = motives;
+                    const lowest = Math.min(energy, social, fun, hunger);
+                    if (lowest < 30) {
+                      if (energy <= social && energy <= fun && energy <= hunger) moodEmoji = '\u{1F4A4}';
+                      else if (hunger <= social && hunger <= fun) moodEmoji = '\u{1F37D}\uFE0F';
+                      else if (fun <= social) moodEmoji = '\u{1F611}';
+                      else moodEmoji = '\u{1FAC2}';
+                    }
+                  }
+                  // Fallback: bots get crab if no mood data
+                  if (!moodEmoji && isBot) moodEmoji = '\u{1F980}';
+                  return moodEmoji ? (
+                    <span className="text-lg leading-none" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.5))" }}>
+                      {moodEmoji}
+                    </span>
+                  ) : null;
+                })()}
                 <span
                   className="text-[11px] font-bold px-2 py-0.5 rounded-full"
                   style={{

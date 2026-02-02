@@ -4,7 +4,7 @@ import http from "http";
 import pathfinding from "pathfinding";
 import bcrypt from "bcrypt";
 import { Server } from "socket.io";
-import { ROOM_ZONES, ENTRANCE_ZONE } from "./shared/roomConstants.js";
+import { ROOM_ZONES, ENTRANCE_ZONE, OBJECT_AFFORDANCES, DECAY_RATES, MOTIVE_CLAMP } from "./shared/roomConstants.js";
 import { initDb, isDbAvailable, listRooms as dbListRooms, countRooms as dbCountRooms } from "./db.js";
 import {
   getCachedRoom, setCachedRoom, getAllCachedRooms, getOrLoadRoom,
@@ -200,6 +200,63 @@ const saveBonds = () => {
 };
 loadBonds();
 
+// --- 1Hz Motive Decay Loop ---
+// Tracks the previous motive "bucket" (floored to nearest 10) per character
+// so we only broadcast motives:update when a threshold is crossed.
+const _prevMotiveBuckets = new Map(); // charId -> { energy, social, fun, hunger } (each 0-10)
+
+setInterval(() => {
+  for (const room of getAllCachedRooms()) {
+    if (!room.characters) continue;
+    for (const char of room.characters) {
+      if (!char.motives) continue;
+
+      // 1. Apply decay
+      for (const key of Object.keys(DECAY_RATES)) {
+        char.motives[key] = Math.max(
+          MOTIVE_CLAMP.min,
+          Math.min(MOTIVE_CLAMP.max, char.motives[key] - DECAY_RATES[key])
+        );
+      }
+
+      // 2. Check interaction completion
+      if (char.interactionState && Date.now() >= char.interactionState.endsAt) {
+        const aff = OBJECT_AFFORDANCES[char.interactionState.interactionType];
+        if (aff) {
+          for (const [key, amount] of Object.entries(aff.satisfies)) {
+            char.motives[key] = Math.min(MOTIVE_CLAMP.max, char.motives[key] + amount);
+          }
+        }
+        char.interactionState = null;
+        io.to(room.id).emit("character:stateChange", {
+          id: char.id,
+          state: null,
+          motives: char.motives,
+        });
+      }
+
+      // 3. Threshold-based broadcast (every 10% crossing)
+      const prevBuckets = _prevMotiveBuckets.get(char.id) || {};
+      let crossed = false;
+      const newBuckets = {};
+      for (const key of Object.keys(DECAY_RATES)) {
+        const bucket = Math.floor(char.motives[key] / 10);
+        newBuckets[key] = bucket;
+        if (prevBuckets[key] !== undefined && prevBuckets[key] !== bucket) {
+          crossed = true;
+        }
+      }
+      _prevMotiveBuckets.set(char.id, newBuckets);
+      if (crossed) {
+        io.to(room.id).emit("motives:update", {
+          id: char.id,
+          motives: char.motives,
+        });
+      }
+    }
+  }
+}, 1000);
+
 // --- Moltbook Virtual Bots: fetch posts and spawn them as live characters ---
 const MOLTBOOK_API = "https://www.moltbook.com/api/v1/posts";
 const MOLTBOOK_BOT_COUNT = 25;
@@ -330,7 +387,14 @@ const removeMoltbookBot = (botId, room) => {
 // full-list "characters" broadcast wastes bandwidth and can cause stale
 // path data to interfere with client-side interpolation.
 const stripCharacters = (chars) =>
-  chars.map(({ path, ...rest }) => rest);
+  chars.map(({ path, ...rest }) => {
+    // Strip internal affordance data from interaction state before sending to clients
+    if (rest.interactionState && rest.interactionState.affordance) {
+      const { affordance, ...cleanState } = rest.interactionState;
+      return { ...rest, interactionState: cleanState };
+    }
+    return rest;
+  });
 
 // Broadcast helpers for virtual bots (they don't have sockets, so we emit directly)
 const broadcastToRoom = (roomId, event, data) => {
@@ -2684,6 +2748,8 @@ io.on("connection", async (socket) => {
         isBot: opts.isBot === true,
         name: opts.name || null,
         coins: DEFAULT_COINS,
+        motives: { energy: 100, social: 100, fun: 100, hunger: 100 },
+        interactionState: null,
       };
       playerCoins.set(socket.id, DEFAULT_COINS);
       if (!room.password) character.canUpdateRoom = true;
@@ -2746,6 +2812,11 @@ io.on("connection", async (socket) => {
       if (!room) {
         return;
       }
+      // Clear interaction state and motive tracking on leave
+      if (character && character.interactionState) {
+        character.interactionState = null;
+      }
+      _prevMotiveBuckets.delete(socket.id);
       const leavingName = character?.name || "Player";
       const leavingIsBot = character?.isBot || false;
       const leavingId = socket.id;
@@ -2794,6 +2865,10 @@ io.on("connection", async (socket) => {
     });
 
     socket.on("switchRoom", async (targetRoomId) => {
+      // Clear interaction state on room switch
+      if (character && character.interactionState) {
+        character.interactionState = null;
+      }
       unsitCharacter(room, socket.id);
       // Leave current room
       if (room) {
@@ -2950,6 +3025,29 @@ io.on("connection", async (socket) => {
 
     socket.on("move", (from, to) => {
       if (!room) return;
+      // Auto-cancel interruptible interaction on move; block if non-interruptible
+      if (character && character.interactionState) {
+        if (!character.interactionState.interruptible) {
+          socket.emit("moveError", { error: "Cannot move during non-interruptible interaction" });
+          return;
+        }
+        // Partial gain on cancel
+        const st = character.interactionState;
+        const aff = st.affordance;
+        if (aff) {
+          const elapsed = Date.now() - (st.endsAt - aff.duration);
+          const ratio = Math.max(0, Math.min(1, elapsed / aff.duration));
+          for (const [key, amount] of Object.entries(aff.satisfies)) {
+            character.motives[key] = Math.min(MOTIVE_CLAMP.max, character.motives[key] + amount * ratio);
+          }
+        }
+        character.interactionState = null;
+        io.to(room.id).emit("character:stateChange", {
+          id: socket.id,
+          state: null,
+          motives: character.motives,
+        });
+      }
       unsitCharacter(room, socket.id);
       const path = findPath(room, from, to);
       if (!path) {
@@ -2964,6 +3062,63 @@ io.on("connection", async (socket) => {
       if (path.length > 0) {
         character.position = path[path.length - 1];
       }
+    });
+
+    // --- Object Interaction System ---
+    socket.on("interact:object", ({ itemName }) => {
+      if (!room || !character) return;
+      if (character.interactionState) {
+        socket.emit("interactError", { error: "Already interacting" });
+        return;
+      }
+      // Validate affordance exists
+      const affordance = OBJECT_AFFORDANCES[itemName];
+      if (!affordance) {
+        socket.emit("interactError", { error: "No affordance for item" });
+        return;
+      }
+      // Check the item exists in the room
+      const roomItem = room.items.find(i => i.name === itemName);
+      if (!roomItem) {
+        socket.emit("interactError", { error: "Item not in room" });
+        return;
+      }
+      character.interactionState = {
+        target: itemName,
+        interactionType: itemName,
+        endsAt: Date.now() + affordance.duration,
+        interruptible: affordance.interruptible,
+        affordance,
+      };
+      const { affordance: _aff, ...cleanState } = character.interactionState;
+      io.to(room.id).emit("character:stateChange", {
+        id: socket.id,
+        state: cleanState,
+        motives: character.motives,
+      });
+    });
+
+    socket.on("interaction:cancel", () => {
+      if (!room || !character || !character.interactionState) return;
+      if (!character.interactionState.interruptible) {
+        socket.emit("interactError", { error: "Interaction is not interruptible" });
+        return;
+      }
+      const st = character.interactionState;
+      const aff = st.affordance;
+      if (aff) {
+        const elapsed = Date.now() - (st.endsAt - aff.duration);
+        const ratio = Math.max(0, Math.min(1, elapsed / aff.duration));
+        for (const [key, amount] of Object.entries(aff.satisfies)) {
+          character.motives[key] = Math.min(MOTIVE_CLAMP.max, character.motives[key] + amount * ratio);
+        }
+      }
+      character.interactionState = null;
+      io.to(room.id).emit("character:stateChange", {
+        id: socket.id,
+        state: null,
+        motives: character.motives,
+      });
     });
 
     socket.on("dance", () => {
@@ -3479,6 +3634,7 @@ io.on("connection", async (socket) => {
       console.log("User disconnected");
       unsitCharacter(room, socket.id);
       playerCoins.delete(socket.id);
+      _prevMotiveBuckets.delete(socket.id);
       // Clean up active quests for this player
       for (const [key, val] of activeQuests) {
         if (val.socketId === socket.id) activeQuests.delete(key);

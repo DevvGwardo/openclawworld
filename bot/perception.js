@@ -7,6 +7,7 @@
  */
 
 import { buildLayout, serializeLayout } from "./roomLayout.js";
+import { OBJECT_AFFORDANCES } from "../shared/roomConstants.js";
 
 export class PerceptionModule {
   /**
@@ -31,6 +32,12 @@ export class PerceptionModule {
     this._chatHistory = [];    // { id, name, message, timestamp }
     this._ownActions = [];     // { type, params, timestamp }
     this._activityFeed = [];   // { event, detail, timestamp }
+
+    // Motive/needs tracking
+    this._characterMotives = new Map();  // id -> { energy, social, fun, hunger }
+    this._characterStates = new Map();   // id -> interactionState or null
+    this._ownMotives = null;             // own motives (set via stateChange/motivesUpdate)
+    this._ownInteractionState = null;    // own interaction state
   }
 
   /** Set or update the owner name at runtime. */
@@ -124,6 +131,32 @@ export class PerceptionModule {
   }
 
   /**
+   * Handle character:stateChange event — tracks interaction state and motives.
+   * @param {{ id: string, state: object|null, motives: object }} data
+   */
+  onStateChange(data) {
+    if (!data || !data.id) return;
+    this._characterStates.set(data.id, data.state ?? null);
+    if (data.motives) this._characterMotives.set(data.id, data.motives);
+    if (data.id === this._bot.id) {
+      this._ownInteractionState = data.state ?? null;
+      if (data.motives) this._ownMotives = data.motives;
+    }
+  }
+
+  /**
+   * Handle motives:update event — tracks motive levels for characters.
+   * @param {{ id: string, motives: object }} data
+   */
+  onMotivesUpdate(data) {
+    if (!data || !data.id) return;
+    this._characterMotives.set(data.id, data.motives);
+    if (data.id === this._bot.id) {
+      this._ownMotives = data.motives;
+    }
+  }
+
+  /**
    * Record an action the bot itself performed.
    * @param {{ type: string, [key: string]: any }} action
    */
@@ -149,7 +182,8 @@ export class PerceptionModule {
         const [cx, cy] = c.position ?? [0, 0];
         const distance = Math.max(Math.abs(cx - bx), Math.abs(cy - by));
         const name = c.session?.name ?? c.name ?? `Player-${c.id.slice(0, 4)}`;
-        return { id: c.id, name, position: c.position, isBot: !!c.isBot, distance };
+        const activity = this._characterStates.get(c.id) ?? null;
+        return { id: c.id, name, position: c.position, isBot: !!c.isBot, distance, activity };
       });
 
     // Nearby players (within perception radius)
@@ -182,13 +216,17 @@ export class PerceptionModule {
       secsAgo: Math.round((now - a.timestamp) / 1000),
     }));
 
-    // Room items (furniture already placed)
-    const roomItems = (this._bot.room?.items ?? []).map(item => ({
-      name: item.name,
-      position: item.gridPosition,
-      size: item.size,
-      rotation: item.rotation ?? 0,
-    }));
+    // Room items (furniture already placed) — annotate with affordance info
+    const roomItems = (this._bot.room?.items ?? []).map(item => {
+      const aff = OBJECT_AFFORDANCES[item.name];
+      return {
+        name: item.name,
+        position: item.gridPosition,
+        size: item.size,
+        rotation: item.rotation ?? 0,
+        ...(aff ? { satisfies: aff.satisfies, duration: aff.duration } : {}),
+      };
+    });
 
     // Owner tracking
     const owner = this._ownerName
@@ -205,7 +243,13 @@ export class PerceptionModule {
     }));
 
     return {
-      self: { id: this._bot.id, name: this._bot.name, position: this._bot.position },
+      self: {
+        id: this._bot.id,
+        name: this._bot.name,
+        position: this._bot.position,
+        motives: this._ownMotives,
+        interactionState: this._ownInteractionState,
+      },
       nearbyPlayers,
       totalPlayersInRoom,
       recentChat,
@@ -238,6 +282,19 @@ export class PerceptionModule {
     const pos = snap.self.position ? `[${snap.self.position}]` : '[?,?]';
     lines.push(`[You] ${snap.self.name} at ${pos}`);
 
+    // Motives
+    if (snap.self.motives) {
+      const m = snap.self.motives;
+      lines.push(`[Motives] Energy: ${Math.round(m.energy)}/100, Social: ${Math.round(m.social)}/100, Fun: ${Math.round(m.fun)}/100, Hunger: ${Math.round(m.hunger)}/100`);
+    }
+
+    // Interaction status
+    if (snap.self.interactionState) {
+      const st = snap.self.interactionState;
+      const remaining = Math.max(0, Math.round((st.endsAt - Date.now()) / 1000));
+      lines.push(`[Status] Using ${st.interactionType} (ends in ${remaining}s, ${st.interruptible ? 'interruptible' : 'locked'})`);
+    }
+
     // Owner
     if (snap.owner) {
       const oPos = snap.owner.position ? `[${snap.owner.position}]` : '[?,?]';
@@ -256,7 +313,8 @@ export class PerceptionModule {
       const parts = snap.nearbyPlayers.slice(0, 15).map(p => {
         const pPos = p.position ? `[${p.position}]` : '[?,?]';
         const bot = p.isBot ? ', bot' : '';
-        return `${p.name} at ${pPos} (dist ${p.distance}${bot})`;
+        const act = p.activity ? `, using ${p.activity.interactionType}` : '';
+        return `${p.name} at ${pPos} (dist ${p.distance}${bot}${act})`;
       });
       lines.push(`[Nearby] ${parts.join(', ')}`);
       if (snap.nearbyPlayers.length > 15) {
@@ -296,9 +354,10 @@ export class PerceptionModule {
 
     // Room items (furniture)
     if (snap.roomItems && snap.roomItems.length > 0) {
-      const itemSummary = snap.roomItems.map(i =>
-        `${i.name}@[${i.position}]`
-      ).join(', ');
+      const itemSummary = snap.roomItems.map(i => {
+        const aff = i.satisfies ? ` (${Object.entries(i.satisfies).map(([k,v]) => `${k}+${v}`).join(',')})` : '';
+        return `${i.name}@[${i.position}]${aff}`;
+      }).join(', ');
       lines.push(`[Room items] ${snap.roomItems.length} items: ${itemSummary}`);
     } else {
       lines.push('[Room items] Empty room - no furniture placed yet');

@@ -42,6 +42,15 @@ const ObserveAction = z.object({
   thought: z.string().max(200).optional(),
 });
 
+const InteractAction = z.object({
+  type: z.literal("interact"),
+  itemName: z.string().min(1),
+});
+
+const CancelInteractionAction = z.object({
+  type: z.literal("cancelInteraction"),
+});
+
 export const ActionSchema = z.discriminatedUnion("type", [
   MoveAction,
   SayAction,
@@ -51,6 +60,8 @@ export const ActionSchema = z.discriminatedUnion("type", [
   EnterRoomAction,
   ClaimApartmentAction,
   ObserveAction,
+  InteractAction,
+  CancelInteractionAction,
 ]);
 
 const noopLogger = {
@@ -150,6 +161,16 @@ export async function executeAction(action, botClient, logger) {
         log.info({ type: "observe", thought: action.thought ?? "", characters: observation.characters.length }, "observing surroundings");
         return { ok: true, type: action.type, data: observation };
       }
+
+      case "interact":
+        botClient.interact(action.itemName);
+        log.info({ type: "interact", itemName: action.itemName });
+        break;
+
+      case "cancelInteraction":
+        botClient.cancelInteraction();
+        log.info({ type: "cancelInteraction" });
+        break;
     }
 
     return { ok: true, type: action.type };

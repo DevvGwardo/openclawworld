@@ -60,3 +60,31 @@ export const ZONE_ACTIONS = {
   "Office": "work, browse laptop, read books",
   "Dining": "eat, have conversations, socialize",
 };
+
+// --- Sims-style needs/motive system ---
+
+export const OBJECT_AFFORDANCES = {
+  bedDouble:        { satisfies: { energy: 50 }, duration: 8000, interruptible: true },
+  bedSingle:        { satisfies: { energy: 40 }, duration: 7000, interruptible: true },
+  kitchenStove:     { satisfies: { hunger: 40 }, duration: 6000, interruptible: false },
+  kitchenFridge:    { satisfies: { hunger: 20 }, duration: 3000, interruptible: true },
+  loungeSofa:       { satisfies: { energy: 20, fun: 10 }, duration: 5000, interruptible: true },
+  loungeChair:      { satisfies: { energy: 15 }, duration: 4000, interruptible: true },
+  televisionModern: { satisfies: { fun: 35 }, duration: 6000, interruptible: true },
+  televisionVintage:{ satisfies: { fun: 30 }, duration: 6000, interruptible: true },
+  bathtub:          { satisfies: { fun: 15, energy: 10 }, duration: 5000, interruptible: true },
+  tableCrossCloth:  { satisfies: { social: 15 }, duration: 4000, interruptible: true },
+  desk:             { satisfies: { fun: 10 }, duration: 5000, interruptible: true },
+  speaker:          { satisfies: { fun: 20 }, duration: 4000, interruptible: true },
+};
+
+export const DECAY_RATES = { energy: 1, social: 0.8, fun: 0.8, hunger: 0.5 };
+
+export const MOTIVE_CLAMP = { min: 0, max: 100 };
+
+export const TRAITS = {
+  lazy:     { decayMod: { energy: 1.5 }, preferences: { bedDouble: 5, bedSingle: 5, loungeSofa: 4, televisionModern: 3 } },
+  social:   { decayMod: { social: 1.4 }, preferences: { tableCrossCloth: 5 } },
+  creative: { decayMod: { fun: 1.3 }, preferences: { desk: 4, speaker: 3 } },
+  glutton:  { decayMod: { hunger: 1.5 }, preferences: { kitchenStove: 5, kitchenFridge: 4 } },
+};

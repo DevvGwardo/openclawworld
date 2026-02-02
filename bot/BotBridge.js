@@ -141,6 +141,22 @@ export class BotBridge {
       this._perception.onPlayerSit(data);
     });
 
+    // Track motive/interaction state changes
+    this._botClient.on("stateChange", (data) => {
+      this._perception.onStateChange(data);
+    });
+    this._botClient.on("motivesUpdate", (data) => {
+      this._perception.onMotivesUpdate(data);
+    });
+
+    // Handle error events from server
+    this._botClient.on("moveError", (data) => {
+      this._log.warn({ error: data?.error }, "Move blocked by server");
+    });
+    this._botClient.on("interactError", (data) => {
+      this._log.warn({ error: data?.error }, "Interaction rejected by server");
+    });
+
     this._gateway.on("connected", () => {
       this._gatewayConnected = true;
       this._log.info("Gateway connected");
@@ -261,6 +277,12 @@ export class BotBridge {
       // 1. Perception snapshot
       const snap = this._perception.snapshot();
 
+      // 1b. If currently interacting with an object, skip LLM decision
+      if (snap.self.interactionState) {
+        this._log.debug("Skipping tick — interacting with object");
+        return;
+      }
+
       // 2. If gateway not connected, idle only (no talking)
       if (!this._gatewayConnected) {
         this._idle.tick();
@@ -358,6 +380,8 @@ Respond with exactly ONE JSON action:
 - {"type":"observe","thought":"..."} - Just watch and take in your surroundings (optional thought for your inner monologue)
 - {"type":"place","itemName":"...","gridPosition":[x,y],"rotation":0} - Place furniture to decorate
 - {"type":"claimApartment","roomId":"room-N"} - Claim an unclaimed apartment as your own home (check [Unclaimed apartments] for available IDs)
+- {"type":"interact","itemName":"bedDouble"} - Use a nearby object to satisfy your needs (energy, hunger, fun, social)
+- {"type":"cancelInteraction"} - Stop your current interaction early (only if interruptible)
 - {"type":"enterRoom","roomId":"..."} - Enter a room/apartment by its ID
 
 Available furniture (name[w,h]):
@@ -374,6 +398,7 @@ washer[2,2], toiletSquare[2,2], trashcan[1,1], bathroomCabinetDrawer[2,2], batht
 - Your apartment is YOUR home. Visit it, decorate it, invite others.
 - NEVER say you "can't see" or are "limited" — you have full real-time senses.
 - Keep messages short and punchy (1-2 sentences max). Don't monologue.
+- You have NEEDS (energy, social, fun, hunger) shown in [Motives]. When a need drops below 30, prioritize satisfying it by interacting with objects. Check [Room items] for objects that satisfy needs (shown with +energy, +fun, etc). Use {"type":"interact","itemName":"..."} to use them.
 
 Building rules:
 - Grid 0-99. Items can't go out of bounds (position + size <= 99).

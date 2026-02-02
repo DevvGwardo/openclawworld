@@ -25,6 +25,8 @@ export const questNotificationsAtom = atom([]);
 export const roomHasPasswordAtom = atom(true);
 export const bondsAtom = atom({}); // keyed by peerName -> { score, level, levelLabel, nextThreshold, maxLevel }
 export const roomInvitesAtom = atom([]); // pending room invites
+export const characterMotivesAtom = atom({}); // keyed by character id -> { energy, social, fun, hunger }
+export const characterInteractionStatesAtom = atom({}); // keyed by character id -> interactionState | null
 
 // Per-avatar dispatch maps — one global socket listener dispatches to the
 // relevant Avatar via O(1) Map lookup instead of N listeners filtering by id.
@@ -82,6 +84,8 @@ export const SocketManager = () => {
   const [_bonds, setBonds] = useAtom(bondsAtom);
   const [_roomInvites, setRoomInvites] = useAtom(roomInvitesAtom);
   const [_totalRooms, setTotalRooms] = useAtom(totalRoomsAtom);
+  const [_characterMotives, setCharacterMotives] = useAtom(characterMotivesAtom);
+  const [_characterInteractionStates, setCharacterInteractionStates] = useAtom(characterInteractionStatesAtom);
 
   const charactersRef = useRef([]);
   useEffect(() => { charactersRef.current = _characters; }, [_characters]);
@@ -369,6 +373,17 @@ export const SocketManager = () => {
     function onCharacterLeft(value) {
       // value = { id, name, isBot, roomName }
       if (!value || !value.id) return;
+      // Clean up motive/interaction state for departed character
+      setCharacterMotives((prev) => {
+        if (!(value.id in prev)) return prev;
+        const { [value.id]: _, ...rest } = prev;
+        return rest;
+      });
+      setCharacterInteractionStates((prev) => {
+        if (!(value.id in prev)) return prev;
+        const { [value.id]: _, ...rest } = prev;
+        return rest;
+      });
       // Mark the character as leaving so the Avatar can fade out,
       // then actually remove it after the animation completes.
       setCharacters((prev) => {
@@ -570,6 +585,19 @@ export const SocketManager = () => {
       });
     }
 
+    function onCharacterStateChange(value) {
+      if (!value || !value.id) return;
+      if (value.motives) {
+        setCharacterMotives((prev) => ({ ...prev, [value.id]: value.motives }));
+      }
+      setCharacterInteractionStates((prev) => ({ ...prev, [value.id]: value.state ?? null }));
+    }
+
+    function onMotivesUpdate(value) {
+      if (!value || !value.id) return;
+      setCharacterMotives((prev) => ({ ...prev, [value.id]: value.motives }));
+    }
+
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
     socket.on("roomJoined", onRoomJoined);
@@ -608,6 +636,8 @@ export const SocketManager = () => {
     socket.on("bondFormed", onBondFormed);
     socket.on("bondEmote:play", onBondEmotePlay);
     socket.on("roomInvite", onRoomInvite);
+    socket.on("character:stateChange", onCharacterStateChange);
+    socket.on("motives:update", onMotivesUpdate);
     return () => {
       clearTimeout(flushTimerRef.current);
       flushTimerRef.current = null;
@@ -649,6 +679,8 @@ export const SocketManager = () => {
       socket.off("bondFormed", onBondFormed);
       socket.off("bondEmote:play", onBondEmotePlay);
       socket.off("roomInvite", onRoomInvite);
+      socket.off("character:stateChange", onCharacterStateChange);
+      socket.off("motives:update", onMotivesUpdate);
     };
   }, []);
 };

@@ -116,6 +116,22 @@ export class BotClient extends EventEmitter {
         this.emit("mapUpdate", data);
       });
 
+      this.socket.on("character:stateChange", (data) => {
+        this.emit("stateChange", data);
+      });
+
+      this.socket.on("motives:update", (data) => {
+        this.emit("motivesUpdate", data);
+      });
+
+      this.socket.on("moveError", (data) => {
+        this.emit("moveError", data);
+      });
+
+      this.socket.on("interactError", (data) => {
+        this.emit("interactError", data);
+      });
+
       this.socket.on("disconnect", () => {
         this.emit("disconnected");
       });
@@ -200,8 +216,13 @@ export class BotClient extends EventEmitter {
     if (!Array.isArray(toGridPos) || toGridPos.length !== 2) {
       throw new Error("Invalid target: must be [x, y] array");
     }
+    const prevPosition = this.position;
     this.socket.emit("move", this.position, toGridPos);
     this.position = toGridPos;
+    // Revert optimistic position if server rejects the move
+    this.socket.once("moveError", () => {
+      this.position = prevPosition;
+    });
   }
 
   say(message) {
@@ -289,6 +310,20 @@ export class BotClient extends EventEmitter {
 
       this.socket.emit("observeRoom");
     });
+  }
+
+  interact(itemName) {
+    if (!this.socket || !this.room) {
+      throw new Error("Cannot interact: not in a room");
+    }
+    this.socket.emit("interact:object", { itemName });
+  }
+
+  cancelInteraction() {
+    if (!this.socket || !this.room) {
+      throw new Error("Cannot cancel interaction: not in a room");
+    }
+    this.socket.emit("interaction:cancel");
   }
 
   disconnect() {
