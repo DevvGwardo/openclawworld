@@ -46,10 +46,9 @@ const _lookMatrix = new THREE.Matrix4();
 const _up = new THREE.Vector3(0, 1, 0);
 const _zero = new THREE.Vector3();
 // Pre-computed quaternions for sitting pose
-// Thigh (UpLeg): rotate 180° around Y to flip orientation, then 90° forward around X
+// Thigh (UpLeg): rotate -90° around X to point legs forward
 const _thighSitQuat = new THREE.Quaternion()
-  .setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI)
-  .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2));
+  .setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
 // Shin (Leg): bend knee 90° around local X
 const _kneeBendPos = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
 const _kneeBendNeg = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
