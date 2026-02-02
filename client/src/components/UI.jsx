@@ -633,9 +633,35 @@ const RoomTransitionOverlay = ({ transition, roomLabel }) => {
             transition={{ type: "spring", damping: 24, stiffness: 320 }}
           >
             <div className="flex items-center gap-3">
-              <div className="relative w-10 h-10 rounded-xl bg-sky-50 border border-sky-200 grid place-items-center">
-                <div className="absolute inset-0 rounded-xl" style={{ boxShadow: "inset 0 0 0 1px rgba(14,165,233,0.15)" }} />
-                <div className="w-6 h-6 rounded-full border-2 border-sky-300 border-t-sky-600 animate-spin" />
+              <div className="relative w-10 h-10 rounded-xl bg-sky-50 border border-sky-200 grid place-items-center overflow-hidden">
+                <motion.div
+                  className="absolute inset-0"
+                  initial={{ opacity: 0.0 }}
+                  animate={{ opacity: 0.25 }}
+                  exit={{ opacity: 0.0 }}
+                  transition={{ duration: 0.25, ease: "easeOut" }}
+                  style={{ boxShadow: "0 0 0 1px rgba(14,165,233,0.18) inset" }}
+                />
+                <motion.img
+                  src="/favicon.ico"
+                  alt=""
+                  className="w-6 h-6"
+                  initial={{ opacity: 0, scale: 0.85, rotate: -8 }}
+                  animate={{
+                    opacity: 1,
+                    scale: [1, 1.05, 1],
+                    y: [0, -1.5, 0],
+                    rotate: [0, 3, 0],
+                  }}
+                  exit={{ opacity: 0, scale: 0.9, rotate: 6 }}
+                  transition={{
+                    opacity: { duration: 0.2, ease: "easeOut" },
+                    scale: { duration: 0.9, repeat: Infinity, ease: "easeInOut" },
+                    y: { duration: 0.9, repeat: Infinity, ease: "easeInOut" },
+                    rotate: { duration: 1.2, repeat: Infinity, ease: "easeInOut" },
+                  }}
+                  style={{ willChange: "transform, opacity" }}
+                />
               </div>
               <div className="min-w-0">
                 <p className="text-gray-900 font-extrabold tracking-tight">Teleporting…</p>
