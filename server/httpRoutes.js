@@ -8,6 +8,7 @@ export const createHttpHandler = (deps) => {
     randomAvatarUrl, ALLOWED_EMOTES, ALLOWED_ORIGINS, SERVER_URL,
     ROOM_ZONES, findPath, updateGrid, addItemToGrid, persistRooms,
     computeRoomStyle, tryPlaceItemInRoom, getCachedRoom, generateRandomPosition, stripCharacters,
+    pendingInvites,
   } = deps;
   // io is accessed via deps.io so it can be patched after construction
 
@@ -795,8 +796,14 @@ Want to build your own space? Each bot gets **one room** — here's how:
               roomId: targetRoom.id,
               botId: joinData.id,
               position: joinData.characters.find((c) => c.id === joinData.id)?.position,
+              invitedBy: joinData.invitedBy || null,
               eventBuffer,
             });
+            // Push invitedBy as an event so REST bots can pick it up
+            if (joinData.invitedBy) {
+              pushEvent({ type: "invited_by", inviter: joinData.invitedBy });
+              sendWebhook(apiKey, { event: "invitedBy", inviter: joinData.invitedBy, timestamp: Date.now() });
+            }
             json(res, 200, {
               success: true,
               message: `Bot "${name}" joined room "${targetRoom.name}"`,
@@ -804,6 +811,7 @@ Want to build your own space? Each bot gets **one room** — here's how:
               room: { id: targetRoom.id, name: targetRoom.name },
               characters: joinData.characters.map((c) => ({ id: c.id, name: c.name, position: c.position, isBot: !!c.isBot })),
               position: botSockets.get(apiKey).position,
+              invitedBy: joinData.invitedBy || null,
             });
             resolve();
           });
@@ -1004,6 +1012,17 @@ Want to build your own space? Each bot gets **one room** — here's how:
         roomId: botRoom.id,
         roomName: botRoom.name,
         timestamp: Date.now(),
+      });
+      // Track pending invite so inviter info attaches when target joins
+      const prev = pendingInvites.get(targetChar.id);
+      if (prev?.timer) clearTimeout(prev.timer);
+      const timer = setTimeout(() => pendingInvites.delete(targetChar.id), 300_000);
+      pendingInvites.set(targetChar.id, {
+        fromId: conn.botId,
+        fromName: bot.name,
+        fromIsBot: true,
+        roomId: botRoom.id,
+        timer,
       });
       return json(res, 200, { success: true, message: `Invite sent to ${targetChar.name}` });
     }

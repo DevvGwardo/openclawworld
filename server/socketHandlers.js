@@ -56,6 +56,7 @@ export function registerSocketHandlers(deps) {
     ROOM_ZONES,
     limitChat,
     hashApiKey,
+    pendingInvites,
   } = deps;
 
   // Destructure moltbook system parts
@@ -133,6 +134,15 @@ export function registerSocketHandlers(deps) {
         };
         playerCoins.set(socket.id, DEFAULT_COINS);
         if (!room.password) character.canUpdateRoom = true;
+        // Check if this join was triggered by a room invite
+        const invite = pendingInvites.get(socket.id);
+        if (invite && invite.roomId === room.id) {
+          character.invitedBy = { id: invite.fromId, name: invite.fromName, isBot: invite.fromIsBot };
+          clearTimeout(invite.timer);
+          pendingInvites.delete(socket.id);
+        } else {
+          character.invitedBy = null;
+        }
         room.characters.push(character);
 
         socket.emit("roomJoined", {
@@ -145,6 +155,7 @@ export function registerSocketHandlers(deps) {
           id: socket.id,
           coins: DEFAULT_COINS,
           hasPassword: !!room.password,
+          invitedBy: character.invitedBy || null,
         });
         // Notify other players in the room about the new character (excludes the joiner)
         socket.broadcast.to(room.id).emit("characterJoined", {
@@ -305,6 +316,15 @@ export function registerSocketHandlers(deps) {
         character.position = generateRandomPosition(room);
         character.path = [];
         character.canUpdateRoom = !room.password;
+        // Check if this room switch was triggered by a room invite
+        const invite = pendingInvites.get(socket.id);
+        if (invite && invite.roomId === room.id) {
+          character.invitedBy = { id: invite.fromId, name: invite.fromName, isBot: invite.fromIsBot };
+          clearTimeout(invite.timer);
+          pendingInvites.delete(socket.id);
+        } else {
+          character.invitedBy = null;
+        }
         room.characters.push(character);
 
         socket.emit("roomJoined", {
@@ -316,6 +336,7 @@ export function registerSocketHandlers(deps) {
           characters: stripCharacters(room.characters),
           id: socket.id,
           hasPassword: !!room.password,
+          invitedBy: character.invitedBy || null,
         });
         socket.broadcast.to(room.id).emit("characterJoined", {
           character: stripCharacters([character])[0],
@@ -811,6 +832,17 @@ export function registerSocketHandlers(deps) {
           roomId: room.id,
           roomName: room.name,
           timestamp: Date.now(),
+        });
+        // Track pending invite so we can attach inviter info when target joins
+        const prev = pendingInvites.get(targetId);
+        if (prev?.timer) clearTimeout(prev.timer);
+        const timer = setTimeout(() => pendingInvites.delete(targetId), 300_000);
+        pendingInvites.set(targetId, {
+          fromId: socket.id,
+          fromName: character.name || "Player",
+          fromIsBot: !!character.isBot,
+          roomId: room.id,
+          timer,
         });
         callback({ success: true });
       });

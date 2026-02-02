@@ -249,6 +249,9 @@ const broadcastToRoom = (roomId, event, data) => {
   io.to(roomId).emit(event, data);
 };
 
+// Shared pending-invites map: targetSocketId -> { fromId, fromName, fromIsBot, roomId, timer }
+const pendingInvites = new Map();
+
 const httpHandler = createHttpHandler({
   io: null, // will be set after io is created (handler captures reference lazily)
   rooms, items, itemsCatalog, botRegistry, botSockets, saveBotRegistry,
@@ -256,6 +259,7 @@ const httpHandler = createHttpHandler({
   randomAvatarUrl, ALLOWED_EMOTES, ALLOWED_ORIGINS, SERVER_URL,
   ROOM_ZONES, findPath, updateGrid, addItemToGrid, persistRooms,
   computeRoomStyle, tryPlaceItemInRoom, getCachedRoom, generateRandomPosition, stripCharacters,
+  pendingInvites,
 });
 
 const httpServer = http.createServer(async (req, res) => {
@@ -303,4 +307,5 @@ registerSocketHandlers({
   getCachedRoom, getAllCachedRooms, getOrLoadRoom, setCachedRoom,
   scheduleEviction, cancelEviction, hydrateRoom,
   isDbAvailable, dbListRooms, dbCountRooms, ROOM_ZONES, limitChat, hashApiKey,
+  pendingInvites,
 });

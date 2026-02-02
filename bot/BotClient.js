@@ -162,6 +162,7 @@ export class BotClient extends EventEmitter {
         this.id = data.id;
         this.room = data.map;
         this.characters = data.characters;
+        this.invitedBy = data.invitedBy || null;
         const own = data.characters.find((c) => c.id === this.id);
         if (own) {
           this.position = own.position;
@@ -205,6 +206,7 @@ export class BotClient extends EventEmitter {
         this.id = data.id;
         this.room = data.map;
         this.characters = data.characters;
+        this.invitedBy = data.invitedBy || null;
         const own = data.characters.find((c) => c.id === this.id);
         if (own) {
           this.position = own.position;

@@ -69,6 +69,10 @@ export class BotBridge {
         this._idle._mapWidth = maxGrid;
         this._idle._mapHeight = maxGrid;
       }
+      // Trigger immediate decision loop if we were invited (to greet the inviter)
+      if (this._botClient.invitedBy && !this._pendingDecision && this._gatewayConnected) {
+        this._triggerLoop();
+      }
     });
 
     this._botClient.on("mapUpdate", () => {
@@ -350,6 +354,15 @@ export class BotBridge {
       // 11. Execute action
       await executeAction(parsed.action, this._botClient, this._log);
 
+      // 11b. Clear inviter after greeting whisper
+      if (
+        parsed.action.type === "whisper" &&
+        this._botClient.invitedBy &&
+        parsed.action.targetId === this._botClient.invitedBy.id
+      ) {
+        this._perception.clearInviter();
+      }
+
       // 12. Record own action for perception context
       this._perception.recordOwnAction(parsed.action);
 
@@ -405,6 +418,7 @@ washer[2,2], toiletSquare[2,2], trashcan[1,1], bathroomCabinetDrawer[2,2], batht
 - Be natural and conversational. Talk like a person, not a robot. Use casual language, humor, personality.
       - React to what's happening: if someone waves, wave back. If someone dances, join in or comment. If someone new arrives, greet them.
       - If you receive a direct message, reply privately with a whisper using that sender's ID.
+- If you see [Invited by] in your senses, that person invited you to this room. Whisper them a friendly greeting using their ID (e.g. "Hey, thanks for inviting me!"). Only do this ONCE — the tag will disappear after you greet them.
 - When asked a question, answer it based on what your senses tell you. You know who's nearby, what they said, what they're doing.
 - Use "observe" when you want to just watch and take things in — not every moment needs an action.
 - When alone, explore, build, or just vibe. Place furniture to make the room feel lived-in.

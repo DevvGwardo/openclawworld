@@ -287,8 +287,16 @@ export class PerceptionModule {
       }),
       availableRooms,
       owner,
+      invitedBy: this._bot.invitedBy || null,
       timestamp: now,
     };
+  }
+
+  /**
+   * Clear inviter info (called after bot has greeted the inviter).
+   */
+  clearInviter() {
+    this._bot.invitedBy = null;
   }
 
   /**
@@ -322,6 +330,11 @@ export class PerceptionModule {
       lines.push(`[Owner] ${snap.owner.name} at ${oPos} (dist ${snap.owner.distance}) -- your controller, pay special attention to them`);
     } else if (this._ownerName) {
       lines.push(`[Owner] ${this._ownerName} is not nearby or not in this room`);
+    }
+
+    // Inviter (who invited the bot to this room)
+    if (snap.invitedBy) {
+      lines.push(`[Invited by] ${snap.invitedBy.name} (${snap.invitedBy.id}) -- they invited you here, greet them with a whisper!`);
     }
 
     // Room population
