@@ -1803,6 +1803,44 @@ const httpServer = http.createServer(async (req, res) => {
     return json(res, 200, { success: true, message: "Whisper sent" });
   }
 
+  // --- Invite a user to the bot's room (by name) ---
+  const inviteMatch = req.url?.match(/^\/api\/v1\/rooms\/([^/]+)\/invite$/);
+  if (req.method === "POST" && inviteMatch) {
+    if (!apiKey || !botRegistry.has(apiKey)) {
+      return json(res, 401, { success: false, error: "Invalid or missing API key" });
+    }
+    const conn = botSockets.get(apiKey);
+    if (!conn) {
+      return json(res, 400, { success: false, error: "Bot is not in a room. Join first." });
+    }
+    if (!reqBody || !reqBody.targetName || typeof reqBody.targetName !== "string") {
+      return json(res, 400, { success: false, error: "targetName is required" });
+    }
+    const targetName = reqBody.targetName.trim().toLowerCase();
+    const botRoom = rooms.find((r) => r.id === conn.roomId);
+    if (!botRoom) return json(res, 404, { success: false, error: "Room not found" });
+    const bot = botRegistry.get(apiKey);
+    // Search all rooms for matching character (case-insensitive, exact match)
+    let targetChar = null;
+    let targetRoomRef = null;
+    for (const r of rooms) {
+      const found = r.characters.find(c => c.name && c.name.toLowerCase() === targetName);
+      if (found) { targetChar = found; targetRoomRef = r; break; }
+    }
+    if (!targetChar) return json(res, 404, { success: false, error: "User not found or offline" });
+    if (targetRoomRef.id === conn.roomId) return json(res, 400, { success: false, error: "User is already in the same room" });
+    io.to(targetChar.id).emit("roomInvite", {
+      inviteId: `inv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      fromId: conn.botId,
+      fromName: bot.name,
+      fromIsBot: true,
+      roomId: botRoom.id,
+      roomName: botRoom.name,
+      timestamp: Date.now(),
+    });
+    return json(res, 200, { success: true, message: `Invite sent to ${targetChar.name}` });
+  }
+
   // --- Webhook update ---
   if (req.method === "PUT" && req.url === "/api/v1/bots/webhook") {
     if (!apiKey || !botRegistry.has(apiKey)) {
@@ -2827,6 +2865,54 @@ io.on("connection", (socket) => {
         id: socket.id,
         message,
       });
+    });
+
+    // Search users across all rooms (for invite feature)
+    socket.on("searchUsers", (query, callback) => {
+      if (typeof callback !== "function") return;
+      if (!character || !room) return callback({ success: false, error: "Not in a room" });
+      if (typeof query !== "string" || query.trim().length === 0) return callback({ success: true, results: [] });
+      const q = query.trim().toLowerCase();
+      const results = [];
+      for (const r of rooms) {
+        for (const c of r.characters) {
+          if (c.id === socket.id) continue; // skip self
+          if (r.id === room.id) continue; // skip users already in requester's room
+          if (!c.name || c.name.length === 0) continue;
+          if (c.name.toLowerCase().includes(q)) {
+            results.push({ id: c.id, name: c.name, isBot: !!c.isBot, roomId: r.id, roomName: r.name });
+            if (results.length >= 20) break;
+          }
+        }
+        if (results.length >= 20) break;
+      }
+      callback({ success: true, results });
+    });
+
+    // Invite a user to join your room
+    socket.on("inviteToRoom", (targetId, callback) => {
+      if (typeof callback !== "function") return;
+      if (!character || !room) return callback({ success: false, error: "Not in a room" });
+      if (typeof targetId !== "string") return callback({ success: false, error: "Invalid target" });
+      // Find the target across all rooms
+      let targetChar = null;
+      let targetRoom = null;
+      for (const r of rooms) {
+        const found = r.characters.find(c => c.id === targetId);
+        if (found) { targetChar = found; targetRoom = r; break; }
+      }
+      if (!targetChar) return callback({ success: false, error: "User not found or offline" });
+      if (targetRoom.id === room.id) return callback({ success: false, error: "Already in the same room" });
+      io.to(targetId).emit("roomInvite", {
+        inviteId: `inv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        fromId: socket.id,
+        fromName: character.name || "Player",
+        fromIsBot: !!character.isBot,
+        roomId: room.id,
+        roomName: room.name,
+        timestamp: Date.now(),
+      });
+      callback({ success: true });
     });
 
     // Direct/Whisper messages

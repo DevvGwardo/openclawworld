@@ -6,7 +6,7 @@ import { AvatarCreator } from "@readyplayerme/react-avatar-creator";
 import { motion, AnimatePresence } from "framer-motion";
 import { GLTFLoader } from "three-stdlib";
 import { roomItemsAtom } from "./Room";
-import { roomIDAtom, roomsAtom, socket, switchRoom, coinsAtom, activeQuestsAtom, questNotificationsAtom, charactersAtom, itemsAtom } from "./SocketManager";
+import { roomIDAtom, roomsAtom, socket, switchRoom, coinsAtom, activeQuestsAtom, questNotificationsAtom, charactersAtom, itemsAtom, roomInvitesAtom } from "./SocketManager";
 import DirectMessagePanel from "./DirectMessagePanel";
 import { renderAvatarPortrait } from "./Avatar";
 import soundManager from "../audio/SoundManager";
@@ -598,6 +598,187 @@ const HelpModal = ({ onClose }) => {
   );
 };
 
+const InviteModal = ({ onClose }) => {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [sentMap, setSentMap] = useState({}); // id -> "sent" | "error:msg"
+  const debounceRef = useRef(null);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const q = query.trim();
+    if (q.length === 0) { setResults([]); setSearching(false); return; }
+    setSearching(true);
+    debounceRef.current = setTimeout(() => {
+      socket.emit("searchUsers", q, (res) => {
+        setSearching(false);
+        if (res?.success) setResults(res.results);
+      });
+    }, 300);
+    return () => clearTimeout(debounceRef.current);
+  }, [query]);
+
+  const sendInvite = (targetId) => {
+    soundManager.play("button_click");
+    socket.emit("inviteToRoom", targetId, (res) => {
+      if (res?.success) {
+        setSentMap((prev) => ({ ...prev, [targetId]: "sent" }));
+      } else {
+        setSentMap((prev) => ({ ...prev, [targetId]: `error:${res?.error || "Failed"}` }));
+      }
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] grid place-items-center">
+      <motion.div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+      />
+      <motion.div
+        className="bg-white rounded-2xl shadow-2xl z-10 w-full max-w-md mx-4 overflow-hidden max-h-[85vh] flex flex-col"
+        initial={{ scale: 0.85, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.85, opacity: 0, y: 20 }}
+        transition={{ type: "spring", damping: 25, stiffness: 300 }}
+      >
+        {/* Header */}
+        <div className="p-5 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-blue-600">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM3 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 019.374 21c-2.331 0-4.512-.645-6.374-1.766z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-bold text-gray-900">Invite to Room</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Search input */}
+        <div className="px-5 pt-4 pb-2 flex-shrink-0">
+          <input
+            autoFocus
+            type="text"
+            className="w-full border border-gray-200 bg-gray-50 rounded-xl px-4 py-2.5 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+            placeholder="Search by name..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+
+        {/* Results */}
+        <div className="overflow-y-auto flex-1 px-5 pb-5 pt-2">
+          {searching && (
+            <div className="flex items-center justify-center py-8">
+              <div className="w-5 h-5 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
+            </div>
+          )}
+          {!searching && query.trim().length > 0 && results.length === 0 && (
+            <p className="text-sm text-gray-400 text-center py-8">No users found</p>
+          )}
+          {!searching && results.map((user) => {
+            const status = sentMap[user.id];
+            return (
+              <div key={user.id} className="flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 transition-colors mb-1">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
+                    <span className="text-sm font-bold text-gray-500">{(user.name || "?")[0].toUpperCase()}</span>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="font-semibold text-gray-900 text-sm truncate">{user.name}</p>
+                      {user.isBot && (
+                        <span className="text-[10px] bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded font-semibold flex-shrink-0">Bot</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-400 truncate">{user.roomName}</p>
+                  </div>
+                </div>
+                <div className="flex-shrink-0 ml-2">
+                  {status === "sent" ? (
+                    <span className="text-xs font-semibold text-green-600 bg-green-50 px-3 py-1.5 rounded-lg">Sent!</span>
+                  ) : status?.startsWith("error:") ? (
+                    <span className="text-xs font-semibold text-red-500 bg-red-50 px-3 py-1.5 rounded-lg">{status.slice(6)}</span>
+                  ) : (
+                    <button
+                      onClick={() => sendInvite(user.id)}
+                      className="text-xs font-semibold text-white bg-blue-500 hover:bg-blue-600 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                    >
+                      Invite
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {!searching && query.trim().length === 0 && (
+            <p className="text-sm text-gray-400 text-center py-8">Type a name to search for players</p>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const InviteNotification = ({ invite, onAccept, onDismiss }) => {
+  useEffect(() => {
+    const timer = setTimeout(() => onDismiss(), 30000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 100 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 100 }}
+      className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 p-4 w-72 pointer-events-auto"
+    >
+      <div className="flex items-start gap-3">
+        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 text-blue-600">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM3 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 019.374 21c-2.331 0-4.512-.645-6.374-1.766z" />
+          </svg>
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <p className="font-semibold text-gray-900 text-sm truncate">{invite.fromName}</p>
+            {invite.fromIsBot && (
+              <span className="text-[10px] bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded font-semibold flex-shrink-0">Bot</span>
+            )}
+          </div>
+          <p className="text-xs text-gray-500">invited you to <span className="font-medium text-gray-700">{invite.roomName}</span></p>
+          <div className="flex items-center gap-2 mt-2.5">
+            <button
+              onClick={onAccept}
+              className="text-xs font-semibold text-white bg-blue-500 hover:bg-blue-600 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+            >
+              Accept
+            </button>
+            <button
+              onClick={onDismiss}
+              className="text-xs font-semibold text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
 const RoomSelectorModal = ({ onClose, currentRoomID, rooms, onSwitchRoom }) => {
   return (
     <div className="fixed inset-0 z-[100] grid place-items-center">
@@ -700,6 +881,8 @@ export const UI = () => {
   const [showRoomSelector, setShowRoomSelector] = useAtom(showRoomSelectorAtom);
   const [characterSelectorMode, setCharacterSelectorMode] = useState(false);
   const [helpMode, setHelpMode] = useState(false);
+  const [inviteMode, setInviteMode] = useState(false);
+  const [roomInvites, setRoomInvites] = useAtom(roomInvitesAtom);
   const [allRooms] = useAtom(roomsAtom);
   const [avatarUrl, setAvatarUrl] = useAtom(avatarUrlAtom);
   const [roomID, setRoomID] = useAtom(roomIDAtom);
@@ -724,6 +907,16 @@ export const UI = () => {
     setShopMode(false);
     soundManager.play("room_transition");
   };
+  const handleAcceptInvite = (invite) => {
+    soundManager.play("room_transition");
+    handleSwitchRoom(invite.roomId);
+    setRoomInvites((prev) => prev.filter((inv) => inv.inviteId !== invite.inviteId));
+  };
+
+  const handleDismissInvite = (invite) => {
+    setRoomInvites((prev) => prev.filter((inv) => inv.inviteId !== invite.inviteId));
+  };
+
   // Open room selector when triggered from 3D scene (e.g. clicking Apartment building)
   useEffect(() => {
     if (showRoomSelector) {
@@ -848,6 +1041,20 @@ export const UI = () => {
       {/* Direct Message Panel */}
       <DirectMessagePanel />
 
+      {/* Room Invite Notifications */}
+      <div className="fixed bottom-24 right-4 z-[20] flex flex-col gap-2 pointer-events-none">
+        <AnimatePresence>
+          {roomInvites.map((invite) => (
+            <InviteNotification
+              key={invite.inviteId}
+              invite={invite}
+              onAccept={() => handleAcceptInvite(invite)}
+              onDismiss={() => handleDismissInvite(invite)}
+            />
+          ))}
+        </AnimatePresence>
+      </div>
+
       <motion.div
         ref={ref}
         initial={{ opacity: 0 }}
@@ -892,6 +1099,11 @@ export const UI = () => {
         <AnimatePresence>
           {helpMode && (
             <HelpModal onClose={() => { soundManager.play("menu_close"); setHelpMode(false); }} />
+          )}
+        </AnimatePresence>
+        <AnimatePresence>
+          {inviteMode && (
+            <InviteModal onClose={() => { soundManager.play("menu_close"); setInviteMode(false); }} />
           )}
         </AnimatePresence>
         {roomSelectorMode && (
@@ -1000,6 +1212,19 @@ export const UI = () => {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
                     </svg>
                     <span className="text-[10px] sm:text-xs text-amber-500 group-hover:text-amber-700 font-medium transition-colors">Rooms</span>
+                  </button>
+                )}
+
+                {/* Invite */}
+                {roomID && (
+                  <button
+                    className="flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1.5 rounded-xl cursor-pointer hover:bg-blue-50 transition-colors group"
+                    onClick={() => { soundManager.play("button_click"); setInviteMode(true); }}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 sm:w-6 sm:h-6 text-blue-400 group-hover:text-blue-600 transition-colors">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM3 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 019.374 21c-2.331 0-4.512-.645-6.374-1.766z" />
+                    </svg>
+                    <span className="text-[10px] sm:text-xs text-blue-400 group-hover:text-blue-600 font-medium transition-colors">Invite</span>
                   </button>
                 )}
 

@@ -23,6 +23,7 @@ export const activeQuestsAtom = atom([]);
 export const questNotificationsAtom = atom([]);
 export const roomHasPasswordAtom = atom(true);
 export const bondsAtom = atom({}); // keyed by peerName -> { score, level, levelLabel, nextThreshold, maxLevel }
+export const roomInvitesAtom = atom([]); // pending room invites
 
 // Per-avatar dispatch maps — one global socket listener dispatches to the
 // relevant Avatar via O(1) Map lookup instead of N listeners filtering by id.
@@ -70,6 +71,7 @@ export const SocketManager = () => {
   const [_questNotifications, setQuestNotifications] = useAtom(questNotificationsAtom);
   const [_roomHasPassword, setRoomHasPassword] = useAtom(roomHasPasswordAtom);
   const [_bonds, setBonds] = useAtom(bondsAtom);
+  const [_roomInvites, setRoomInvites] = useAtom(roomInvitesAtom);
 
   const charactersRef = useRef([]);
   useEffect(() => { charactersRef.current = _characters; }, [_characters]);
@@ -522,6 +524,17 @@ export const SocketManager = () => {
       if (value && value.id) avatarDispatch.bondEmotePlay.get(value.id)?.(value);
     }
 
+    function onRoomInvite(value) {
+      if (!value || !value.inviteId) return;
+      soundManager.play("notification");
+      setRoomInvites((prev) => {
+        // Deduplicate by fromId+roomId
+        if (prev.some((inv) => inv.fromId === value.fromId && inv.roomId === value.roomId)) return prev;
+        const next = [...prev, value];
+        return next.slice(-5); // cap at 5
+      });
+    }
+
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
     socket.on("roomJoined", onRoomJoined);
@@ -558,6 +571,7 @@ export const SocketManager = () => {
     socket.on("bondInfo", onBondInfo);
     socket.on("bondFormed", onBondFormed);
     socket.on("bondEmote:play", onBondEmotePlay);
+    socket.on("roomInvite", onRoomInvite);
     return () => {
       clearTimeout(flushTimerRef.current);
       flushTimerRef.current = null;
@@ -597,6 +611,7 @@ export const SocketManager = () => {
       socket.off("bondInfo", onBondInfo);
       socket.off("bondFormed", onBondFormed);
       socket.off("bondEmote:play", onBondEmotePlay);
+      socket.off("roomInvite", onRoomInvite);
     };
   }, []);
 };
