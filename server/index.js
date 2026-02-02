@@ -1730,7 +1730,7 @@ const getSitSpots = (room, item, sittable) => {
     const adjY = gy + h;
     const seatX = gx + x;
     const seatY = gy + h - 1;
-    const faceRot = Math.PI;
+    const faceRot = 0;
     if (adjY <= maxY) {
       spots.push({ walkTo: [adjX, adjY], seatPos: [seatX, seatY], seatHeight, seatRotation: faceRot, seatIdx: seatIdx++ });
     }
@@ -1741,7 +1741,7 @@ const getSitSpots = (room, item, sittable) => {
     const adjY = gy - 1;
     const seatX = gx + x;
     const seatY = gy;
-    const faceRot = 0;
+    const faceRot = Math.PI;
     if (adjY >= 0) {
       spots.push({ walkTo: [adjX, adjY], seatPos: [seatX, seatY], seatHeight, seatRotation: faceRot, seatIdx: seatIdx++ });
     }
@@ -1752,7 +1752,7 @@ const getSitSpots = (room, item, sittable) => {
     const adjY = gy + y;
     const seatX = gx;
     const seatY = gy + y;
-    const faceRot = -Math.PI / 2;
+    const faceRot = Math.PI / 2;
     if (adjX >= 0) {
       spots.push({ walkTo: [adjX, adjY], seatPos: [seatX, seatY], seatHeight, seatRotation: faceRot, seatIdx: seatIdx++ });
     }
@@ -1763,7 +1763,7 @@ const getSitSpots = (room, item, sittable) => {
     const adjY = gy + y;
     const seatX = gx + w - 1;
     const seatY = gy + y;
-    const faceRot = Math.PI / 2;
+    const faceRot = -Math.PI / 2;
     if (adjX <= maxX) {
       spots.push({ walkTo: [adjX, adjY], seatPos: [seatX, seatY], seatHeight, seatRotation: faceRot, seatIdx: seatIdx++ });
     }
