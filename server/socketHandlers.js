@@ -61,7 +61,6 @@ export function registerSocketHandlers(deps) {
   const {
     moltbookVirtualBots,
     pendingBuilds,
-    moltbookPostPool,
     THINKING_PHRASES,
   } = moltbookSystem;
 
@@ -94,7 +93,7 @@ export function registerSocketHandlers(deps) {
         rooms: welcomeRooms,
         totalRooms,
         items,
-        moltbookPosts: moltbookPostPool.map((p) => ({
+        moltbookPosts: moltbookSystem.moltbookPostPool.map((p) => ({
           id: p.id,
           title: p.title || "",
           content: (p.content || "").slice(0, 300),
