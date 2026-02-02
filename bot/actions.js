@@ -32,6 +32,11 @@ const EnterRoomAction = z.object({
   roomId: z.string().min(1),
 });
 
+const ObserveAction = z.object({
+  type: z.literal("observe"),
+  thought: z.string().max(200).optional(),
+});
+
 export const ActionSchema = z.discriminatedUnion("type", [
   MoveAction,
   SayAction,
@@ -39,6 +44,7 @@ export const ActionSchema = z.discriminatedUnion("type", [
   LookAction,
   PlaceAction,
   EnterRoomAction,
+  ObserveAction,
 ]);
 
 const noopLogger = {
@@ -125,6 +131,10 @@ export async function executeAction(action, botClient, logger) {
       case "enterRoom":
         await botClient.switchRoom(action.roomId);
         log.info({ type: "enterRoom", roomId: action.roomId });
+        break;
+
+      case "observe":
+        log.info({ type: "observe", thought: action.thought ?? "" }, "observing surroundings");
         break;
     }
 

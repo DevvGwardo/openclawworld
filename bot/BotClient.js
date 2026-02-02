@@ -72,6 +72,22 @@ export class BotClient extends EventEmitter {
         this.emit("dance", data);
       });
 
+      this.socket.on("characterJoined", (data) => {
+        this.emit("characterJoined", data);
+      });
+
+      this.socket.on("characterLeft", (data) => {
+        this.emit("characterLeft", data);
+      });
+
+      this.socket.on("playerSit", (data) => {
+        this.emit("playerSit", data);
+      });
+
+      this.socket.on("waveAt", (data) => {
+        this.emit("waveAt", data);
+      });
+
       this.socket.on("mapUpdate", (data) => {
         this.room = data.map;
         this.characters = data.characters;

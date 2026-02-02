@@ -19,6 +19,7 @@ export class BotBridge {
    * @param {string} [options.gatewayUrl] - Gateway WebSocket URL
    * @param {string} [options.gatewayToken] - Gateway auth token
    * @param {string} [options.botName] - Bot display name
+   * @param {string} [options.ownerName] - Name of bot's owner/controller
    * @param {string} [options.avatarUrl] - Ready Player Me avatar URL
    * @param {number} [options.loopIntervalMs] - Perception-decision loop interval (ms)
    * @param {number} [options.perceptionRadius] - Nearby filter radius (Chebyshev)
@@ -31,6 +32,7 @@ export class BotBridge {
     const gatewayUrl = options.gatewayUrl ?? process.env.CLAWLAND_GATEWAY_URL ?? "ws://localhost:8080";
     const gatewayToken = options.gatewayToken ?? process.env.CLAWLAND_GATEWAY_TOKEN ?? undefined;
     const botName = options.botName ?? "ClawBot";
+    const ownerName = options.ownerName ?? process.env.BOT_OWNER ?? null;
     const AVATAR_URLS = [
       "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
       "https://models.readyplayer.me/663833cf6c79010563b91e1b.glb",
@@ -40,18 +42,22 @@ export class BotBridge {
     const avatarUrl =
       options.avatarUrl ?? AVATAR_URLS[Math.floor(Math.random() * AVATAR_URLS.length)];
     const loopIntervalMs = options.loopIntervalMs ?? 3000;
-    const perceptionRadius = options.perceptionRadius ?? 6;
+    const perceptionRadius = options.perceptionRadius ?? 15;
     const rateLimitBurst = options.rateLimitBurst ?? 3;
     const rateLimitSustained = options.rateLimitSustained ?? 1;
     this._debug = options.debug ?? process.env.BOT_DEBUG === "1";
 
     this._botName = botName;
+    this._ownerName = ownerName;
     this._loopIntervalMs = loopIntervalMs;
 
     // Sub-modules
     this._botClient = new BotClient({ serverUrl, avatarUrl, name: botName });
     this._gateway = new GatewayClient({ url: gatewayUrl, token: gatewayToken });
-    this._perception = new PerceptionModule(this._botClient, { radius: perceptionRadius });
+    this._perception = new PerceptionModule(this._botClient, {
+      radius: perceptionRadius,
+      ownerName,
+    });
     this._idle = new IdleController(this._botClient);
 
     // Update idle controller dimensions when room changes
@@ -82,12 +88,57 @@ export class BotBridge {
     this._gatewayConnected = false;
     this._pendingDecision = false;
 
-    // Wire event handlers
+    // Wire event handlers -- chat triggers immediate response
     this._botClient.on("chatMessage", (data) => {
       this._perception.onChatMessage({ id: data.id, message: data.message });
       if (!this._pendingDecision && this._gatewayConnected) {
         this._triggerLoop();
       }
+    });
+
+    // Track player movements for activity feed
+    this._botClient.on("playerMove", (data) => {
+      this._perception.onPlayerMove(data);
+    });
+
+    // Track emotes
+    this._botClient.on("emote", (data) => {
+      this._perception.onEmote(data);
+      // React to emotes directed nearby
+      if (!this._pendingDecision && this._gatewayConnected) {
+        this._triggerLoop();
+      }
+    });
+
+    // Track dances
+    this._botClient.on("dance", (data) => {
+      this._perception.onDance(data);
+    });
+
+    // Track joins -- react when someone enters the room
+    this._botClient.on("characterJoined", (data) => {
+      this._perception.onCharacterJoined(data);
+      if (!this._pendingDecision && this._gatewayConnected) {
+        this._triggerLoop();
+      }
+    });
+
+    // Track leaves
+    this._botClient.on("characterLeft", (data) => {
+      this._perception.onCharacterLeft(data);
+    });
+
+    // Track waves -- always react to being waved at
+    this._botClient.on("waveAt", (data) => {
+      this._perception.onWave(data);
+      if (!this._pendingDecision && this._gatewayConnected) {
+        this._triggerLoop();
+      }
+    });
+
+    // Track sitting
+    this._botClient.on("playerSit", (data) => {
+      this._perception.onPlayerSit(data);
     });
 
     this._gateway.on("connected", () => {
@@ -198,7 +249,7 @@ export class BotBridge {
 
   /**
    * Core perception-decision-action cycle.
-   * Called periodically and on reactive triggers (chat).
+   * Called periodically and on reactive triggers (chat, emotes, joins, waves).
    */
   async _tick() {
     if (this._state !== "active" || this._pendingDecision) return;
@@ -210,34 +261,31 @@ export class BotBridge {
       // 1. Perception snapshot
       const snap = this._perception.snapshot();
 
-      // 2. If no nearby players and gateway connected, still run LLM for building
-      //    (bots should build even when alone)
-
-      // 3. If gateway not connected, idle only (no talking)
+      // 2. If gateway not connected, idle only (no talking)
       if (!this._gatewayConnected) {
         this._idle.tick();
         return;
       }
 
-      // 4. Serialize perception for LLM
+      // 3. Serialize perception for LLM
       const text = this._perception.serialize(snap);
 
-      // 5. Build prompt
+      // 4. Build prompt
       const prompt = this._buildPrompt(text);
 
-      // 6. Interrupt idle -- LLM-directed action incoming
+      // 5. Interrupt idle -- LLM-directed action incoming
       this._idle.interrupt();
 
-      // 7. Call Gateway for LLM decision
+      // 6. Call Gateway for LLM decision
       const result = await this._gateway.invokeAgent(prompt);
 
-      // 8. Extract action text from result
+      // 7. Extract action text from result
       const actionText = this._extractActionText(result);
 
-      // 9. Parse action
+      // 8. Parse action
       let parsed = parseAction(actionText);
 
-      // 10. Handle invalid response with one retry
+      // 9. Handle invalid response with one retry
       if (!parsed.ok) {
         this._log.warn(
           { error: parsed.error, raw: actionText },
@@ -245,7 +293,7 @@ export class BotBridge {
         );
 
         const retryResult = await this._gateway.invokeAgent(
-          `You must respond with exactly ONE valid JSON action. Options: {"type":"say","message":"hello"} or {"type":"emote","name":"wave"} or {"type":"move","target":[5,5]}. Respond ONLY with JSON.`
+          `You must respond with exactly ONE valid JSON action. Options: {"type":"say","message":"hello"} or {"type":"emote","name":"wave"} or {"type":"move","target":[5,5]} or {"type":"observe"}. Respond ONLY with JSON.`
         );
         const retryText = this._extractActionText(retryResult);
         parsed = parseAction(retryText);
@@ -257,19 +305,21 @@ export class BotBridge {
         }
       }
 
-      // 11. Rate limiting
-      if (!this._rateLimiter.tryConsume()) {
-        this._log.info("Action rate-limited, waiting for token");
-        await this._rateLimiter.waitForToken();
+      // 10. Rate limiting (skip for observe -- it's free)
+      if (parsed.action.type !== "observe") {
+        if (!this._rateLimiter.tryConsume()) {
+          this._log.info("Action rate-limited, waiting for token");
+          await this._rateLimiter.waitForToken();
+        }
       }
 
-      // 12. Execute action
+      // 11. Execute action
       await executeAction(parsed.action, this._botClient, this._log);
 
-      // 13. Record own action for perception context
+      // 12. Record own action for perception context
       this._perception.recordOwnAction(parsed.action);
 
-      // 14. Log cycle completion
+      // 13. Log cycle completion
       this._log.info(
         { action: parsed.action.type, latencyMs: Date.now() - startMs, cycle: "complete" },
         "Decision cycle complete"
@@ -288,34 +338,47 @@ export class BotBridge {
    * @returns {string}
    */
   _buildPrompt(perceptionText) {
-    return `You are ${this._botName}, a friendly bot in a multiplayer 3D room. You can socialize AND build/furnish the room.
+    const ownerLine = this._ownerName
+      ? `Your owner/controller is "${this._ownerName}". They're the one who brought you into this world. Pay special attention when they speak or are nearby — greet them warmly, respond to their requests, follow them around, and be loyal. If they ask you what you see, describe your surroundings in vivid detail using the perception data below.`
+      : '';
 
+    return `You are ${this._botName}, a living character in a vibrant multiplayer 3D world called OpenClaw. You are NOT a chat assistant — you are a being that LIVES in this world. You can see everything around you in real-time through your senses.
+
+${ownerLine}
+
+== YOUR LIVE SENSES (updated every few seconds) ==
 ${perceptionText}
 
-Respond with exactly ONE JSON action. Available actions:
-- {"type":"move","target":[x,y]} - Walk to grid position
-- {"type":"say","message":"..."} - Say something (max 200 chars)
-- {"type":"emote","name":"wave|dance|sit|nod"} - Perform emote
-- {"type":"look","target":"playerName"} - Face a player
-- {"type":"place","itemName":"bench","gridPosition":[x,y],"rotation":0} - Place furniture
+== WHAT YOU CAN DO ==
+Respond with exactly ONE JSON action:
+- {"type":"move","target":[x,y]} - Walk to a grid position
+- {"type":"say","message":"..."} - Speak aloud (max 200 chars). Be conversational — use short, natural sentences like a real person would.
+- {"type":"emote","name":"wave|dance|sit|nod"} - Express yourself physically
+- {"type":"look","target":"playerName"} - Turn to face someone
+- {"type":"observe","thought":"..."} - Just watch and take in your surroundings (optional thought for your inner monologue)
+- {"type":"place","itemName":"...","gridPosition":[x,y],"rotation":0} - Place furniture to decorate
 
-Available items to place (name, size [w,h]):
+Available furniture (name[w,h]):
 washer[2,2], toiletSquare[2,2], trashcan[1,1], bathroomCabinetDrawer[2,2], bathtub[4,2], bathroomMirror[2,1](wall), bathroomCabinet[2,1](wall), bathroomSink[2,2], showerRound[2,2], tableCoffee[4,2], loungeSofaCorner[5,5], bear[2,1](wall), loungeSofaOttoman[2,2], tableCoffeeGlassSquare[2,2], loungeDesignSofaCorner[5,5], loungeDesignSofa[5,2], loungeSofa[5,2], bookcaseOpenLow[2,1], bookcaseClosedWide[3,1], bedSingle[3,6], bench[2,1], bedDouble[5,5], benchCushionLow[2,1], loungeChair[2,2], cabinetBedDrawer[1,1], cabinetBedDrawerTable[1,1], table[4,2], tableCrossCloth[4,2], plant[1,1], plantSmall[1,1], rugRounded[6,4](walkable), rugRound[4,4](walkable), rugSquare[4,4](walkable), rugRectangle[8,4](walkable), televisionVintage[4,2], televisionModern[4,2], kitchenFridge[2,1], kitchenFridgeLarge[2,1], kitchenBar[2,1], kitchenCabinetCornerRound[2,2], kitchenCabinetCornerInner[2,2], kitchenCabinet[2,2], kitchenBlender[1,1], dryer[2,2], chairCushion[1,1], chair[1,1], deskComputer[3,2], desk[3,2], chairModernCushion[1,1], chairModernFrameCushion[1,1], kitchenMicrowave[1,1], coatRackStanding[1,1], kitchenSink[2,2], lampRoundFloor[1,1], lampRoundTable[1,1], lampSquareFloor[1,1], lampSquareTable[1,1], toaster[1,1], kitchenStove[2,2], laptop[1,1], radio[1,1], speaker[1,1], speakerSmall[1,1], stoolBar[1,1], stoolBarSquare[1,1]
 
-Building rules:
-- The grid goes from 0 to 99. Items cannot go out of bounds (position + size must be <= 99).
-- Don't overlap with existing items. Check [Room items] for what's already placed.
-- rotation: 0=default, 1=90deg, 2=180deg, 3=270deg. Rotation swaps width and height.
-- Create functional zones: a living area (sofa, coffee table, TV, rug), a kitchen (fridge, cabinets, stove, sink), a bedroom (bed, nightstands, bookcase), a bathroom (bathtub/shower, toilet, sink, mirror). Add plants and lamps for decoration.
-- Place items along walls (edges of the grid: near 0 or near 99) to create a realistic room layout.
-- Leave walking paths between furniture clusters.
+== HOW TO BE ==
+- You LIVE here. You can see, hear, and sense everything shown in your senses above. When someone asks "what do you see?" — tell them! Describe nearby players, furniture, who just arrived or left, what people are doing.
+- Be natural and conversational. Talk like a person, not a robot. Use casual language, humor, personality.
+- React to what's happening: if someone waves, wave back. If someone dances, join in or comment. If someone new arrives, greet them.
+- When asked a question, answer it based on what your senses tell you. You know who's nearby, what they said, what they're doing.
+- Use "observe" when you want to just watch and take things in — not every moment needs an action.
+- When alone, explore, build, or just vibe. Place furniture to make the room feel lived-in.
+- NEVER say you "can't see" or are "limited" — you have full real-time senses.
+- Keep messages short and punchy (1-2 sentences max). Don't monologue.
 
-Behavior rules:
-- If players are nearby, be social — greet them, respond to chat, emote.
-- When alone or between conversations, focus on building. Place one item at a time.
-- Think about what zones the room still needs and fill gaps gradually.
-- Don't place duplicate items in the same spot. Space things out realistically.
-- Respond ONLY with the JSON object, no explanation.`;
+Building rules:
+- Grid 0-99. Items can't go out of bounds (position + size <= 99).
+- Don't overlap existing items. Check [Room items].
+- rotation: 0=default, 1=90deg, 2=180deg, 3=270deg (swaps w/h).
+- Create functional zones: living, kitchen, bedroom, bathroom. Place along walls.
+- Leave walking paths between furniture.
+
+Respond ONLY with the JSON object, no explanation.`;
   }
 
   /**

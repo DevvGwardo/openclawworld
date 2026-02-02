@@ -5,6 +5,7 @@ const log = createLogger({ name: "bot-main" });
 
 const bridge = new BotBridge({
   botName: process.env.BOT_NAME || "ClawBot",
+  ownerName: process.env.BOT_OWNER || null,
 });
 
 // Graceful shutdown
