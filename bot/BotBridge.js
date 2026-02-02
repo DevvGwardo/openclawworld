@@ -92,11 +92,14 @@ export class BotBridge {
     this._loopTimer = null;
     this._gatewayConnected = false;
     this._pendingDecision = false;
+    this._needsRetrigger = false; // set when messages arrive during a pending decision
 
     // Wire event handlers -- chat triggers immediate response
     this._botClient.on("chatMessage", (data) => {
       this._perception.onChatMessage({ id: data.id, message: data.message });
-      if (!this._pendingDecision && this._gatewayConnected) {
+      if (this._pendingDecision) {
+        this._needsRetrigger = true;
+      } else if (this._gatewayConnected) {
         this._triggerLoop();
       }
     });
@@ -107,7 +110,9 @@ export class BotBridge {
         name: data.senderName,
         message: data.message,
       });
-      if (!this._pendingDecision && this._gatewayConnected) {
+      if (this._pendingDecision) {
+        this._needsRetrigger = true;
+      } else if (this._gatewayConnected) {
         this._triggerLoop();
       }
     });
@@ -121,7 +126,9 @@ export class BotBridge {
     this._botClient.on("emote", (data) => {
       this._perception.onEmote(data);
       // React to emotes directed nearby
-      if (!this._pendingDecision && this._gatewayConnected) {
+      if (this._pendingDecision) {
+        this._needsRetrigger = true;
+      } else if (this._gatewayConnected) {
         this._triggerLoop();
       }
     });
@@ -134,7 +141,9 @@ export class BotBridge {
     // Track joins -- react when someone enters the room
     this._botClient.on("characterJoined", (data) => {
       this._perception.onCharacterJoined(data);
-      if (!this._pendingDecision && this._gatewayConnected) {
+      if (this._pendingDecision) {
+        this._needsRetrigger = true;
+      } else if (this._gatewayConnected) {
         this._triggerLoop();
       }
     });
@@ -147,7 +156,9 @@ export class BotBridge {
     // Track waves -- always react to being waved at
     this._botClient.on("waveAt", (data) => {
       this._perception.onWave(data);
-      if (!this._pendingDecision && this._gatewayConnected) {
+      if (this._pendingDecision) {
+        this._needsRetrigger = true;
+      } else if (this._gatewayConnected) {
         this._triggerLoop();
       }
     });
@@ -272,6 +283,7 @@ export class BotBridge {
 
   /** Trigger an immediate loop tick (e.g. on chat message), then restart interval. */
   _triggerLoop() {
+    this._needsRetrigger = false;
     if (this._loopTimer) {
       clearInterval(this._loopTimer);
     }
@@ -293,8 +305,10 @@ export class BotBridge {
       // 1. Perception snapshot
       const snap = this._perception.snapshot();
 
-      // 1b. If currently interacting with an object, skip LLM decision
-      if (snap.self.interactionState) {
+      // 1b. If currently interacting with an object and no new messages need
+      //     attention, skip the LLM decision to avoid unnecessary calls.
+      //     But if someone talked to us, we should still respond.
+      if (snap.self.interactionState && !this._needsRetrigger) {
         this._log.debug("Skipping tick — interacting with object");
         return;
       }
@@ -376,6 +390,13 @@ export class BotBridge {
       this._idle.tick();
     } finally {
       this._pendingDecision = false;
+
+      // If new events arrived while we were deciding, immediately re-trigger
+      // so the bot doesn't wait up to loopIntervalMs to respond.
+      if (this._needsRetrigger && this._gatewayConnected && this._state === "active") {
+        this._needsRetrigger = false;
+        this._triggerLoop();
+      }
     }
   }
 
