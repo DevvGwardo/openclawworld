@@ -6,7 +6,7 @@ import { AvatarCreator } from "@readyplayerme/react-avatar-creator";
 import { motion, AnimatePresence } from "framer-motion";
 import { GLTFLoader } from "three-stdlib";
 import { roomItemsAtom } from "./Room";
-import { roomIDAtom, roomsAtom, socket, switchRoom, coinsAtom, activeQuestsAtom, questNotificationsAtom, charactersAtom, itemsAtom, roomInvitesAtom } from "./SocketManager";
+import { roomIDAtom, roomsAtom, totalRoomsAtom, socket, switchRoom, fetchRooms, coinsAtom, activeQuestsAtom, questNotificationsAtom, charactersAtom, itemsAtom, roomInvitesAtom } from "./SocketManager";
 import DirectMessagePanel from "./DirectMessagePanel";
 import { renderAvatarPortrait } from "./Avatar";
 import soundManager from "../audio/SoundManager";
@@ -779,7 +779,52 @@ const InviteNotification = ({ invite, onAccept, onDismiss }) => {
   );
 };
 
-const RoomSelectorModal = ({ onClose, currentRoomID, rooms, onSwitchRoom }) => {
+const ROOMS_PER_PAGE = 30;
+
+const RoomSelectorModal = ({ onClose, currentRoomID, onSwitchRoom }) => {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [displayedRooms, setDisplayedRooms] = useState([]);
+  const [totalRooms, setTotalRooms] = useState(0);
+  const [page, setPage] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const debounceRef = useRef(null);
+
+  const loadRooms = async (pageNum, search) => {
+    setLoading(true);
+    try {
+      const res = await fetchRooms(pageNum * ROOMS_PER_PAGE, ROOMS_PER_PAGE, search);
+      if (res?.success) {
+        setDisplayedRooms(res.rooms);
+        setTotalRooms(res.total);
+      }
+    } catch (err) {
+      console.error("Failed to fetch rooms:", err);
+    }
+    setLoading(false);
+  };
+
+  // Initial load
+  useEffect(() => {
+    loadRooms(0, "");
+  }, []);
+
+  // Debounced search
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setPage(0);
+      loadRooms(0, searchQuery.trim());
+    }, 300);
+    return () => clearTimeout(debounceRef.current);
+  }, [searchQuery]);
+
+  const handlePageChange = (newPage) => {
+    setPage(newPage);
+    loadRooms(newPage, searchQuery.trim());
+  };
+
+  const totalPages = Math.max(1, Math.ceil(totalRooms / ROOMS_PER_PAGE));
+
   return (
     <div className="fixed inset-0 z-[100] grid place-items-center">
       <div
@@ -794,7 +839,10 @@ const RoomSelectorModal = ({ onClose, currentRoomID, rooms, onSwitchRoom }) => {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
               </svg>
             </div>
-            <h2 className="text-xl font-bold text-gray-900">Rooms</h2>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Rooms</h2>
+              <p className="text-xs text-gray-400">{totalRooms} rooms total</p>
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -806,9 +854,26 @@ const RoomSelectorModal = ({ onClose, currentRoomID, rooms, onSwitchRoom }) => {
           </button>
         </div>
 
+        {/* Search */}
+        <div className="px-4 pt-3 pb-2">
+          <input
+            type="text"
+            className="w-full border border-gray-200 bg-gray-50 rounded-xl px-4 py-2.5 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-amber-300 focus:ring-2 focus:ring-amber-100"
+            placeholder="Search rooms..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+
         <div className="overflow-y-auto flex-1 p-3">
-          {/* Plaza / main room at the top */}
-          {rooms.filter(r => !r.id.startsWith("room-")).map((room) => (
+          {loading && displayedRooms.length === 0 && (
+            <div className="flex items-center justify-center py-8">
+              <div className="w-5 h-5 border-2 border-amber-300 border-t-amber-600 rounded-full animate-spin" />
+            </div>
+          )}
+
+          {/* Plaza / main rooms at the top */}
+          {displayedRooms.filter(r => !r.generated && !r.id.startsWith("room-")).map((room) => (
             <button
               key={room.id}
               onClick={() => { onSwitchRoom(room.id); onClose(); }}
@@ -830,15 +895,18 @@ const RoomSelectorModal = ({ onClose, currentRoomID, rooms, onSwitchRoom }) => {
                 </div>
               </div>
               <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                {room.nbCharacters} online
+                {room.nbCharacters || 0} online
               </span>
             </button>
           ))}
 
-          <div className="border-t border-gray-100 my-2"></div>
-          <p className="text-xs text-gray-400 px-3 mb-2">100 Rooms</p>
+          {displayedRooms.some(r => !r.generated && !r.id.startsWith("room-")) &&
+            displayedRooms.some(r => r.generated || r.id.startsWith("room-")) && (
+            <div className="border-t border-gray-100 my-2"></div>
+          )}
 
-          {rooms.filter(r => r.id.startsWith("room-")).map((room) => (
+          {/* Generated rooms */}
+          {displayedRooms.filter(r => r.generated || r.id.startsWith("room-")).map((room) => (
             <button
               key={room.id}
               onClick={() => { onSwitchRoom(room.id); onClose(); }}
@@ -850,18 +918,45 @@ const RoomSelectorModal = ({ onClose, currentRoomID, rooms, onSwitchRoom }) => {
             >
               <div className="flex items-center gap-2.5">
                 <div className="w-7 h-7 bg-gray-100 rounded-lg flex items-center justify-center">
-                  <span className="text-xs font-semibold text-gray-500">{room.id.split("-")[1]}</span>
+                  <span className="text-xs font-semibold text-gray-500">{room.id.replace(/\D/g, "").slice(0, 4)}</span>
                 </div>
                 <p className="font-medium text-gray-800 text-sm">{room.name}</p>
               </div>
-              {room.nbCharacters > 0 && (
+              {(room.nbCharacters || 0) > 0 && (
                 <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
                   {room.nbCharacters}
                 </span>
               )}
             </button>
           ))}
+
+          {!loading && displayedRooms.length === 0 && searchQuery.trim().length > 0 && (
+            <p className="text-sm text-gray-400 text-center py-8">No rooms found</p>
+          )}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
+            <button
+              onClick={() => handlePageChange(Math.max(0, page - 1))}
+              disabled={page === 0}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed bg-gray-100 hover:bg-gray-200 text-gray-600"
+            >
+              Previous
+            </button>
+            <span className="text-xs text-gray-500">
+              Page {page + 1} of {totalPages}
+            </span>
+            <button
+              onClick={() => handlePageChange(Math.min(totalPages - 1, page + 1))}
+              disabled={page >= totalPages - 1}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed bg-gray-100 hover:bg-gray-200 text-gray-600"
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1110,7 +1205,6 @@ export const UI = () => {
           <RoomSelectorModal
             onClose={() => { soundManager.play("menu_close"); setRoomSelectorMode(false); }}
             currentRoomID={roomID}
-            rooms={allRooms}
             onSwitchRoom={handleSwitchRoom}
           />
         )}

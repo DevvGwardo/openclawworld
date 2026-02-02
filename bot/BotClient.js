@@ -93,6 +93,17 @@ export class BotClient extends EventEmitter {
         this.emit("roomsUpdate", roomsList);
       });
 
+      this.socket.on("roomsUpdate", (activeRooms) => {
+        // Merge active room data into existing rooms list
+        const activeMap = new Map(activeRooms.map(r => [r.id, r]));
+        for (let i = 0; i < this.rooms.length; i++) {
+          if (activeMap.has(this.rooms[i].id)) {
+            this.rooms[i] = { ...this.rooms[i], ...activeMap.get(this.rooms[i].id) };
+          }
+        }
+        this.emit("roomsUpdate", this.rooms);
+      });
+
       this.socket.on("mapUpdate", (data) => {
         this.room = data.map;
         this.characters = data.characters;

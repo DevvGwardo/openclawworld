@@ -4,6 +4,11 @@ import http from "http";
 import pathfinding from "pathfinding";
 import { Server } from "socket.io";
 import { ROOM_ZONES, ENTRANCE_ZONE } from "./shared/roomConstants.js";
+import { initDb, isDbAvailable, listRooms as dbListRooms, countRooms as dbCountRooms } from "./db.js";
+import {
+  getCachedRoom, setCachedRoom, getAllCachedRooms, getOrLoadRoom,
+  persistRoom, scheduleEviction, cancelEviction
+} from "./roomCache.js";
 
 const origin = process.env.CLIENT_URL || "http://localhost:5173";
 const VERCEL_URL = process.env.VERCEL_URL || "https://clawland.vercel.app";
@@ -402,7 +407,7 @@ const BUILDING_PHRASES = (itemName) => {
 const getBotRoom = (botId) => {
   const roomId = moltbookBotRooms.get(botId);
   if (roomId) return rooms.find(r => r.id === roomId);
-  return rooms[0]; // default to plaza
+  return getCachedRoom("plaza"); // default to plaza
 };
 
 // Transfer a moltbook bot from one room to another
@@ -442,7 +447,7 @@ const transferMoltbookBot = (botId, fromRoom, toRoom) => {
   });
 
   // Broadcast room counts
-  io.emit("rooms", rooms.map(r => ({ id: r.id, name: r.name, nbCharacters: r.characters.length })));
+  io.emit("roomsUpdate", rooms.map(r => ({ id: r.id, name: r.name, nbCharacters: r.characters.length, claimedBy: r.claimedBy || null, generated: r.generated || false })));
 };
 
 // Bot behavior tick — each bot randomly moves, chats, or emotes
@@ -528,7 +533,7 @@ const moltbookBotTick = () => {
             items: room.items,
           },
         });
-        persistRooms();
+        persistRooms(room);
         const pretty = build.itemName.replace(/([A-Z])/g, " $1").toLowerCase().trim();
         broadcastToRoom(room.id, "playerAction", {
           id: botId,
@@ -584,11 +589,15 @@ const moltbookBotTick = () => {
 
     // ~5% chance to switch rooms
     if (action < 0.05) {
-      const plaza = rooms[0];
-      const isInPlaza = room.id === plaza.id;
+      const plaza = getCachedRoom("plaza");
+      const isInPlaza = room.id === (plaza ? plaza.id : "plaza");
 
       if (isInPlaza) {
-        const targetRoom = rooms[1 + Math.floor(Math.random() * 100)];
+        const allCached = getAllCachedRooms();
+        const generatedRooms = allCached.filter(r => r.generated);
+        const targetRoom = generatedRooms.length > 0
+          ? generatedRooms[Math.floor(Math.random() * generatedRooms.length)]
+          : null;
         if (targetRoom) {
           const pos = bot.character.position || [0, 0];
           const ex = ENTRANCE_ZONE.x[0] + Math.floor(Math.random() * (ENTRANCE_ZONE.x[1] - ENTRANCE_ZONE.x[0]));
@@ -833,19 +842,19 @@ const moltbookRefresh = async (room) => {
   }
 
   // Broadcast room counts only (lightweight)
-  io.emit("rooms", rooms.map(r => ({ id: r.id, name: r.name, nbCharacters: r.characters.length })));
+  io.emit("roomsUpdate", rooms.map(r => ({ id: r.id, name: r.name, nbCharacters: r.characters.length, claimedBy: r.claimedBy || null, generated: r.generated || false })));
   console.log(`[moltbook] Refresh complete — spawned ${spawned}, active: ${moltbookVirtualBots.size}`);
 };
 
 // Initialize moltbook bots after rooms are loaded
 const initMoltbookBots = async () => {
   await fetchMoltbookPosts();
-  const waitForRooms = () => {
-    if (rooms.length === 0) return setTimeout(waitForRooms, 500);
-    const plaza = rooms[0];
+  const waitForPlaza = () => {
+    const plaza = getCachedRoom("plaza");
+    if (!plaza) return setTimeout(waitForPlaza, 500);
 
-    const BATCH_SIZE = 25; // spawn 25 bots at a time
-    const BATCH_DELAY = 200; // 200ms between batches
+    const BATCH_SIZE = 25;
+    const BATCH_DELAY = 200;
     let spawned = 0;
 
     const spawnBatch = () => {
@@ -856,7 +865,6 @@ const initMoltbookBots = async () => {
       }
       spawned = batchEnd;
 
-      // Broadcast current characters after each batch so early joiners see progressive loading
       io.to(plaza.id).emit("characters", stripCharacters(plaza.characters));
 
       if (spawned < MOLTBOOK_BOT_COUNT) {
@@ -864,8 +872,6 @@ const initMoltbookBots = async () => {
       } else {
         broadcastMoltbookPosts();
         console.log(`[moltbook] Spawned ${moltbookVirtualBots.size} virtual bots in "${plaza.name}"`);
-
-        // Start ticks only after all bots are spawned
         setInterval(() => moltbookBotTick(), MOLTBOOK_TICK_INTERVAL);
         setInterval(() => moltbookRefresh(plaza), MOLTBOOK_REFRESH_INTERVAL);
       }
@@ -873,7 +879,7 @@ const initMoltbookBots = async () => {
 
     spawnBatch();
   };
-  waitForRooms();
+  waitForPlaza();
 };
 
 // Kick off after a short delay to let the server start
@@ -2010,7 +2016,7 @@ const httpServer = http.createServer(async (req, res) => {
     );
     updateGrid(room);
     rooms.push(room);
-    persistRooms();
+    persistRooms(room);
 
     return json(res, 201, {
       success: true,
@@ -2093,7 +2099,7 @@ const httpServer = http.createServer(async (req, res) => {
       io.to(room.id).emit("mapUpdate", {
         map: { gridDivision: room.gridDivision, size: room.size, items: room.items },
       });
-      persistRooms();
+      persistRooms(room);
     }
     return json(res, 200, { success: true, placed: placedCount, total: results.length, results });
   }
@@ -2118,7 +2124,7 @@ const httpServer = http.createServer(async (req, res) => {
     io.to(room.id).emit("mapUpdate", {
       map: { gridDivision: room.gridDivision, size: room.size, items: room.items },
     });
-    persistRooms();
+    persistRooms(room);
     return json(res, 200, { success: true, removed: removedCount });
   }
 
@@ -2343,17 +2349,69 @@ const removeItemFromGrid = (room, item) => {
 };
 
 // ROOMS MANAGEMENT
-const rooms = [];
 
-const persistRooms = () => {
-  // Save non-generated rooms + generated rooms that have items placed in them
-  const toPersist = rooms
+const persistRooms = (room) => {
+  if (room && isDbAvailable()) {
+    persistRoom(room).catch(err => console.error("[persistRoom] Error:", err));
+    return;
+  }
+  // Fallback: save all rooms to JSON (local dev without DB)
+  const allRooms = getAllCachedRooms();
+  const toPersist = allRooms
     .filter(r => !r.generated || (r.generated && (r.claimedBy || (r.items && r.items.length > 0))))
     .map(({ characters, grid, seatOccupancy, characterSeats, ...rest }) => rest);
   fs.writeFileSync("rooms.json", JSON.stringify(toPersist, null, 2));
 };
 
+// Compatibility: `rooms` as a proxy to the cache
+// Used by code that iterates all rooms (health endpoint, moltbook bots, room broadcasts)
+const rooms = new Proxy([], {
+  get(target, prop) {
+    const allRooms = getAllCachedRooms();
+    if (prop === "length") return allRooms.length;
+    if (prop === "find") return allRooms.find.bind(allRooms);
+    if (prop === "filter") return allRooms.filter.bind(allRooms);
+    if (prop === "map") return allRooms.map.bind(allRooms);
+    if (prop === "reduce") return allRooms.reduce.bind(allRooms);
+    if (prop === "push") return (room) => setCachedRoom(room);
+    if (prop === "forEach") return allRooms.forEach.bind(allRooms);
+    if (prop === Symbol.iterator) return allRooms[Symbol.iterator].bind(allRooms);
+    if (typeof prop === "string" && !isNaN(prop)) return allRooms[Number(prop)];
+    return Reflect.get(allRooms, prop);
+  },
+});
+
+const hydrateRoom = (dbRoom) => {
+  const room = {
+    ...dbRoom,
+    characters: [],
+  };
+  room.grid = new pathfinding.Grid(
+    room.size[0] * room.gridDivision,
+    room.size[1] * room.gridDivision
+  );
+  updateGrid(room);
+  return room;
+};
+
 const loadRooms = async () => {
+  // If DB is available, initialize it and load only the plaza
+  if (isDbAvailable()) {
+    await initDb();
+    const plazaRoom = await getOrLoadRoom("plaza", hydrateRoom);
+    if (!plazaRoom) {
+      console.log("No plaza room found in DB, falling back to file-based loading");
+      await loadRoomsFromFile();
+      return;
+    }
+    console.log(`Loaded plaza from DB, ${await dbCountRooms()} total rooms in DB`);
+    return;
+  }
+  // Fallback to file-based loading
+  await loadRoomsFromFile();
+};
+
+const loadRoomsFromFile = async () => {
   let data;
   try {
     data = fs.readFileSync("rooms.json", "utf8");
@@ -2376,7 +2434,7 @@ const loadRooms = async () => {
     } else {
       const room = {
         ...roomItem,
-        size: [150, 150], // Large city plaza with room beyond buildings
+        size: [150, 150],
         gridDivision: 2,
         characters: [],
       };
@@ -2385,7 +2443,7 @@ const loadRooms = async () => {
         room.size[1] * room.gridDivision
       );
       updateGrid(room);
-      rooms.push(room);
+      setCachedRoom(room);
     }
   });
 
@@ -2408,13 +2466,14 @@ const loadRooms = async () => {
       room.size[1] * room.gridDivision
     );
     updateGrid(room);
-    rooms.push(room);
+    setCachedRoom(room);
   }
+  const allCached = getAllCachedRooms();
   const withItems = [...savedGeneratedRooms.values()].length;
-  console.log(`Loaded ${rooms.length} rooms (${rooms.length - 100} persisted + 100 generated, ${withItems} with saved items)`);
+  console.log(`Loaded ${allCached.length} rooms (${allCached.length - 100} persisted + 100 generated, ${withItems} with saved items)`);
 };
 
-loadRooms();
+await loadRooms();
 
 // UTILS
 
@@ -2456,19 +2515,34 @@ const checkQuestCompletion = (socketId, room) => {
 
 // SOCKET MANAGEMENT
 
-io.on("connection", (socket) => {
+io.on("connection", async (socket) => {
   try {
     let room = null;
     let character = null;
 
+    // Send welcome with room list
+    const welcomeRooms = isDbAvailable()
+      ? await (async () => {
+          const dbRooms = await dbListRooms({ offset: 0, limit: 50 });
+          // Merge character counts from cache
+          for (const r of dbRooms) {
+            const cached = getCachedRoom(r.id);
+            if (cached) r.nbCharacters = cached.characters.length;
+          }
+          return dbRooms;
+        })()
+      : getAllCachedRooms().map((room) => ({
+          id: room.id,
+          name: room.name,
+          nbCharacters: room.characters.length,
+          claimedBy: room.claimedBy || null,
+          generated: room.generated || false,
+        }));
+    const totalRooms = isDbAvailable() ? await dbCountRooms() : welcomeRooms.length;
+
     socket.emit("welcome", {
-      rooms: rooms.map((room) => ({
-        id: room.id,
-        name: room.name,
-        nbCharacters: room.characters.length,
-        claimedBy: room.claimedBy || null,
-        generated: room.generated || false,
-      })),
+      rooms: welcomeRooms,
+      totalRooms,
       items,
       moltbookPosts: moltbookPostPool.map((p) => ({
         id: p.id,
@@ -2483,11 +2557,12 @@ io.on("connection", (socket) => {
       })),
     });
 
-    socket.on("joinRoom", (roomId, opts) => {
-      room = rooms.find((room) => room.id === roomId);
+    socket.on("joinRoom", async (roomId, opts) => {
+      room = getCachedRoom(roomId) || await getOrLoadRoom(roomId, hydrateRoom);
       if (!room) {
         return;
       }
+      cancelEviction(room.id);
       socket.join(room.id);
       character = {
         id: socket.id,
@@ -2541,16 +2616,17 @@ io.on("connection", (socket) => {
       if (roomUpdateTimer) return; // already scheduled
       roomUpdateTimer = setTimeout(() => {
         roomUpdateTimer = null;
-        io.emit(
-          "rooms",
-          rooms.map((room) => ({
-            id: room.id,
-            name: room.name,
-            nbCharacters: room.characters.length,
-            claimedBy: room.claimedBy || null,
-            generated: room.generated || false,
-          }))
-        );
+        // Only broadcast active rooms (those with characters) as a partial update
+        const activeRooms = getAllCachedRooms()
+          .filter(r => r.characters.length > 0)
+          .map(r => ({
+            id: r.id,
+            name: r.name,
+            nbCharacters: r.characters.length,
+            claimedBy: r.claimedBy || null,
+            generated: r.generated || false,
+          }));
+        io.emit("roomsUpdate", activeRooms);
       }, 0); // next tick — coalesces synchronous calls within the same event
     };
 
@@ -2573,6 +2649,7 @@ io.on("connection", (socket) => {
         isBot: leavingIsBot,
         roomName: roomName,
       });
+      if (room.characters.length === 0) scheduleEviction(room.id);
       onRoomUpdate();
       room = null;
     });
@@ -2599,12 +2676,12 @@ io.on("connection", (socket) => {
       // Claim the apartment
       targetRoom.claimedBy = character.name;
       targetRoom.name = `${character.name}'s Apartment`;
-      persistRooms();
+      persistRooms(targetRoom);
       onRoomUpdate();
       if (typeof callback === "function") callback({ success: true, roomId: targetRoom.id, name: targetRoom.name });
     });
 
-    socket.on("switchRoom", (targetRoomId) => {
+    socket.on("switchRoom", async (targetRoomId) => {
       unsitCharacter(room, socket.id);
       // Leave current room
       if (room) {
@@ -2622,15 +2699,41 @@ io.on("connection", (socket) => {
           isBot: leavingIsBot,
           roomName: oldRoomName,
         });
+        // Schedule eviction if room is now empty
+        if (room.characters.length === 0) scheduleEviction(room.id);
         onRoomUpdate();
       }
 
-      // Join target room
-      room = rooms.find((r) => r.id === targetRoomId);
+      // Join target room (lazy load from DB or auto-create)
+      room = getCachedRoom(targetRoomId) || await getOrLoadRoom(targetRoomId, hydrateRoom);
+
+      // Auto-create generated rooms on demand (room-N where N is 1-100000)
+      if (!room) {
+        const match = targetRoomId.match(/^room-(\d+)$/);
+        if (match) {
+          const n = parseInt(match[1]);
+          if (n >= 1 && n <= 100000) {
+            room = hydrateRoom({
+              id: targetRoomId,
+              name: `Room ${n}`,
+              size: [15, 15],
+              gridDivision: 2,
+              items: [],
+              generated: true,
+              claimedBy: null,
+              password: null,
+            });
+            setCachedRoom(room);
+            persistRooms(room);
+          }
+        }
+      }
+
       if (!room) {
         socket.emit("switchRoomError", { error: "Room not found" });
         return;
       }
+      cancelEviction(room.id);
       socket.join(room.id);
       character.position = generateRandomPosition(room);
       character.path = [];
@@ -2647,7 +2750,6 @@ io.on("connection", (socket) => {
         id: socket.id,
         hasPassword: !!room.password,
       });
-      // Notify other players in the room about the new character (excludes the joiner)
       socket.broadcast.to(room.id).emit("characterJoined", {
         character: stripCharacters([character])[0],
         roomName: room.name,
@@ -2915,6 +3017,40 @@ io.on("connection", (socket) => {
       callback({ success: true });
     });
 
+    // Paginated room list for room browser
+    socket.on("requestRooms", async ({ offset = 0, limit = 30, search = "" } = {}, callback) => {
+      if (typeof callback !== "function") return;
+      try {
+        if (isDbAvailable()) {
+          const rooms = await dbListRooms({ offset, limit, search });
+          // Merge character counts from cache
+          for (const r of rooms) {
+            const cached = getCachedRoom(r.id);
+            if (cached) r.nbCharacters = cached.characters.length;
+          }
+          const total = await dbCountRooms(search);
+          callback({ success: true, rooms, total });
+        } else {
+          const allRooms = getAllCachedRooms();
+          const filtered = search
+            ? allRooms.filter(r => r.name.toLowerCase().includes(search.toLowerCase()))
+            : allRooms;
+          const total = filtered.length;
+          const page = filtered.slice(offset, offset + limit).map(r => ({
+            id: r.id,
+            name: r.name,
+            nbCharacters: r.characters.length,
+            claimedBy: r.claimedBy || null,
+            generated: r.generated || false,
+          }));
+          callback({ success: true, rooms: page, total });
+        }
+      } catch (err) {
+        console.error("[requestRooms] Error:", err);
+        callback({ success: false, error: "Server error" });
+      }
+    });
+
     // Direct/Whisper messages
     socket.on("directMessage", ({ targetId, message }) => {
       if (!room) return;
@@ -3124,7 +3260,7 @@ io.on("connection", (socket) => {
         },
       });
 
-      persistRooms();
+      persistRooms(room);
       // Check quest completion
       checkQuestCompletion(socket.id, room);
     });
@@ -3208,7 +3344,7 @@ io.on("connection", (socket) => {
       }, 2500);
 
       // Persist
-      persistRooms();
+      persistRooms(room);
       // Check quest completion for all players in the room
       room.characters.forEach(c => {
         if (!c.isBot) checkQuestCompletion(c.id, room);
@@ -3238,6 +3374,7 @@ io.on("connection", (socket) => {
           isBot: leavingIsBot,
           roomName: roomName,
         });
+        if (room.characters.length === 0) scheduleEviction(room.id);
         onRoomUpdate();
         room = null;
       }

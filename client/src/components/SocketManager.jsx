@@ -14,6 +14,7 @@ export const userAtom = atom(null);
 export const itemsAtom = atom(null);
 export const roomIDAtom = atom(null);
 export const roomsAtom = atom([]);
+export const totalRoomsAtom = atom(0);
 export const chatMessagesAtom = atom([]);
 export const moltbookPostsAtom = atom([]);
 export const usernameAtom = atom(localStorage.getItem("clawland_username") || null);
@@ -45,6 +46,14 @@ export const switchRoom = (roomId) => {
   socket.emit("switchRoom", roomId);
 };
 
+export const fetchRooms = (offset, limit, search) => {
+  return new Promise((resolve) => {
+    socket.emit("requestRooms", { offset, limit, search }, (response) => {
+      resolve(response);
+    });
+  });
+};
+
 const AVATAR_URLS = [
   "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
   "https://models.readyplayer.me/663833cf6c79010563b91e1b.glb",
@@ -72,6 +81,7 @@ export const SocketManager = () => {
   const [_roomHasPassword, setRoomHasPassword] = useAtom(roomHasPasswordAtom);
   const [_bonds, setBonds] = useAtom(bondsAtom);
   const [_roomInvites, setRoomInvites] = useAtom(roomInvitesAtom);
+  const [_totalRooms, setTotalRooms] = useAtom(totalRoomsAtom);
 
   const charactersRef = useRef([]);
   useEffect(() => { charactersRef.current = _characters; }, [_characters]);
@@ -122,6 +132,7 @@ export const SocketManager = () => {
 
     function onWelcome(value) {
       setRooms(value.rooms);
+      if (value.totalRooms !== undefined) setTotalRooms(value.totalRooms);
       setItems(value.items);
       if (value.moltbookPosts) setMoltbookPosts(value.moltbookPosts);
       // Join once username is available (may be immediate if stored)
@@ -204,6 +215,30 @@ export const SocketManager = () => {
 
     function onRooms(value) {
       setRooms(value);
+    }
+
+    function onRoomsUpdate(activeRooms) {
+      // Merge active room data into the rooms list — update character counts
+      setRooms((prev) => {
+        const activeMap = new Map(activeRooms.map(r => [r.id, r]));
+        // Update existing entries, or add new active rooms
+        const updatedIds = new Set();
+        const next = prev.map(r => {
+          if (activeMap.has(r.id)) {
+            updatedIds.add(r.id);
+            return { ...r, ...activeMap.get(r.id) };
+          }
+          // Room is no longer active — set nbCharacters to 0
+          return r.nbCharacters > 0 ? { ...r, nbCharacters: 0 } : r;
+        });
+        // Add any new active rooms not in our list
+        for (const [id, r] of activeMap) {
+          if (!updatedIds.has(id) && !next.some(e => e.id === id)) {
+            next.push(r);
+          }
+        }
+        return next;
+      });
     }
 
     function onPlayerChatMessage(value) {
@@ -539,6 +574,7 @@ export const SocketManager = () => {
     socket.on("disconnect", onDisconnect);
     socket.on("roomJoined", onRoomJoined);
     socket.on("rooms", onRooms);
+    socket.on("roomsUpdate", onRoomsUpdate);
     socket.on("welcome", onWelcome);
     socket.on("characters", onCharacters);
     socket.on("mapUpdate", onMapUpdate);
@@ -579,6 +615,7 @@ export const SocketManager = () => {
       socket.off("disconnect", onDisconnect);
       socket.off("roomJoined", onRoomJoined);
       socket.off("rooms", onRooms);
+      socket.off("roomsUpdate", onRoomsUpdate);
       socket.off("welcome", onWelcome);
       socket.off("characters", onCharacters);
       socket.off("mapUpdate", onMapUpdate);
