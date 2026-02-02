@@ -6,7 +6,23 @@ import { AvatarCreator } from "@readyplayerme/react-avatar-creator";
 import { motion, AnimatePresence } from "framer-motion";
 import { GLTFLoader } from "three-stdlib";
 import { roomItemsAtom } from "./Room";
-import { roomIDAtom, roomsAtom, totalRoomsAtom, socket, switchRoom, fetchRooms, coinsAtom, activeQuestsAtom, questNotificationsAtom, charactersAtom, itemsAtom, roomInvitesAtom } from "./SocketManager";
+import {
+  roomIDAtom,
+  roomsAtom,
+  totalRoomsAtom,
+  socket,
+  switchRoom,
+  fetchRooms,
+  coinsAtom,
+  activeQuestsAtom,
+  questNotificationsAtom,
+  charactersAtom,
+  itemsAtom,
+  roomInvitesAtom,
+  userAtom,
+  characterMotivesAtom,
+  roomTransitionAtom,
+} from "./SocketManager";
 import DirectMessagePanel from "./DirectMessagePanel";
 import { renderAvatarPortrait } from "./Avatar";
 import soundManager from "../audio/SoundManager";
@@ -598,6 +614,53 @@ const HelpModal = ({ onClose }) => {
   );
 };
 
+const RoomTransitionOverlay = ({ transition, roomLabel }) => {
+  return (
+    <AnimatePresence>
+      {transition?.active && (
+        <motion.div
+          className="fixed inset-0 z-[60] grid place-items-center"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <div className="absolute inset-0 bg-gradient-to-b from-slate-900/35 via-slate-900/45 to-slate-900/35 backdrop-blur-sm" />
+          <motion.div
+            className="relative w-[92vw] max-w-sm rounded-2xl border border-white/15 bg-white/90 backdrop-blur-md shadow-2xl px-5 py-4"
+            initial={{ y: 14, scale: 0.97, opacity: 0 }}
+            animate={{ y: 0, scale: 1, opacity: 1 }}
+            exit={{ y: 10, scale: 0.98, opacity: 0 }}
+            transition={{ type: "spring", damping: 24, stiffness: 320 }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="relative w-10 h-10 rounded-xl bg-sky-50 border border-sky-200 grid place-items-center">
+                <div className="absolute inset-0 rounded-xl" style={{ boxShadow: "inset 0 0 0 1px rgba(14,165,233,0.15)" }} />
+                <div className="w-6 h-6 rounded-full border-2 border-sky-300 border-t-sky-600 animate-spin" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-gray-900 font-extrabold tracking-tight">Teleporting…</p>
+                <p className="text-xs text-gray-500 mt-0.5 truncate">
+                  {roomLabel ? `Heading to ${roomLabel}` : "Moving you to your destination"}
+                </p>
+              </div>
+            </div>
+            <div className="mt-3 h-1.5 w-full rounded-full bg-gray-200 overflow-hidden">
+              <motion.div
+                className="h-full bg-gradient-to-r from-sky-500 via-emerald-400 to-amber-300"
+                initial={{ x: "-40%" }}
+                animate={{ x: "110%" }}
+                transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut" }}
+                style={{ width: "40%" }}
+              />
+            </div>
+            <p className="text-[11px] text-gray-500 mt-2">Tip: You can press ? anytime for controls.</p>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
+
 const InviteModal = ({ onClose }) => {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
@@ -985,9 +1048,16 @@ export const UI = () => {
   const [characters] = useAtom(charactersAtom);
   const [activeQuests] = useAtom(activeQuestsAtom);
   const [questNotifications, setQuestNotifications] = useAtom(questNotificationsAtom);
+  const [user] = useAtom(userAtom);
+  const [characterMotives] = useAtom(characterMotivesAtom);
   const [itemsCatalog] = useAtom(itemsAtom);
   const [, setSelectedShopItem] = useAtom(selectedShopItemAtom);
+  const [roomTransition, setRoomTransition] = useAtom(roomTransitionAtom);
+
+  const myEnergyRaw = user ? characterMotives?.[user]?.energy : undefined;
+  const myEnergy = typeof myEnergyRaw === "number" ? Math.max(0, Math.min(100, myEnergyRaw)) : null;
   const leaveRoom = () => {
+    setRoomTransition({ active: true, from: roomID, to: null, startedAt: Date.now() });
     socket.emit("leaveRoom");
     setRoomID(null);
     setBuildMode(false);
@@ -996,6 +1066,7 @@ export const UI = () => {
 
   const handleSwitchRoom = (targetRoomId) => {
     if (targetRoomId === roomID) return;
+    setRoomTransition({ active: true, from: roomID, to: targetRoomId, startedAt: Date.now() });
     switchRoom(targetRoomId);
     setRoomID(targetRoomId);
     setBuildMode(false);
@@ -1066,9 +1137,12 @@ export const UI = () => {
   const currentRoom = allRooms.find((r) => r.id === roomID);
   const isPlaza = currentRoom && !currentRoom.generated && !currentRoom.id.startsWith("room-");
   const locationLabel = isPlaza ? "online" : "in apartment";
+  const toRoom = roomTransition?.to ? allRooms.find((r) => r.id === roomTransition.to) : null;
+  const toRoomLabel = toRoom?.name || toRoom?.id || (roomTransition?.to ? `room ${roomTransition.to}` : null);
 
   return (
     <>
+      <RoomTransitionOverlay transition={roomTransition} roomLabel={toRoomLabel} />
       {/* Online Count Badge + Coins (top-right) */}
       {roomID && (
         <div className="fixed top-10 right-3 sm:top-12 sm:right-4 z-[15] flex flex-col items-end gap-1.5">
@@ -1093,6 +1167,18 @@ export const UI = () => {
             <span className="text-amber-700 font-bold text-sm">{coins}</span>
             <span className="text-amber-500 text-xs font-semibold">coins</span>
           </div>
+          {myEnergy !== null && (
+            <div className="bg-sky-50/90 backdrop-blur-sm border border-sky-200 rounded-full px-4 py-1.5 flex items-center gap-2 shadow-sm">
+              <span className="text-sky-500 text-sm">&#9889;</span>
+              <span className="text-sky-700 text-xs font-semibold">energy</span>
+              <div className="w-20 h-2 rounded-full bg-sky-100 overflow-hidden border border-sky-200">
+                <div
+                  className="h-full bg-gradient-to-r from-sky-500 to-emerald-400"
+                  style={{ width: `${myEnergy}%` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
 

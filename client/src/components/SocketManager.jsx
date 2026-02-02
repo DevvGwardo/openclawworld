@@ -27,6 +27,7 @@ export const bondsAtom = atom({}); // keyed by peerName -> { score, level, level
 export const roomInvitesAtom = atom([]); // pending room invites
 export const characterMotivesAtom = atom({}); // keyed by character id -> { energy, social, fun, hunger }
 export const characterInteractionStatesAtom = atom({}); // keyed by character id -> interactionState | null
+export const roomTransitionAtom = atom({ active: false, from: null, to: null, startedAt: 0 });
 
 // Per-avatar dispatch maps — one global socket listener dispatches to the
 // relevant Avatar via O(1) Map lookup instead of N listeners filtering by id.
@@ -86,6 +87,7 @@ export const SocketManager = () => {
   const [_totalRooms, setTotalRooms] = useAtom(totalRoomsAtom);
   const [_characterMotives, setCharacterMotives] = useAtom(characterMotivesAtom);
   const [_characterInteractionStates, setCharacterInteractionStates] = useAtom(characterInteractionStatesAtom);
+  const [_roomTransition, setRoomTransition] = useAtom(roomTransitionAtom);
 
   const charactersRef = useRef([]);
   useEffect(() => { charactersRef.current = _characters; }, [_characters]);
@@ -113,6 +115,7 @@ export const SocketManager = () => {
       pendingWelcomeRef.current = null;
       const avatarUrl =
         localStorage.getItem("avatarURL") || randomAvatarUrl();
+      setRoomTransition({ active: true, from: null, to: roomId, startedAt: Date.now() });
       socket.emit("joinRoom", roomId, { avatarUrl, name: username });
       setRoomID(roomId);
     }
@@ -160,6 +163,7 @@ export const SocketManager = () => {
     }
     function onDisconnect() {
       console.log("disconnected");
+      setRoomTransition({ active: false, from: null, to: null, startedAt: 0 });
     }
 
     function onWelcome(value) {
@@ -173,6 +177,7 @@ export const SocketManager = () => {
         if (storedName) {
           const avatarUrl =
             localStorage.getItem("avatarURL") || randomAvatarUrl();
+          setRoomTransition({ active: true, from: null, to: value.rooms[0].id, startedAt: Date.now() });
           socket.emit("joinRoom", value.rooms[0].id, {
             avatarUrl,
             name: storedName,
@@ -193,6 +198,7 @@ export const SocketManager = () => {
       setChatMessages([]);
       if (value.coins !== undefined) setCoins(value.coins);
       setRoomHasPassword(value.hasPassword !== false);
+      setRoomTransition({ active: false, from: null, to: null, startedAt: 0 });
     }
 
     // Merge incoming character list with existing state so that characters

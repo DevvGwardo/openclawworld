@@ -45,6 +45,9 @@ const _idleGlanceQuat = new THREE.Quaternion();
 const _lookMatrix = new THREE.Matrix4();
 const _up = new THREE.Vector3(0, 1, 0);
 const _zero = new THREE.Vector3();
+const _tmpWorldPos = new THREE.Vector3();
+const _tmpLocalPos = new THREE.Vector3();
+const _tmpQuat = new THREE.Quaternion();
 // Pre-computed quaternions for sitting pose.
 // NOTE: Some rigs have mirrored local axes between left/right leg bones, so we keep
 // both +90 and -90 variants and apply them per-leg.
@@ -210,6 +213,7 @@ export const Avatar = memo(function Avatar({
   const rightUpLegRestRef = useRef(null);
   const leftLegRestRef = useRef(null);
   const rightLegRestRef = useRef(null);
+  const sitLegFixRef = useRef(null);
   const pathRef = useRef([]);
   const pathIndexRef = useRef(0); // index pointer instead of shift()
 
@@ -255,6 +259,7 @@ export const Avatar = memo(function Avatar({
   // Detect non-humanoid model type for procedural animation
   const modelConfig = useMemo(() => getModelConfig(avatarUrl), [avatarUrl]);
   const isNonHumanoid = !!modelConfig;
+  const isNubcat = useMemo(() => avatarUrl.includes("sillyNubCat"), [avatarUrl]);
   const proceduralBonesRef = useRef(null);
   const restPosesRef = useRef(null);
   const proceduralTimeRef = useRef(0);
@@ -374,6 +379,7 @@ export const Avatar = memo(function Avatar({
     rightUpLegRestRef.current = null;
     leftLegRestRef.current = null;
     rightLegRestRef.current = null;
+    sitLegFixRef.current = null;
     proceduralBonesRef.current = null;
     restPosesRef.current = null;
     proceduralTimeRef.current = 0;
@@ -686,7 +692,11 @@ export const Avatar = memo(function Avatar({
         proceduralBonesRef.current = bones;
         restPosesRef.current = rests;
       }
-    } else {
+    }
+
+    // Cache humanoid leg bones for sitting overrides on all models EXCEPT nubcat.
+    // (nubcat uses the procedural rig with different bone names/orientation.)
+    if (!isNubcat) {
       if (!hipsRef.current) {
         hipsRef.current = avatar.current.getObjectByName("Hips");
         leftUpLegRef.current = avatar.current.getObjectByName("LeftUpLeg");
@@ -717,27 +727,88 @@ export const Avatar = memo(function Avatar({
       const rot = seatDataRef.current.seatRotation;
       group.current.position.set(seatWorldPos.x, seatDataRef.current.seatHeight, seatWorldPos.z);
       group.current.quaternion.setFromAxisAngle(_up, rot);
+      group.current.updateMatrixWorld(true);
       applyAnimation("M_Sitting_001");
-      // Override full leg rotation for humanoid rigs only
-      if (!isNonHumanoid) {
+      // Override full leg rotation for all rigs that expose humanoid leg bones,
+      // except nubcat (which uses a separate procedural rig).
+      if (!isNubcat) {
+        // Some rigs have the thigh axis mirrored, which makes the sit pose flip 180deg.
+        // Pick the per-leg thigh sign that puts the knee forward in group-local +Z.
+        if (!sitLegFixRef.current && group.current && avatar.current && leftUpLegRef.current && rightUpLegRef.current && leftLegRef.current && rightLegRef.current) {
+          const leftFoot = avatar.current.getObjectByName("LeftFoot");
+          const rightFoot = avatar.current.getObjectByName("RightFoot");
+
+          const scoreKneeForwardZ = (upLeg, upLegRest, knee, thighDelta) => {
+            if (upLegRest) _tmpQuat.copy(upLegRest).multiply(thighDelta);
+            else _tmpQuat.copy(thighDelta);
+            upLeg.quaternion.copy(_tmpQuat);
+            avatar.current.updateMatrixWorld(true);
+            knee.getWorldPosition(_tmpWorldPos);
+            _tmpLocalPos.copy(_tmpWorldPos);
+            group.current.worldToLocal(_tmpLocalPos);
+            return _tmpLocalPos.z;
+          };
+
+          const pickThigh = (upLeg, upLegRest, knee) => {
+            const zNeg = scoreKneeForwardZ(upLeg, upLegRest, knee, _thighSitQuatNeg);
+            const zPos = scoreKneeForwardZ(upLeg, upLegRest, knee, _thighSitQuatPos);
+            return zPos > zNeg ? _thighSitQuatPos : _thighSitQuatNeg;
+          };
+
+          const scoreFootPose = (kneeBone, kneeRest, thighBone, thighRest, thighDelta, kneeDelta, footBone) => {
+            // Apply thigh first so knee transforms under it, then bend knee.
+            if (thighRest) _tmpQuat.copy(thighRest).multiply(thighDelta);
+            else _tmpQuat.copy(thighDelta);
+            thighBone.quaternion.copy(_tmpQuat);
+            if (kneeRest) _tmpQuat.copy(kneeRest).multiply(kneeDelta);
+            else _tmpQuat.copy(kneeDelta);
+            kneeBone.quaternion.copy(_tmpQuat);
+            avatar.current.updateMatrixWorld(true);
+            footBone.getWorldPosition(_tmpWorldPos);
+            _tmpLocalPos.copy(_tmpWorldPos);
+            group.current.worldToLocal(_tmpLocalPos);
+            // Prefer foot forward (+Z) and down (-Y).
+            return _tmpLocalPos.z - _tmpLocalPos.y * 0.25;
+          };
+
+          const pickKnee = (kneeBone, kneeRest, thighBone, thighRest, thighDelta, footBone, defaultDelta) => {
+            if (!footBone) return defaultDelta;
+            const sNeg = scoreFootPose(kneeBone, kneeRest, thighBone, thighRest, thighDelta, _kneeBendNeg, footBone);
+            const sPos = scoreFootPose(kneeBone, kneeRest, thighBone, thighRest, thighDelta, _kneeBendPos, footBone);
+            return sPos > sNeg ? _kneeBendPos : _kneeBendNeg;
+          };
+
+          const thighL = pickThigh(leftUpLegRef.current, leftUpLegRestRef.current, leftLegRef.current);
+          const thighR = pickThigh(rightUpLegRef.current, rightUpLegRestRef.current, rightLegRef.current);
+          const kneeL = pickKnee(leftLegRef.current, leftLegRestRef.current, leftUpLegRef.current, leftUpLegRestRef.current, thighL, leftFoot, _kneeBendNeg);
+          const kneeR = pickKnee(rightLegRef.current, rightLegRestRef.current, rightUpLegRef.current, rightUpLegRestRef.current, thighR, rightFoot, _kneeBendPos);
+
+          sitLegFixRef.current = { thighL, thighR, kneeL, kneeR };
+        }
+
+        const thighL = sitLegFixRef.current?.thighL || _thighSitQuatNeg;
+        const thighR = sitLegFixRef.current?.thighR || _thighSitQuatNeg;
+        const kneeL = sitLegFixRef.current?.kneeL || _kneeBendNeg;
+        const kneeR = sitLegFixRef.current?.kneeR || _kneeBendPos;
+
         // Apply as delta from rest pose (prevents hips->leg flips on mirrored rigs).
         // Use the same sit deltas for both sides. With rest-pose deltas applied,
         // this avoids the common case where one knee bends the wrong way.
         if (leftUpLegRef.current) {
-          if (leftUpLegRestRef.current) leftUpLegRef.current.quaternion.copy(leftUpLegRestRef.current).multiply(_thighSitQuatNeg);
-          else leftUpLegRef.current.quaternion.copy(_thighSitQuatNeg);
+          if (leftUpLegRestRef.current) leftUpLegRef.current.quaternion.copy(leftUpLegRestRef.current).multiply(thighL);
+          else leftUpLegRef.current.quaternion.copy(thighL);
         }
         if (rightUpLegRef.current) {
-          if (rightUpLegRestRef.current) rightUpLegRef.current.quaternion.copy(rightUpLegRestRef.current).multiply(_thighSitQuatNeg);
-          else rightUpLegRef.current.quaternion.copy(_thighSitQuatNeg);
+          if (rightUpLegRestRef.current) rightUpLegRef.current.quaternion.copy(rightUpLegRestRef.current).multiply(thighR);
+          else rightUpLegRef.current.quaternion.copy(thighR);
         }
         if (leftLegRef.current) {
-          if (leftLegRestRef.current) leftLegRef.current.quaternion.copy(leftLegRestRef.current).multiply(_kneeBendNeg);
-          else leftLegRef.current.quaternion.copy(_kneeBendNeg);
+          if (leftLegRestRef.current) leftLegRef.current.quaternion.copy(leftLegRestRef.current).multiply(kneeL);
+          else leftLegRef.current.quaternion.copy(kneeL);
         }
         if (rightLegRef.current) {
-          if (rightLegRestRef.current) rightLegRef.current.quaternion.copy(rightLegRestRef.current).multiply(_kneeBendPos);
-          else rightLegRef.current.quaternion.copy(_kneeBendPos);
+          if (rightLegRestRef.current) rightLegRef.current.quaternion.copy(rightLegRestRef.current).multiply(kneeR);
+          else rightLegRef.current.quaternion.copy(kneeR);
         }
       }
     } else {
@@ -936,8 +1007,8 @@ export const Avatar = memo(function Avatar({
                     else if (t === 'desk') moodEmoji = '\u{1F4BB}';
                     else if (t === 'tableCrossCloth') moodEmoji = '\u{1F37D}\uFE0F';
                     else moodEmoji = '\u{2699}\uFE0F';
-                  } else if (motives) {
-                    // Deficit-based mood emoji
+                  } else if (motives && isBot) {
+                    // Deficit-based mood emoji (bots only; players get a cleaner HUD-style indicator)
                     const { energy = 100, social = 100, fun = 100, hunger = 100 } = motives;
                     const lowest = Math.min(energy, social, fun, hunger);
                     if (lowest < 30) {
