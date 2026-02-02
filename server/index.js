@@ -869,10 +869,21 @@ const moltbookBotTick = () => {
           if (key.startsWith(`${pick.idx}-`)) occupiedCount++;
         }
         if (occupiedCount < pick.sittable.seats) {
-          const available = allSpots.filter((s) => {
+          let available = allSpots.filter((s) => {
             if (room.seatOccupancy.has(`${pick.idx}-${s.seatIdx}`)) return false;
             return room.grid.isWalkableAt(s.walkTo[0], s.walkTo[1]);
           });
+          // Prefer the furniture-facing edge so bots don't sit backwards
+          // depending on approach direction.
+          if (available.length > 0 && pick.sittable.preferFacing !== false) {
+            const desired = normalizeAngle(((pick.item.rotation || 0) * Math.PI) / 2 + facingOffset);
+            const angleDelta = (a, b) => {
+              const d = Math.abs(a - b) % (Math.PI * 2);
+              return d > Math.PI ? (Math.PI * 2) - d : d;
+            };
+            const preferred = available.filter((s) => angleDelta(s.seatRotation, desired) < 0.01);
+            if (preferred.length > 0) available = preferred;
+          }
           if (available.length > 0) {
             const pos = bot.character.position || [0, 0];
             available.sort((a, b) => {
@@ -2986,10 +2997,22 @@ io.on("connection", async (socket) => {
 
       const allSpots = getSitSpots(room, item, sittable, facingOffset);
       // Filter to walkable & unoccupied spots
-      const available = allSpots.filter((s) => {
+      let available = allSpots.filter((s) => {
         if (room.seatOccupancy.has(`${itemIndex}-${s.seatIdx}`)) return false;
         return room.grid.isWalkableAt(s.walkTo[0], s.walkTo[1]);
       });
+
+      // Prefer the furniture-facing edge (prevents "sit backwards" when clicking
+      // from the wrong side / while facing away from the chair).
+      if (available.length > 0 && sittable.preferFacing !== false) {
+        const desired = normalizeAngle(((item.rotation || 0) * Math.PI) / 2 + facingOffset);
+        const angleDelta = (a, b) => {
+          const d = Math.abs(a - b) % (Math.PI * 2);
+          return d > Math.PI ? (Math.PI * 2) - d : d;
+        };
+        const preferred = available.filter((s) => angleDelta(s.seatRotation, desired) < 0.01);
+        if (preferred.length > 0) available = preferred;
+      }
 
       // Enforce seat limit
       let occupiedCount = 0;

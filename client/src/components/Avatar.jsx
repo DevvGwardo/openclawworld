@@ -721,21 +721,23 @@ export const Avatar = memo(function Avatar({
       // Override full leg rotation for humanoid rigs only
       if (!isNonHumanoid) {
         // Apply as delta from rest pose (prevents hips->leg flips on mirrored rigs).
+        // Use the same sit deltas for both sides. With rest-pose deltas applied,
+        // this avoids the common case where one knee bends the wrong way.
         if (leftUpLegRef.current) {
           if (leftUpLegRestRef.current) leftUpLegRef.current.quaternion.copy(leftUpLegRestRef.current).multiply(_thighSitQuatNeg);
           else leftUpLegRef.current.quaternion.copy(_thighSitQuatNeg);
         }
         if (rightUpLegRef.current) {
-          if (rightUpLegRestRef.current) rightUpLegRef.current.quaternion.copy(rightUpLegRestRef.current).multiply(_thighSitQuatPos);
-          else rightUpLegRef.current.quaternion.copy(_thighSitQuatPos);
+          if (rightUpLegRestRef.current) rightUpLegRef.current.quaternion.copy(rightUpLegRestRef.current).multiply(_thighSitQuatNeg);
+          else rightUpLegRef.current.quaternion.copy(_thighSitQuatNeg);
         }
         if (leftLegRef.current) {
           if (leftLegRestRef.current) leftLegRef.current.quaternion.copy(leftLegRestRef.current).multiply(_kneeBendPos);
           else leftLegRef.current.quaternion.copy(_kneeBendPos);
         }
         if (rightLegRef.current) {
-          if (rightLegRestRef.current) rightLegRef.current.quaternion.copy(rightLegRestRef.current).multiply(_kneeBendNeg);
-          else rightLegRef.current.quaternion.copy(_kneeBendNeg);
+          if (rightLegRestRef.current) rightLegRef.current.quaternion.copy(rightLegRestRef.current).multiply(_kneeBendPos);
+          else rightLegRef.current.quaternion.copy(_kneeBendPos);
         }
       }
     } else {
