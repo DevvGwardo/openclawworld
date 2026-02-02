@@ -612,13 +612,14 @@ const HelpModal = ({ onClose }) => {
 
 const RoomTransitionOverlay = ({ transition, roomLabel }) => {
   return (
-    <AnimatePresence>
+    <AnimatePresence mode="wait">
       {transition?.active && (
         <motion.div
-          className="fixed inset-0 z-[200] grid place-items-center pointer-events-auto"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          key="room-transition-overlay"
+          className="fixed inset-0 z-[200] grid place-items-center"
+          initial={{ opacity: 0, pointerEvents: "none" }}
+          animate={{ opacity: 1, pointerEvents: "auto" }}
+          exit={{ opacity: 0, pointerEvents: "none" }}
           transition={{ duration: 0.18, ease: "easeOut" }}
         >
           <motion.div
@@ -1076,6 +1077,15 @@ export const UI = () => {
   const [itemsCatalog] = useAtom(itemsAtom);
   const [, setSelectedShopItem] = useAtom(selectedShopItemAtom);
   const [roomTransition, setRoomTransition] = useAtom(roomTransitionAtom);
+
+  // Safety timeout: force-clear the transition overlay if it stays active too long
+  useEffect(() => {
+    if (!roomTransition?.active) return;
+    const timeout = setTimeout(() => {
+      setRoomTransition({ active: false, from: null, to: null, startedAt: 0 });
+    }, 8000);
+    return () => clearTimeout(timeout);
+  }, [roomTransition?.active, roomTransition?.startedAt]);
 
   const myEnergyRaw = user ? characterMotives?.[user]?.energy : undefined;
   const myEnergy = typeof myEnergyRaw === "number" ? Math.max(0, Math.min(100, myEnergyRaw)) : null;
