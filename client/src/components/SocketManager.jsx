@@ -35,6 +35,9 @@ export const roomTransitionAtom = atom({ active: false, from: null, to: null, st
 // { itemName: string } | null
 export const pendingInteractionAtom = atom(null);
 export const objectivesAtom = atom(null);
+export const foodAtom = atom(0);
+export const collectCooldownAtom = atom(0); // timestamp when cooldown ends
+export const eatCooldownAtom = atom(0);     // timestamp when cooldown ends
 
 // Shared ref for the local player's live world position during movement.
 // Written by Avatar.jsx every frame, read by Minimap.jsx for smooth tracking.
@@ -115,6 +118,9 @@ export const SocketManager = () => {
   const [_characterInteractionStates, setCharacterInteractionStates] = useAtom(characterInteractionStatesAtom);
   const [_roomTransition, setRoomTransition] = useAtom(roomTransitionAtom);
   const [_objectives, setObjectives] = useAtom(objectivesAtom);
+  const [_food, setFood] = useAtom(foodAtom);
+  const [_collectCooldown, setCollectCooldown] = useAtom(collectCooldownAtom);
+  const [_eatCooldown, setEatCooldown] = useAtom(eatCooldownAtom);
 
   const charactersRef = useRef([]);
   useEffect(() => { charactersRef.current = _characters; }, [_characters]);
@@ -223,6 +229,9 @@ export const SocketManager = () => {
       if (value.coins !== undefined) setCoins(value.coins);
       setRoomHasPassword(value.hasPassword !== false);
       setRoomTransition({ active: false, from: null, to: null, startedAt: 0 });
+      if (value.food !== undefined) setFood(value.food);
+      if (value.collectCooldownEnds !== undefined) setCollectCooldown(value.collectCooldownEnds);
+      if (value.eatCooldownEnds !== undefined) setEatCooldown(value.eatCooldownEnds);
     }
 
     // Merge incoming character list with existing state so that characters
@@ -678,6 +687,13 @@ export const SocketManager = () => {
       setObjectives(value);
     }
 
+    function onFoodUpdate(value) {
+      if (!value) return;
+      if (value.food !== undefined) setFood(value.food);
+      if (value.collectCooldownEnds !== undefined) setCollectCooldown(value.collectCooldownEnds);
+      if (value.eatCooldownEnds !== undefined) setEatCooldown(value.eatCooldownEnds);
+    }
+
     function onObjectivesComplete(value) {
       if (!value) return;
       soundManager.play("quest_complete");
@@ -732,6 +748,7 @@ export const SocketManager = () => {
     socket.on("objectives:init", onObjectivesInit);
     socket.on("objectives:progress", onObjectivesProgress);
     socket.on("objectives:complete", onObjectivesComplete);
+    socket.on("food:update", onFoodUpdate);
     return () => {
       clearTimeout(flushTimerRef.current);
       flushTimerRef.current = null;
@@ -778,6 +795,7 @@ export const SocketManager = () => {
       socket.off("objectives:init", onObjectivesInit);
       socket.off("objectives:progress", onObjectivesProgress);
       socket.off("objectives:complete", onObjectivesComplete);
+      socket.off("food:update", onFoodUpdate);
     };
   }, []);
 };

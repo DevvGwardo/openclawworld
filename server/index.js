@@ -3,7 +3,7 @@ import http from "http";
 import pathfinding from "pathfinding";
 import bcrypt from "bcrypt";
 import { Server } from "socket.io";
-import { ROOM_ZONES, scaleZoneArea, ENTRANCE_ZONE, OBJECT_AFFORDANCES, DECAY_RATES, MOTIVE_CLAMP } from "./shared/roomConstants.js";
+import { ROOM_ZONES, scaleZoneArea, ENTRANCE_ZONE, OBJECT_AFFORDANCES, DECAY_RATES, MOTIVE_CLAMP, FOOD_COLLECT_COOLDOWN, FOOD_EAT_COOLDOWN, FOOD_COLLECT_MIN, FOOD_COLLECT_MAX } from "./shared/roomConstants.js";
 import { initDb, isDbAvailable, listRooms as dbListRooms, countRooms as dbCountRooms } from "./db.js";
 import {
   getCachedRoom, setCachedRoom, getAllCachedRooms, getOrLoadRoom,
@@ -312,4 +312,5 @@ registerSocketHandlers({
   scheduleEviction, cancelEviction, hydrateRoom,
   isDbAvailable, dbListRooms, dbCountRooms, ROOM_ZONES, limitChat, hashApiKey,
   pendingInvites,
+  FOOD_COLLECT_COOLDOWN, FOOD_EAT_COOLDOWN, FOOD_COLLECT_MIN, FOOD_COLLECT_MAX,
 });

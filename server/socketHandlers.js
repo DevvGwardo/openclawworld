@@ -63,6 +63,10 @@ export function registerSocketHandlers(deps) {
     limitChat,
     hashApiKey,
     pendingInvites,
+    FOOD_COLLECT_COOLDOWN,
+    FOOD_EAT_COOLDOWN,
+    FOOD_COLLECT_MIN,
+    FOOD_COLLECT_MAX,
   } = deps;
 
   // Destructure moltbook system parts
@@ -155,6 +159,9 @@ export function registerSocketHandlers(deps) {
           coins: DEFAULT_COINS,
           motives: { energy: 100, social: 100, fun: 100, hunger: 100 },
           interactionState: null,
+          food: 0,
+          lastCollectFood: 0,
+          lastEat: 0,
         };
         playerCoins.set(socket.id, DEFAULT_COINS);
         if (!room.password) character.canUpdateRoom = true;
@@ -180,6 +187,9 @@ export function registerSocketHandlers(deps) {
           coins: DEFAULT_COINS,
           hasPassword: !!room.password,
           invitedBy: character.invitedBy || null,
+          food: character.food,
+          collectCooldownEnds: character.lastCollectFood ? character.lastCollectFood + FOOD_COLLECT_COOLDOWN : 0,
+          eatCooldownEnds: character.lastEat ? character.lastEat + FOOD_EAT_COOLDOWN : 0,
         });
         // Notify other players in the room about the new character (excludes the joiner)
         socket.broadcast.to(room.id).emit("characterJoined", {
@@ -365,6 +375,9 @@ export function registerSocketHandlers(deps) {
           id: socket.id,
           hasPassword: !!room.password,
           invitedBy: character.invitedBy || null,
+          food: character.food,
+          collectCooldownEnds: character.lastCollectFood ? character.lastCollectFood + FOOD_COLLECT_COOLDOWN : 0,
+          eatCooldownEnds: character.lastEat ? character.lastEat + FOOD_EAT_COOLDOWN : 0,
         });
         socket.broadcast.to(room.id).emit("characterJoined", {
           character: stripCharacters([character])[0],
@@ -531,6 +544,26 @@ export function registerSocketHandlers(deps) {
         }
       });
 
+      // --- Food Collection System ---
+      socket.on("food:collect", () => {
+        if (!room || !character) return;
+        const now = Date.now();
+        if (now - character.lastCollectFood < FOOD_COLLECT_COOLDOWN) {
+          const remaining = FOOD_COLLECT_COOLDOWN - (now - character.lastCollectFood);
+          socket.emit("food:error", { error: "Collect on cooldown", cooldownRemaining: remaining });
+          return;
+        }
+        const amount = FOOD_COLLECT_MIN + Math.floor(Math.random() * (FOOD_COLLECT_MAX - FOOD_COLLECT_MIN + 1));
+        character.food += amount;
+        character.lastCollectFood = now;
+        socket.emit("food:update", {
+          food: character.food,
+          collectCooldownEnds: now + FOOD_COLLECT_COOLDOWN,
+          eatCooldownEnds: character.lastEat ? character.lastEat + FOOD_EAT_COOLDOWN : 0,
+          collected: amount,
+        });
+      });
+
       // --- Object Interaction System ---
       socket.on("interact:object", ({ itemName }) => {
         if (!room || !character) return;
@@ -551,6 +584,27 @@ export function registerSocketHandlers(deps) {
             socket.emit("interactError", { error: "Item not in room" });
             return;
           }
+        }
+        // Food-consuming items require food and enforce eat cooldown
+        const isEatItem = itemName === "kitchenStove" || itemName === "kitchenFridge" || itemName === "eatSpot";
+        if (isEatItem) {
+          const now = Date.now();
+          if (now - character.lastEat < FOOD_EAT_COOLDOWN) {
+            const remaining = FOOD_EAT_COOLDOWN - (now - character.lastEat);
+            socket.emit("interactError", { error: "Eat on cooldown", cooldownRemaining: remaining });
+            return;
+          }
+          if (character.food <= 0) {
+            socket.emit("interactError", { error: "No food" });
+            return;
+          }
+          character.food--;
+          character.lastEat = now;
+          socket.emit("food:update", {
+            food: character.food,
+            collectCooldownEnds: character.lastCollectFood ? character.lastCollectFood + FOOD_COLLECT_COOLDOWN : 0,
+            eatCooldownEnds: now + FOOD_EAT_COOLDOWN,
+          });
         }
         character.interactionState = {
           target: itemName,
@@ -866,6 +920,9 @@ export function registerSocketHandlers(deps) {
           characters: stripCharacters(room.characters),
           id: socket.id,
           hasPassword: !!room.password,
+          food: character.food,
+          collectCooldownEnds: character.lastCollectFood ? character.lastCollectFood + FOOD_COLLECT_COOLDOWN : 0,
+          eatCooldownEnds: character.lastEat ? character.lastEat + FOOD_EAT_COOLDOWN : 0,
         });
         onRoomUpdate();
 

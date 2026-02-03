@@ -91,6 +91,12 @@ export const OBJECT_AFFORDANCES = {
   eatSpot:          { satisfies: { hunger: 30, energy: 5 }, duration: 5000, interruptible: true },
 };
 
+// --- Food system constants ---
+export const FOOD_COLLECT_COOLDOWN = 120000; // 2 minutes
+export const FOOD_EAT_COOLDOWN = 30000;      // 30 seconds
+export const FOOD_COLLECT_MIN = 2;
+export const FOOD_COLLECT_MAX = 3;
+
 // Decay per second — tuned so energy drains from 100→0 in ~15 minutes
 export const DECAY_RATES = { energy: 0.11, social: 0.09, fun: 0.09, hunger: 0.06 };
 
