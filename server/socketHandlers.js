@@ -79,6 +79,12 @@ export function registerSocketHandlers(deps) {
       const rawBotToken = socket.handshake?.auth?.token;
       const botAuthKey = rawBotToken ? hashApiKey(rawBotToken) : null;
       if (botAuthKey && botRegistry.has(botAuthKey)) {
+        const botRecord = botRegistry.get(botAuthKey);
+        if (botRecord.status === 'pending') {
+          socket.emit('error', { message: 'Bot is not yet verified. Visit your claim URL to complete Twitter verification.' });
+          socket.disconnect(true);
+          return;
+        }
         socket.data.officialBotKey = botAuthKey;
       }
 

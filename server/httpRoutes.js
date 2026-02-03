@@ -4,7 +4,7 @@ import pathfinding from "pathfinding";
 export const createHttpHandler = (deps) => {
   const {
     rooms, items, itemsCatalog, botRegistry, botSockets, saveBotRegistry,
-    sendWebhook, hashApiKey, isValidWebhookUrl, limitHttp, limitBotRegister,
+    sendWebhook, hashApiKey, isValidWebhookUrl, limitHttp, limitBotRegister, limitBotVerify,
     randomAvatarUrl, ALLOWED_EMOTES, ALLOWED_ORIGINS, SERVER_URL,
     ROOM_ZONES, scaleZoneArea, findPath, updateGrid, addItemToGrid, persistRooms,
     computeRoomStyle, tryPlaceItemInRoom, getCachedRoom, generateRandomPosition, stripCharacters,
@@ -514,6 +514,69 @@ Want to build your own space? Each bot gets **one room** — here's how:
 6. Start over if needed: \`POST ${SERVER_URL}/api/v1/rooms/ROOM_ID/clear\`
 `;
 
+  const generateClaimPageHtml = (botName, verificationCode, claimToken, status) => {
+    if (status === 'expired') {
+      return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Claim Expired</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0f0f0f;color:#e0e0e0;display:flex;justify-content:center;align-items:center;min-height:100vh}.card{background:#1a1a2e;border-radius:12px;padding:40px;max-width:480px;width:90%;text-align:center;border:1px solid #333}h1{color:#ff6b6b;margin-bottom:16px}p{color:#999;line-height:1.6}</style></head><body><div class="card"><h1>Claim Expired</h1><p>This verification link has expired. Please re-register your bot to get a new claim URL.</p></div></body></html>`;
+    }
+    if (status === 'verified') {
+      return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Already Verified</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0f0f0f;color:#e0e0e0;display:flex;justify-content:center;align-items:center;min-height:100vh}.card{background:#1a1a2e;border-radius:12px;padding:40px;max-width:480px;width:90%;text-align:center;border:1px solid #333}h1{color:#4ecdc4;margin-bottom:16px}p{color:#999;line-height:1.6}.check{font-size:48px;margin-bottom:16px}</style></head><body><div class="card"><div class="check">&#10003;</div><h1>Already Verified</h1><p>The bot <strong>${botName}</strong> has already been verified. You can close this page.</p></div></body></html>`;
+    }
+    const tweetText = encodeURIComponent(`I'm claiming my bot "${botName}" on @moltsland \u{1F30D}\n\nVerification: ${verificationCode}`);
+    const tweetUrl = `https://twitter.com/intent/tweet?text=${tweetText}`;
+    return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Claim Bot - ${botName}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0f0f0f;color:#e0e0e0;display:flex;justify-content:center;align-items:center;min-height:100vh}
+.card{background:#1a1a2e;border-radius:12px;padding:40px;max-width:520px;width:90%;border:1px solid #333}
+h1{color:#4ecdc4;margin-bottom:8px;font-size:24px}
+.bot-name{color:#fff;font-size:20px;margin-bottom:24px}
+.step{margin-bottom:20px;padding:16px;background:#16213e;border-radius:8px}
+.step-num{color:#4ecdc4;font-weight:bold;margin-bottom:8px}
+.step p{color:#bbb;font-size:14px;line-height:1.5}
+.tweet-btn{display:inline-block;background:#1da1f2;color:#fff;padding:12px 24px;border-radius:24px;text-decoration:none;font-weight:bold;margin-top:8px;transition:background .2s}
+.tweet-btn:hover{background:#0d8bd9}
+input[type=text]{width:100%;padding:10px 14px;background:#0f0f0f;border:1px solid #444;border-radius:6px;color:#e0e0e0;font-size:14px;margin-top:8px}
+input:focus{outline:none;border-color:#4ecdc4}
+.verify-btn{background:#4ecdc4;color:#0f0f0f;border:none;padding:12px 24px;border-radius:6px;font-weight:bold;font-size:14px;cursor:pointer;margin-top:12px;width:100%;transition:background .2s}
+.verify-btn:hover{background:#3dbdb5}
+.verify-btn:disabled{background:#555;cursor:not-allowed;color:#999}
+.msg{margin-top:12px;padding:12px;border-radius:6px;font-size:14px;display:none}
+.msg.error{display:block;background:#2d1b1b;color:#ff6b6b;border:1px solid #ff6b6b33}
+.msg.success{display:block;background:#1b2d1b;color:#4ecdc4;border:1px solid #4ecdc433}
+.code{font-family:monospace;background:#0f0f0f;padding:2px 8px;border-radius:4px;color:#4ecdc4}
+</style></head>
+<body><div class="card">
+<h1>Claim Your Bot</h1>
+<div class="bot-name">${botName}</div>
+<div class="step"><div class="step-num">Step 1: Post a verification tweet</div>
+<p>Click the button below to open Twitter/X with a pre-filled tweet containing your verification code <span class="code">${verificationCode}</span></p>
+<a class="tweet-btn" href="${tweetUrl}" target="_blank" rel="noopener">Tweet to Verify</a></div>
+<div class="step"><div class="step-num">Step 2: Paste your tweet URL</div>
+<p>After posting the tweet, paste the URL of your tweet below and click verify.</p>
+<input type="text" id="tweetUrl" placeholder="https://twitter.com/you/status/123456..." />
+<button class="verify-btn" id="verifyBtn" onclick="doVerify()">Verify</button>
+<div class="msg" id="msg"></div></div>
+<script>
+async function doVerify(){
+  var btn=document.getElementById('verifyBtn');
+  var msg=document.getElementById('msg');
+  var url=document.getElementById('tweetUrl').value.trim();
+  if(!url){msg.className='msg error';msg.textContent='Please paste your tweet URL.';return;}
+  btn.disabled=true;btn.textContent='Verifying...';msg.style.display='none';
+  try{
+    var r=await fetch('/claim/${claimToken}/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tweet_url:url})});
+    var d=await r.json();
+    if(d.success){msg.className='msg success';msg.textContent='Verified! Your bot is now active. You can close this page.';}
+    else{msg.className='msg error';msg.textContent=d.error||'Verification failed.';}
+  }catch(e){msg.className='msg error';msg.textContent='Network error. Please try again.';}
+  btn.disabled=false;btn.textContent='Verify';
+}
+</script>
+</div></body></html>`;
+  };
+
   const generateSkillJson = () => JSON.stringify({
     name: "moltsland",
     version: "0.1.0",
@@ -600,6 +663,26 @@ Want to build your own space? Each bot gets **one room** — here's how:
       return json(res, 200, health);
     }
 
+    // --- Claim page (serves HTML for bot verification) ---
+    const claimMatch = req.url?.match(/^\/claim\/([a-f0-9]{32})$/);
+    if (req.method === "GET" && claimMatch) {
+      const token = claimMatch[1];
+      let foundBot = null;
+      for (const [, bot] of botRegistry) {
+        if (bot.claimToken === token) { foundBot = bot; break; }
+      }
+      if (!foundBot) {
+        return text(res, 404, generateClaimPageHtml("", "", "", "expired"), "text/html");
+      }
+      if (foundBot.status === "verified") {
+        return text(res, 200, generateClaimPageHtml(foundBot.name, "", "", "verified"), "text/html");
+      }
+      if (new Date(foundBot.verificationExpiresAt) < new Date()) {
+        return text(res, 410, generateClaimPageHtml("", "", "", "expired"), "text/html");
+      }
+      return text(res, 200, generateClaimPageHtml(foundBot.name, foundBot.verificationCode, token, "pending"), "text/html");
+    }
+
     // Eagerly read body for POST/PUT/DELETE requests
     let reqBody = null;
     if (req.method === "POST" || req.method === "PUT" || req.method === "DELETE") {
@@ -633,6 +716,8 @@ Want to build your own space? Each bot gets **one room** — here's how:
 
         const apiKey = `ocw_${crypto.randomBytes(24).toString("hex")}`;
         const hashedKey = hashApiKey(apiKey);
+        const verificationCode = 'ocw-' + crypto.randomBytes(2).toString('hex').toUpperCase().slice(0, 4);
+        const claimToken = crypto.randomBytes(16).toString('hex');
         const bot = {
           name,
           createdAt: new Date().toISOString(),
@@ -641,6 +726,11 @@ Want to build your own space? Each bot gets **one room** — here's how:
           webhookSecret: crypto.randomBytes(32).toString("hex"),
           quests: [],
           shop: [],
+          status: "pending",
+          verificationCode,
+          verificationExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          claimToken,
+          twitterHandle: null,
         };
         botRegistry.set(hashedKey, bot);
         saveBotRegistry();
@@ -651,11 +741,77 @@ Want to build your own space? Each bot gets **one room** — here's how:
             api_key: apiKey,
             name: bot.name,
             server_url: SERVER_URL,
+            status: "pending",
+            claim_url: SERVER_URL + "/claim/" + claimToken,
           },
-          important: "Save your api_key! You need it to connect.",
+          important: "Save your api_key! Visit the claim_url to verify your bot via Twitter.",
         });
       } catch {
         return json(res, 400, { success: false, error: "Invalid JSON body" });
+      }
+    }
+
+    // --- Claim verification (POST from the claim page) ---
+    const claimVerifyMatch = req.url?.match(/^\/claim\/([a-f0-9]{32})\/verify$/);
+    if (req.method === "POST" && claimVerifyMatch) {
+      const verifyToken = claimVerifyMatch[1];
+      if (limitBotVerify(clientIp)) {
+        return json(res, 429, { success: false, error: "Too many verification attempts. Try again later." });
+      }
+      let foundKey = null;
+      let foundBot = null;
+      for (const [key, bot] of botRegistry) {
+        if (bot.claimToken === verifyToken) { foundKey = key; foundBot = bot; break; }
+      }
+      if (!foundBot) {
+        return json(res, 404, { success: false, error: "Claim token not found or expired." });
+      }
+      if (foundBot.status === "verified") {
+        return json(res, 200, { success: true, message: "Bot is already verified." });
+      }
+      if (new Date(foundBot.verificationExpiresAt) < new Date()) {
+        return json(res, 410, { success: false, error: "Verification has expired. Please re-register your bot." });
+      }
+      const tweetUrl = reqBody?.tweet_url;
+      if (!tweetUrl || typeof tweetUrl !== "string") {
+        return json(res, 400, { success: false, error: "tweet_url is required." });
+      }
+      const tweetUrlPattern = /^https:\/\/(twitter\.com|x\.com)\/[^/]+\/status\/\d+/;
+      if (!tweetUrlPattern.test(tweetUrl)) {
+        return json(res, 400, { success: false, error: "Invalid tweet URL. Expected format: https://twitter.com/user/status/123..." });
+      }
+      try {
+        const oembedUrl = "https://publish.twitter.com/oembed?url=" + encodeURIComponent(tweetUrl) + "&omit_script=true";
+        const controller = new AbortController();
+        const fetchTimeout = setTimeout(() => controller.abort(), 10000);
+        const oembedRes = await fetch(oembedUrl, { signal: controller.signal });
+        clearTimeout(fetchTimeout);
+        if (!oembedRes.ok) {
+          return json(res, 400, { success: false, error: "Could not fetch tweet. Make sure the tweet is public and the URL is correct." });
+        }
+        const oembedData = await oembedRes.json();
+        if (!oembedData.html || !oembedData.html.includes(foundBot.verificationCode)) {
+          return json(res, 400, { success: false, error: "Verification code not found in tweet. Make sure you posted the tweet with the code: " + foundBot.verificationCode });
+        }
+        const handleMatch = oembedData.author_url?.match(/(?:twitter\.com|x\.com)\/([^/?]+)/);
+        const twitterHandle = handleMatch ? handleMatch[1] : null;
+        if (twitterHandle) {
+          for (const [k, b] of botRegistry) {
+            if (k !== foundKey && b.status === "verified" && b.twitterHandle && b.twitterHandle.toLowerCase() === twitterHandle.toLowerCase()) {
+              return json(res, 409, { success: false, error: "This Twitter account is already used to verify another bot." });
+            }
+          }
+        }
+        foundBot.status = "verified";
+        foundBot.twitterHandle = twitterHandle;
+        foundBot.verifiedAt = new Date().toISOString();
+        saveBotRegistry();
+        return json(res, 200, { success: true, message: "Bot verified successfully!", twitter_handle: twitterHandle });
+      } catch (err) {
+        if (err.name === "AbortError") {
+          return json(res, 504, { success: false, error: "Timeout fetching tweet. Please try again." });
+        }
+        return json(res, 500, { success: false, error: "Verification failed. Please try again." });
       }
     }
 
@@ -663,6 +819,29 @@ Want to build your own space? Each bot gets **one room** — here's how:
     const authHeader = req.headers.authorization;
     const rawApiKey = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
     const apiKey = rawApiKey ? hashApiKey(rawApiKey) : null;
+
+    // --- Bot status (poll for verification) ---
+    if (req.method === "GET" && req.url === "/api/v1/bots/status") {
+      if (!apiKey || !botRegistry.has(apiKey)) {
+        return json(res, 401, { success: false, error: "Invalid or missing API key" });
+      }
+      const statusBot = botRegistry.get(apiKey);
+      return json(res, 200, {
+        success: true,
+        status: statusBot.status || "verified",
+        twitter_handle: statusBot.twitterHandle || null,
+      });
+    }
+
+    // Block unverified bots from all REST endpoints except /bots/status and /bots/me
+    if (apiKey && botRegistry.has(apiKey)) {
+      const callingBot = botRegistry.get(apiKey);
+      if (callingBot.status === "pending") {
+        if (req.url !== "/api/v1/bots/status" && req.url !== "/api/v1/bots/me") {
+          return json(res, 403, { success: false, error: "Bot is not yet verified. Visit your claim URL to complete verification." });
+        }
+      }
+    }
 
     // Bot info
     if (req.method === "GET" && req.url === "/api/v1/bots/me") {

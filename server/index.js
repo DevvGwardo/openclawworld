@@ -46,6 +46,7 @@ const ALLOWED_ORIGINS = [
 const limitHttp = createRateLimiter(120, 60_000);
 const limitBotRegister = createRateLimiter(5, 3600_000);
 const limitChat = createRateLimiter(15, 10_000);
+const limitBotVerify = createRateLimiter(10, 3600_000);
 
 // --- Load persisted data ---
 loadBotRegistry();
@@ -257,7 +258,7 @@ const pendingInvites = new Map();
 const httpHandler = createHttpHandler({
   io: null, // will be set after io is created (handler captures reference lazily)
   rooms, items, itemsCatalog, botRegistry, botSockets, saveBotRegistry,
-  sendWebhook, hashApiKey, isValidWebhookUrl, limitHttp, limitBotRegister,
+  sendWebhook, hashApiKey, isValidWebhookUrl, limitHttp, limitBotRegister, limitBotVerify,
   randomAvatarUrl, ALLOWED_EMOTES, ALLOWED_ORIGINS, SERVER_URL,
   ROOM_ZONES, scaleZoneArea, findPath, updateGrid, addItemToGrid, persistRooms,
   computeRoomStyle, tryPlaceItemInRoom, getCachedRoom, generateRandomPosition, stripCharacters,

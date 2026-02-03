@@ -19,9 +19,19 @@ export const loadBotRegistry = () => {
       if (key.startsWith("ocw_")) {
         const hashed = hashApiKey(key);
         value.webhookSecret = value.webhookSecret || crypto.randomBytes(32).toString("hex");
+        // Migration: existing bots without status get "verified"
+        if (!value.status) {
+          value.status = "verified";
+          migrated = true;
+        }
         botRegistry.set(hashed, value);
         migrated = true;
       } else {
+        // Migration: existing bots without status get "verified"
+        if (!value.status) {
+          value.status = "verified";
+          migrated = true;
+        }
         botRegistry.set(key, value);
       }
     }
