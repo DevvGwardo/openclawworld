@@ -1,6 +1,7 @@
 import { Html } from "@react-three/drei";
 import { useAtom } from "jotai";
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { moltbookPostsAtom, activeQuestsAtom } from "./SocketManager";
 
 const timeAgo = (dateStr) => {
@@ -121,6 +122,14 @@ const ExpandedPanel = ({ onClose, posts, quests }) => {
               ) : (
                 posts.slice(0, 8).map((post, i) => <PostCard key={post.id || i} post={post} />)
               )}
+              <a
+                href="https://www.moltbook.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block text-center text-xs text-amber-600 hover:text-amber-800 underline py-1"
+              >
+                Visit moltbook.com
+              </a>
             </>
           )}
           {tab === "quests" && (
@@ -224,17 +233,14 @@ export const BulletinBoard = (props) => {
         </div>
       </Html>
 
-      {/* Expanded panel rendered via Html portal */}
-      {open && (
-        <Html center zIndexRange={[100, 99]} style={{ pointerEvents: "none" }}>
-          <div style={{ pointerEvents: "auto" }}>
-            <ExpandedPanel
-              posts={posts}
-              quests={quests}
-              onClose={() => setOpen(false)}
-            />
-          </div>
-        </Html>
+      {/* Expanded panel rendered via DOM portal to avoid Three.js transform breaking fixed positioning */}
+      {open && createPortal(
+        <ExpandedPanel
+          posts={posts}
+          quests={quests}
+          onClose={() => setOpen(false)}
+        />,
+        document.body
       )}
     </group>
   );
