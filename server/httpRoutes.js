@@ -564,7 +564,7 @@ async function doVerify(){
   var msg=document.getElementById('msg');
   var url=document.getElementById('tweetUrl').value.trim();
   if(!url){msg.className='msg error';msg.textContent='Please paste your tweet URL.';return;}
-  btn.disabled=true;btn.textContent='Verifying...';msg.style.display='none';
+  btn.disabled=true;btn.textContent='Verifying...';msg.className='msg';msg.textContent='';msg.removeAttribute('style');
   try{
     var r=await fetch('/claim/${claimToken}/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tweet_url:url})});
     var d=await r.json();
