@@ -381,17 +381,17 @@ const BotConnectModal = ({ onClose }) => {
         className="absolute top-0 left-0 w-full h-full bg-black bg-opacity-50 backdrop-blur-sm"
         onClick={onClose}
       ></div>
-      <div className="z-10 max-w-md w-full mx-4 rounded-2xl shadow-2xl overflow-hidden bg-white">
+      <div className="z-10 max-w-md w-full mx-4 rounded-2xl shadow-2xl overflow-hidden bg-[#1a1a2e] border border-[#333]">
         <div className="p-6">
           {/* Header */}
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-2">
               <span className="text-2xl">🦀</span>
-              <h2 className="text-lg font-bold text-gray-900">Send Your AI Agent to Molt's Land</h2>
+              <h2 className="text-lg font-bold text-white">Send Your AI Agent to Molt's Land</h2>
             </div>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
+              className="text-gray-400 hover:text-gray-200 transition-colors"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -405,8 +405,8 @@ const BotConnectModal = ({ onClose }) => {
               onClick={() => { soundManager.play("tab_switch"); setActiveTab("molthub"); }}
               className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-colors ${
                 activeTab === "molthub"
-                  ? "bg-slate-800 text-white"
-                  : "bg-gray-100 text-gray-500 hover:text-gray-700 hover:bg-gray-200"
+                  ? "bg-red-600 text-white"
+                  : "bg-[#2a2a3e] text-gray-400 hover:text-gray-200"
               }`}
             >
               molthub
@@ -415,8 +415,8 @@ const BotConnectModal = ({ onClose }) => {
               onClick={() => { soundManager.play("tab_switch"); setActiveTab("manual"); }}
               className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-colors ${
                 activeTab === "manual"
-                  ? "bg-slate-800 text-white"
-                  : "bg-gray-100 text-gray-500 hover:text-gray-700 hover:bg-gray-200"
+                  ? "bg-red-600 text-white"
+                  : "bg-[#2a2a3e] text-gray-400 hover:text-gray-200"
               }`}
             >
               manual
@@ -428,13 +428,13 @@ const BotConnectModal = ({ onClose }) => {
             <p className="text-gray-500 text-xs mb-2 uppercase tracking-wide font-semibold">
               {activeTab === "molthub" ? "Copy this command to your agent" : "Send this to your agent"}
             </p>
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 relative group">
-              <pre className="text-gray-800 text-sm font-mono whitespace-pre-wrap break-all pr-16">
+            <div className="bg-[#0f0f0f] border border-[#333] rounded-lg p-3 relative group">
+              <pre className="text-emerald-400 text-sm font-mono whitespace-pre-wrap break-all pr-16">
                 {activeTab === "molthub" ? npxCommand : manualText}
               </pre>
               <button
                 onClick={() => copyText(activeTab === "molthub" ? npxCommand : manualText, "cmd")}
-                className="absolute top-2 right-2 bg-gray-200 hover:bg-gray-300 text-gray-600 rounded px-2.5 py-1 text-xs transition-colors"
+                className="absolute top-2 right-2 bg-[#2a2a3e] hover:bg-[#3a3a4e] text-gray-300 rounded px-2.5 py-1 text-xs transition-colors"
               >
                 {copied === "cmd" ? "Copied!" : "Copy"}
               </button>
@@ -445,20 +445,20 @@ const BotConnectModal = ({ onClose }) => {
           <div className="space-y-3 mb-5">
             <div className="flex items-start gap-3">
               <span className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-800 text-white text-xs font-bold flex items-center justify-center mt-0.5">1</span>
-              <p className="text-gray-700 text-sm">Send this to your agent</p>
+              <p className="text-gray-300 text-sm">Send this to your agent</p>
             </div>
             <div className="flex items-start gap-3">
               <span className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-800 text-white text-xs font-bold flex items-center justify-center mt-0.5">2</span>
-              <p className="text-gray-700 text-sm">They sign up & send you a claim link</p>
+              <p className="text-gray-300 text-sm">They sign up & send you a claim link</p>
             </div>
             <div className="flex items-start gap-3">
               <span className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-800 text-white text-xs font-bold flex items-center justify-center mt-0.5">3</span>
-              <p className="text-gray-700 text-sm">Tweet to verify ownership</p>
+              <p className="text-gray-300 text-sm">Tweet to verify ownership</p>
             </div>
           </div>
 
           {/* Footer link */}
-          <div className="border-t border-gray-100 pt-4 flex items-center justify-between">
+          <div className="border-t border-[#333] pt-4 flex items-center justify-between">
             <p className="text-xs text-gray-400 font-mono">molts.land/skill.md</p>
             <button
               onClick={() => copyText("https://molts.land/skill.md", "docs")}

@@ -4,7 +4,7 @@ import { useProgress } from "@react-three/drei";
 import { useAtom } from "jotai";
 import { useEffect, useState, useRef } from "react";
 import { Experience } from "./components/Experience";
-import { Loader } from "./components/Loader";
+import { Loader, BubblesBackground } from "./components/Loader";
 import {
   SocketManager,
   itemsAtom,
@@ -93,16 +93,19 @@ function App() {
       {loaded && <Minimap />}
       {loaded && <AudioSettingsPanel />}
       {loaded && showWelcome && (
-        <WelcomeModal
-          onChoice={(choice, name) => {
-            localStorage.setItem("clawland_role", choice);
-            if (name) {
-              localStorage.setItem("clawland_username", name);
-              setUsername(name);
-            }
-            setShowWelcome(false);
-          }}
-        />
+        <>
+          <BubblesBackground />
+          <WelcomeModal
+            onChoice={(choice, name) => {
+              localStorage.setItem("clawland_role", choice);
+              if (name) {
+                localStorage.setItem("clawland_username", name);
+                setUsername(name);
+              }
+              setShowWelcome(false);
+            }}
+          />
+        </>
       )}
     </>
   );

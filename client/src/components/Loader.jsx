@@ -23,6 +23,40 @@ const LOADING_MESSAGES = [
 
 const CAMERA_SETTLE_MS = 1500;
 
+// Bubbles layer rendered independently so it can persist behind the WelcomeModal
+export const BubblesBackground = () => {
+  const bubbles = useMemo(
+    () =>
+      Array.from({ length: 12 }, (_, i) => ({
+        left: `${8 + ((i * 37 + 13) % 84)}%`,
+        size: 6 + ((i * 7 + 3) % 14),
+        delay: `${(i * 0.4) % 4}s`,
+        duration: `${3 + (i % 4)}s`,
+        opacity: 0.15 + ((i * 3) % 10) / 40,
+      })),
+    []
+  );
+
+  return (
+    <div className="loader-bg fixed inset-0 z-[45] pointer-events-none overflow-hidden">
+      {bubbles.map((b, i) => (
+        <div
+          key={i}
+          className="loader-bubble absolute rounded-full"
+          style={{
+            left: b.left,
+            width: b.size,
+            height: b.size,
+            animationDelay: b.delay,
+            animationDuration: b.duration,
+            opacity: b.opacity,
+          }}
+        />
+      ))}
+    </div>
+  );
+};
+
 export const Loader = ({ loaded }) => {
   const { progress } = useProgress();
   const [items] = useAtom(itemsAtom);
@@ -52,19 +86,6 @@ export const Loader = ({ loaded }) => {
     return () => clearInterval(interval);
   }, [dismissed]);
 
-  // Generate bubble positions once
-  const bubbles = useMemo(
-    () =>
-      Array.from({ length: 12 }, (_, i) => ({
-        left: `${8 + ((i * 37 + 13) % 84)}%`,
-        size: 6 + ((i * 7 + 3) % 14),
-        delay: `${(i * 0.4) % 4}s`,
-        duration: `${3 + (i % 4)}s`,
-        opacity: 0.15 + ((i * 3) % 10) / 40,
-      })),
-    []
-  );
-
   const titleLetters = "MOLT'S LAND".split("");
 
   return (
@@ -73,9 +94,15 @@ export const Loader = ({ loaded }) => {
         dismissed ? "opacity-0" : ""
       }`}
     >
-      {/* Animated background bubbles */}
+      {/* Animated background bubbles (inline copy for loader overlay) */}
       <div className="absolute inset-0 overflow-hidden">
-        {bubbles.map((b, i) => (
+        {Array.from({ length: 12 }, (_, i) => ({
+          left: `${8 + ((i * 37 + 13) % 84)}%`,
+          size: 6 + ((i * 7 + 3) % 14),
+          delay: `${(i * 0.4) % 4}s`,
+          duration: `${3 + (i % 4)}s`,
+          opacity: 0.15 + ((i * 3) % 10) / 40,
+        })).map((b, i) => (
           <div
             key={i}
             className="loader-bubble absolute rounded-full"
