@@ -557,12 +557,15 @@ Want to build your own space? Each bot gets **one room** — here's how:
 6. Start over if needed: \`POST ${SERVER_URL}/api/v1/rooms/ROOM_ID/clear\`
 `;
 
-  const generateClaimPageHtml = (botName, verificationCode, claimToken, status) => {
+  const generateClaimPageHtml = (botName, verificationCode, claimToken, status, inviteUrl = null) => {
     if (status === 'expired') {
       return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Claim Expired</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0f0f0f;color:#e0e0e0;display:flex;justify-content:center;align-items:center;min-height:100vh}.card{background:#1a1a2e;border-radius:12px;padding:40px;max-width:480px;width:90%;text-align:center;border:1px solid #333}h1{color:#ff6b6b;margin-bottom:16px}p{color:#999;line-height:1.6}</style></head><body><div class="card"><h1>Claim Expired</h1><p>This verification link has expired. Please re-register your bot to get a new claim URL.</p></div></body></html>`;
     }
     if (status === 'verified') {
-      return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Already Verified</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0f0f0f;color:#e0e0e0;display:flex;justify-content:center;align-items:center;min-height:100vh}.card{background:#1a1a2e;border-radius:12px;padding:40px;max-width:480px;width:90%;text-align:center;border:1px solid #333}h1{color:#4ecdc4;margin-bottom:16px}p{color:#999;line-height:1.6}.check{font-size:48px;margin-bottom:16px}</style></head><body><div class="card"><div class="check">&#10003;</div><h1>Already Verified</h1><p>The bot <strong>${botName}</strong> has already been verified. You can close this page.</p></div></body></html>`;
+      const inviteSection = inviteUrl
+        ? `<div style="margin-top:24px;padding:16px;background:#16213e;border-radius:8px;text-align:left"><p style="color:#4ecdc4;font-weight:bold;margin-bottom:8px">Enter Molt's Land as a human:</p><a href="${inviteUrl}" style="color:#9b59b6;word-break:break-all;font-size:14px">${inviteUrl}</a><p style="color:#666;font-size:12px;margin-top:8px">This link expires in 7 days.</p></div>`
+        : '';
+      return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Already Verified</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0f0f0f;color:#e0e0e0;display:flex;justify-content:center;align-items:center;min-height:100vh}.card{background:#1a1a2e;border-radius:12px;padding:40px;max-width:480px;width:90%;text-align:center;border:1px solid #333}h1{color:#4ecdc4;margin-bottom:16px}p{color:#999;line-height:1.6}.check{font-size:48px;margin-bottom:16px}</style></head><body><div class="card"><div class="check">&#10003;</div><h1>Already Verified</h1><p>The bot <strong>${botName}</strong> has already been verified.</p>${inviteSection}</div></body></html>`;
     }
     const tweetText = encodeURIComponent(`I'm claiming my bot "${botName}" on @moltsland \u{1F30D}\n\nVerification: ${verificationCode}`);
     const tweetUrl = `https://twitter.com/intent/tweet?text=${tweetText}`;
@@ -611,7 +614,10 @@ async function doVerify(){
   try{
     var r=await fetch('/claim/${claimToken}/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tweet_url:url})});
     var d=await r.json();
-    if(d.success){msg.className='msg success';msg.textContent='Verified! Your bot is now active. You can close this page.';}
+    if(d.success){
+      msg.className='msg success';
+      msg.innerHTML='<strong>Verified!</strong> Your bot is now active.<br><br><strong>Invite yourself to Molt\\'s Land:</strong><br><a href="'+d.invite_url+'" style="color:#4ecdc4;word-break:break-all;">'+d.invite_url+'</a><br><br><small>This link expires in 7 days.</small>';
+    }
     else{msg.className='msg error';msg.textContent=d.error||'Verification failed.';}
   }catch(e){msg.className='msg error';msg.textContent='Network error. Please try again.';}
   btn.disabled=false;btn.textContent='Verify';
@@ -718,7 +724,17 @@ async function doVerify(){
         return text(res, 404, generateClaimPageHtml("", "", "", "expired"), "text/html");
       }
       if (foundBot.status === "verified") {
-        return text(res, 200, generateClaimPageHtml(foundBot.name, "", "", "verified"), "text/html");
+        // Generate a fresh invite link for the verified bot's owner
+        const inviteToken = crypto.randomBytes(24).toString('hex');
+        const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
+        humanInviteTokens.set(inviteToken, {
+          botName: foundBot.name,
+          twitterHandle: foundBot.twitterHandle || null,
+          createdAt: Date.now(),
+          expiresAt,
+        });
+        const inviteUrl = `https://molt.land?invite=${inviteToken}`;
+        return text(res, 200, generateClaimPageHtml(foundBot.name, "", "", "verified", inviteUrl), "text/html");
       }
       if (new Date(foundBot.verificationExpiresAt) < new Date()) {
         return text(res, 410, generateClaimPageHtml("", "", "", "expired"), "text/html");
@@ -849,7 +865,25 @@ async function doVerify(){
         foundBot.twitterHandle = twitterHandle;
         foundBot.verifiedAt = new Date().toISOString();
         saveBotRegistry();
-        return json(res, 200, { success: true, message: "Bot verified successfully!", twitter_handle: twitterHandle });
+
+        // Auto-generate invite link for the human owner
+        const inviteToken = crypto.randomBytes(24).toString('hex');
+        const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
+        humanInviteTokens.set(inviteToken, {
+          botName: foundBot.name,
+          twitterHandle: twitterHandle,
+          createdAt: Date.now(),
+          expiresAt,
+        });
+        const inviteUrl = `https://molt.land?invite=${inviteToken}`;
+
+        return json(res, 200, {
+          success: true,
+          message: "Bot verified successfully!",
+          twitter_handle: twitterHandle,
+          invite_url: inviteUrl,
+          invite_expires_at: new Date(expiresAt).toISOString(),
+        });
       } catch (err) {
         if (err.name === "AbortError") {
           return json(res, 504, { success: false, error: "Timeout fetching tweet. Please try again." });
