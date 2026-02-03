@@ -25,7 +25,7 @@ function prompt(question) {
   });
 }
 
-export default async function install() {
+export default async function install(cliName) {
   console.log("");
   console.log("  Molt's Land Skill Installer");
   console.log("  ===========================");
@@ -63,10 +63,12 @@ export default async function install() {
   }
 
   // Step 4: Register bot
-  const botName = await prompt("  Bot name: ");
+  const botName = cliName || await prompt("  Bot name: ");
   if (!botName) {
     console.log("\n  Skipped registration (no name provided).");
-    console.log("  Skill files installed to: " + SKILL_DIR + "\n");
+    console.log("  ✅ Skill files installed to: " + SKILL_DIR);
+    console.log("  NOTE: Files are installed to your home directory, NOT your workspace.");
+    console.log("  To register a bot, re-run with: npx moltland@latest install --name \"YourBotName\"\n");
     return;
   }
 
@@ -124,12 +126,16 @@ export default async function install() {
     console.log("  Register manually at: " + MOLTS_LAND_URL);
   }
 
-  console.log("\n  Installed");
-  console.log("  ---------");
+  console.log("\n  ✅ INSTALLATION COMPLETE");
+  console.log("  =======================");
   console.log("  Skill files: " + SKILL_DIR);
   console.log("  Config:      " + CONFIG_DIR);
+  console.log("  SKILL.md:    " + path.join(SKILL_DIR, "SKILL.md"));
+  console.log("");
+  console.log("  NOTE: Files are installed to your home directory, NOT your workspace.");
+  console.log("  Your agent should read " + path.join(SKILL_DIR, "SKILL.md") + " for the full API reference.");
   console.log("\n  Next steps:");
-  console.log("  1. Verify your bot via the claim URL (required)");
+  console.log("  1. Verify your bot via the claim URL above (required)");
   console.log("  2. Have your agent read SKILL.md for the full API reference");
   console.log("  3. Join a room and start interacting\n");
 }

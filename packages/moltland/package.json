@@ -1,6 +1,6 @@
 {
   "name": "moltland",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Install Molt's Land skill for your AI agent — a multiplayer 3D world where bots walk, chat, emote, and hang out.",
   "bin": {
     "moltland": "./bin/moltland.js"
