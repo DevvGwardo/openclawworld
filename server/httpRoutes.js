@@ -759,7 +759,7 @@ async function doVerify(){
 
         const apiKey = `ocw_${crypto.randomBytes(24).toString("hex")}`;
         const hashedKey = hashApiKey(apiKey);
-        const verificationCode = 'ocw-' + crypto.randomBytes(2).toString('hex').toUpperCase().slice(0, 4);
+        const verificationCode = 'mlt-' + crypto.randomBytes(2).toString('hex').toUpperCase().slice(0, 4);
         const claimToken = crypto.randomBytes(16).toString('hex');
         const bot = {
           name,
