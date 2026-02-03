@@ -43,6 +43,12 @@ export function registerSocketHandlers(deps) {
     moltbookSystem,
     tryPlaceItemInRoom,
     _prevMotiveBuckets,
+    initObjectives,
+    trackDaily,
+    checkRoomGoals,
+    checkBondMilestones,
+    objectivesPayload,
+    cleanupObjectives,
     getCachedRoom,
     getAllCachedRooms,
     getOrLoadRoom,
@@ -75,6 +81,18 @@ export function registerSocketHandlers(deps) {
       if (botAuthKey && botRegistry.has(botAuthKey)) {
         socket.data.officialBotKey = botAuthKey;
       }
+
+      // Helper: process completed objectives (award coins + emit events)
+      const handleObjectiveCompletions = (completions) => {
+        for (const obj of completions) {
+          updateCoins(socket.id, obj.reward, io);
+          socket.emit("objectives:complete", obj);
+        }
+        if (completions.length > 0) {
+          const payload = objectivesPayload(socket.id);
+          if (payload) socket.emit("objectives:progress", payload);
+        }
+      };
 
       // Send welcome with room list
       const welcomeRooms = isDbAvailable()
@@ -163,6 +181,14 @@ export function registerSocketHandlers(deps) {
           roomName: room.name,
         });
         onRoomUpdate();
+
+        // Initialize objectives for this session
+        initObjectives(socket.id);
+        socket.emit("objectives:init", objectivesPayload(socket.id));
+        // Check room goals against existing items
+        if (room.items.length > 0) {
+          handleObjectiveCompletions(checkRoomGoals(socket.id, room.items));
+        }
       });
 
       socket.on("observeRoom", () => {
@@ -343,6 +369,13 @@ export function registerSocketHandlers(deps) {
           roomName: room.name,
         });
         onRoomUpdate();
+
+        // Re-initialize objectives on room switch
+        initObjectives(socket.id);
+        socket.emit("objectives:init", objectivesPayload(socket.id));
+        if (room.items.length > 0) {
+          handleObjectiveCompletions(checkRoomGoals(socket.id, room.items));
+        }
       });
 
       socket.on("characterAvatarUpdate", (avatarUrl) => {
@@ -453,6 +486,9 @@ export function registerSocketHandlers(deps) {
           seatRotation: spot.seatRotation,
           itemIndex,
         });
+
+        // Track sit objective
+        handleObjectiveCompletions(trackDaily(socket.id, "sits", item.name));
       });
 
       socket.on("move", (from, to) => {
@@ -530,6 +566,9 @@ export function registerSocketHandlers(deps) {
           state: cleanState,
           motives: character.motives,
         });
+
+        // Track object use objective
+        handleObjectiveCompletions(trackDaily(socket.id, "objects_used", itemName));
       });
 
       socket.on("interaction:cancel", () => {
@@ -617,8 +656,24 @@ export function registerSocketHandlers(deps) {
             if (maxLevel && bond.score === BOND_LEVELS[BOND_LEVELS.length - 1].threshold) {
               io.to(room.id).emit("bondFormed", { nameA: senderName, nameB: targetName });
             }
+            // Check bond milestones for both sender and target
+            handleObjectiveCompletions(checkBondMilestones(socket.id, level));
+            if (targetSocket) {
+              const targetCompletions = checkBondMilestones(targetId, level);
+              for (const obj of targetCompletions) {
+                updateCoins(targetId, obj.reward, io);
+                io.to(targetId).emit("objectives:complete", obj);
+              }
+              if (targetCompletions.length > 0) {
+                const payload = objectivesPayload(targetId);
+                if (payload) io.to(targetId).emit("objectives:progress", payload);
+              }
+            }
           }
         }
+
+        // Track wave objective for sender
+        handleObjectiveCompletions(trackDaily(socket.id, "wave_targets", targetName));
       });
 
       // Bond system - query bond info
@@ -673,6 +728,14 @@ export function registerSocketHandlers(deps) {
           id: socket.id,
           message,
         });
+
+        // Track chat objective — count unique other characters in room
+        const chatCompletions = [];
+        for (const c of room.characters) {
+          if (c.id === socket.id || !c.name) continue;
+          chatCompletions.push(...trackDaily(socket.id, "chat_targets", c.name));
+        }
+        handleObjectiveCompletions(chatCompletions);
       });
 
       // Search users across all rooms (for invite feature)
@@ -1104,6 +1167,10 @@ export function registerSocketHandlers(deps) {
         persistRooms(room);
         // Check quest completion
         checkQuestCompletion(socket.id, room, io);
+
+        // Track items placed + room goals
+        handleObjectiveCompletions(trackDaily(socket.id, "items_placed"));
+        handleObjectiveCompletions(checkRoomGoals(socket.id, room.items));
       });
 
       // Bot-initiated single item placement (LLM bots)
@@ -1190,6 +1257,19 @@ export function registerSocketHandlers(deps) {
         room.characters.forEach(c => {
           if (!c.isBot) checkQuestCompletion(c.id, room, io);
         });
+
+        // Check room goals for all players in the room
+        room.characters.forEach(c => {
+          const roomCompletions = checkRoomGoals(c.id, room.items);
+          for (const obj of roomCompletions) {
+            updateCoins(c.id, obj.reward, io);
+            io.to(c.id).emit("objectives:complete", obj);
+          }
+          if (roomCompletions.length > 0) {
+            const payload = objectivesPayload(c.id);
+            if (payload) io.to(c.id).emit("objectives:progress", payload);
+          }
+        });
       });
 
       socket.on("disconnect", () => {
@@ -1197,6 +1277,7 @@ export function registerSocketHandlers(deps) {
         unsitCharacter(room, socket.id, broadcastToRoom);
         playerCoins.delete(socket.id);
         _prevMotiveBuckets.delete(socket.id);
+        cleanupObjectives(socket.id);
         // Clean up active quests for this player
         for (const [key, val] of activeQuests) {
           if (val.socketId === socket.id) activeQuests.delete(key);

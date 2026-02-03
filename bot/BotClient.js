@@ -140,6 +140,14 @@ export class BotClient extends EventEmitter {
         this.emit("interactError", data);
       });
 
+      this.socket.on("objectives:init", (data) => {
+        this.emit("objectivesInit", data);
+      });
+
+      this.socket.on("objectives:progress", (data) => {
+        this.emit("objectivesProgress", data);
+      });
+
       this.socket.on("disconnect", () => {
         this.emit("disconnected");
       });

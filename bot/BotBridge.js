@@ -176,6 +176,14 @@ export class BotBridge {
       this._perception.onMotivesUpdate(data);
     });
 
+    // Track objectives
+    this._botClient.on("objectivesInit", (data) => {
+      this._perception.onObjectivesUpdate(data);
+    });
+    this._botClient.on("objectivesProgress", (data) => {
+      this._perception.onObjectivesUpdate(data);
+    });
+
     // Handle error events from server
     this._botClient.on("moveError", (data) => {
       this._log.warn({ error: data?.error }, "Move blocked by server");

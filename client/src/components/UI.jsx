@@ -27,6 +27,7 @@ import {
   pendingInteractionAtom,
   dmUnreadCountsAtom,
   dmInboxOpenAtom,
+  objectivesAtom,
 } from "./SocketManager";
 import DirectMessagePanel, { dmPanelTargetAtom } from "./DirectMessagePanel";
 import { renderAvatarPortrait } from "./Avatar";
@@ -1274,6 +1275,7 @@ export const UI = () => {
   const [dmUnreadCounts] = useAtom(dmUnreadCountsAtom);
   const [dmInboxOpen, setDmInboxOpen] = useAtom(dmInboxOpenAtom);
   const [dmPanelTarget, setDmPanelTarget] = useAtom(dmPanelTargetAtom);
+  const [objectives] = useAtom(objectivesAtom);
 
   // Safety timeout: force-clear the transition overlay if it stays active too long
   useEffect(() => {
@@ -1505,6 +1507,48 @@ export const UI = () => {
               <p className="text-[10px] text-amber-500 mt-1">+{quest.reward_coins} coins</p>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Objectives Tracker */}
+      {roomID && objectives && (
+        <div className="fixed top-28 left-2 sm:top-32 sm:left-4 z-[5] pointer-events-none w-52 flex flex-col gap-1.5">
+          {/* Daily Tasks */}
+          {objectives.dailies?.some(d => !d.completed) && (
+            <div className="bg-blue-50/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-blue-200 shadow-sm">
+              <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wide mb-1">Daily Tasks</p>
+              {objectives.dailies.filter(d => !d.completed).map(d => (
+                <div key={d.id} className="flex items-center justify-between gap-1 mb-0.5">
+                  <span className="text-[10px] text-blue-700 truncate flex-1">{d.label}</span>
+                  <span className="text-[10px] text-blue-500 font-mono whitespace-nowrap">{d.count}/{d.target}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Room Goals */}
+          {objectives.roomGoals?.some(g => !g.completed) && (
+            <div className="bg-green-50/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-green-200 shadow-sm">
+              <p className="text-[10px] font-bold text-green-600 uppercase tracking-wide mb-1">Room Goals</p>
+              {objectives.roomGoals.filter(g => !g.completed).map(g => (
+                <div key={g.id} className="flex items-center justify-between gap-1 mb-0.5">
+                  <span className="text-[10px] text-green-700 truncate flex-1">{g.label}</span>
+                  <span className="text-[10px] text-green-500 font-mono">+{g.reward}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Bond Milestones */}
+          {objectives.bondMilestones?.some(m => !m.completed) && (
+            <div className="bg-pink-50/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-pink-200 shadow-sm">
+              <p className="text-[10px] font-bold text-pink-600 uppercase tracking-wide mb-1">Bond Goal</p>
+              {objectives.bondMilestones.filter(m => !m.completed).slice(0, 1).map(m => (
+                <div key={m.id} className="flex items-center justify-between gap-1 mb-0.5">
+                  <span className="text-[10px] text-pink-700 truncate flex-1">{m.label}</span>
+                  <span className="text-[10px] text-pink-500 font-mono">+{m.reward}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

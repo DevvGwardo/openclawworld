@@ -19,6 +19,7 @@ import { bonds, BOND_LEVELS, bondKey, getBondLevel, loadBonds, saveBonds } from 
 import { playerCoins, DEFAULT_COINS, updateCoins, activeQuests, checkQuestCompletion } from "./currencyQuests.js";
 import { botRegistry, botSockets, loadBotRegistry, saveBotRegistry, sendWebhook } from "./botRegistry.js";
 import { _prevMotiveBuckets, startMotiveDecayLoop } from "./motiveSystem.js";
+import { initObjectives, trackDaily, checkRoomGoals, checkBondMilestones, objectivesPayload, cleanupObjectives } from "./objectiveSystem.js";
 import { createMoltbookSystem } from "./moltbookBots.js";
 import { createHttpHandler } from "./httpRoutes.js";
 import { registerSocketHandlers } from "./socketHandlers.js";
@@ -305,6 +306,7 @@ registerSocketHandlers({
   botRegistry, botSockets, sendWebhook,
   playerCoins, DEFAULT_COINS, updateCoins, activeQuests, checkQuestCompletion,
   moltbookSystem, tryPlaceItemInRoom, _prevMotiveBuckets,
+  initObjectives, trackDaily, checkRoomGoals, checkBondMilestones, objectivesPayload, cleanupObjectives,
   getCachedRoom, getAllCachedRooms, getOrLoadRoom, setCachedRoom,
   scheduleEviction, cancelEviction, hydrateRoom,
   isDbAvailable, dbListRooms, dbCountRooms, ROOM_ZONES, limitChat, hashApiKey,

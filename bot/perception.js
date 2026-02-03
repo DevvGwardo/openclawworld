@@ -40,6 +40,9 @@ export class PerceptionModule {
     this._characterStates = new Map();   // id -> interactionState or null
     this._ownMotives = null;             // own motives (set via stateChange/motivesUpdate)
     this._ownInteractionState = null;    // own interaction state
+
+    // Objectives tracking
+    this._objectives = null;             // { dailies, roomGoals, bondMilestones }
   }
 
   /** Set or update the owner name at runtime. */
@@ -170,6 +173,14 @@ export class PerceptionModule {
   }
 
   /**
+   * Handle objectives:init or objectives:progress events.
+   * @param {object} data - { dailies, roomGoals, bondMilestones }
+   */
+  onObjectivesUpdate(data) {
+    if (data) this._objectives = data;
+  }
+
+  /**
    * Record an action the bot itself performed.
    * @param {{ type: string, [key: string]: any }} action
    */
@@ -288,6 +299,7 @@ export class PerceptionModule {
       availableRooms,
       owner,
       invitedBy: this._bot.invitedBy || null,
+      objectives: this._objectives,
       timestamp: now,
     };
   }
@@ -425,6 +437,27 @@ export class PerceptionModule {
       if (unclaimed.length > 0) {
         const parts = unclaimed.map(r => `${r.id}`);
         lines.push(`[Unclaimed apartments] ${parts.join(', ')} (${snap.availableRooms.filter(r => r.generated && !r.claimedBy).length} total available)`);
+      }
+    }
+
+    // Objectives
+    if (snap.objectives) {
+      const obj = snap.objectives;
+      if (obj.dailies && obj.dailies.length > 0) {
+        const parts = obj.dailies
+          .filter(d => !d.completed)
+          .map(d => `${d.label} (${d.count}/${d.target}, +${d.reward} coins)`);
+        if (parts.length > 0) lines.push(`[Objectives - Daily] ${parts.join(', ')}`);
+      }
+      if (obj.roomGoals && obj.roomGoals.length > 0) {
+        const parts = obj.roomGoals
+          .filter(g => !g.completed)
+          .map(g => `${g.label} (+${g.reward} coins)`);
+        if (parts.length > 0) lines.push(`[Objectives - Room] ${parts.join(', ')}`);
+      }
+      if (obj.bondMilestones && obj.bondMilestones.length > 0) {
+        const next = obj.bondMilestones.find(m => !m.completed);
+        if (next) lines.push(`[Objectives - Bond] ${next.label} (+${next.reward} coins)`);
       }
     }
 

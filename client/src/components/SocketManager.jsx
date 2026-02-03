@@ -34,6 +34,7 @@ export const roomTransitionAtom = atom({ active: false, from: null, to: null, st
 // Pending interaction: set by UI, consumed by Avatar.jsx when path completes
 // { itemName: string } | null
 export const pendingInteractionAtom = atom(null);
+export const objectivesAtom = atom(null);
 
 // Shared ref for the local player's live world position during movement.
 // Written by Avatar.jsx every frame, read by Minimap.jsx for smooth tracking.
@@ -113,6 +114,7 @@ export const SocketManager = () => {
   const [_characterMotives, setCharacterMotives] = useAtom(characterMotivesAtom);
   const [_characterInteractionStates, setCharacterInteractionStates] = useAtom(characterInteractionStatesAtom);
   const [_roomTransition, setRoomTransition] = useAtom(roomTransitionAtom);
+  const [_objectives, setObjectives] = useAtom(objectivesAtom);
 
   const charactersRef = useRef([]);
   useEffect(() => { charactersRef.current = _characters; }, [_characters]);
@@ -668,6 +670,25 @@ export const SocketManager = () => {
       setCharacterMotives((prev) => ({ ...prev, [value.id]: value.motives }));
     }
 
+    function onObjectivesInit(value) {
+      setObjectives(value);
+    }
+
+    function onObjectivesProgress(value) {
+      setObjectives(value);
+    }
+
+    function onObjectivesComplete(value) {
+      if (!value) return;
+      soundManager.play("quest_complete");
+      setQuestNotifications((prev) => [...prev.slice(-5), {
+        id: `obj-${Date.now()}`,
+        title: value.label,
+        reward: value.reward,
+        timestamp: Date.now(),
+      }]);
+    }
+
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
     socket.on("roomJoined", onRoomJoined);
@@ -708,6 +729,9 @@ export const SocketManager = () => {
     socket.on("roomInvite", onRoomInvite);
     socket.on("character:stateChange", onCharacterStateChange);
     socket.on("motives:update", onMotivesUpdate);
+    socket.on("objectives:init", onObjectivesInit);
+    socket.on("objectives:progress", onObjectivesProgress);
+    socket.on("objectives:complete", onObjectivesComplete);
     return () => {
       clearTimeout(flushTimerRef.current);
       flushTimerRef.current = null;
@@ -751,6 +775,9 @@ export const SocketManager = () => {
       socket.off("roomInvite", onRoomInvite);
       socket.off("character:stateChange", onCharacterStateChange);
       socket.off("motives:update", onMotivesUpdate);
+      socket.off("objectives:init", onObjectivesInit);
+      socket.off("objectives:progress", onObjectivesProgress);
+      socket.off("objectives:complete", onObjectivesComplete);
     };
   }, []);
 };
