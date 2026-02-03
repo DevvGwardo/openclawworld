@@ -32,7 +32,7 @@ function createMoltbookSystem(deps) {
 
   // --- Moltbook Virtual Bots: fetch posts and spawn them as live characters ---
   const MOLTBOOK_API = "https://www.moltbook.com/api/v1/posts";
-  const MOLTBOOK_BOT_COUNT = 500;
+  const MOLTBOOK_BOT_COUNT = 50;
   const MOLTBOOK_REFRESH_INTERVAL = 30_000; // fetch new data & cull stale bots every 30s
   const MOLTBOOK_TICK_INTERVAL = 4_000; // bots act every 4 seconds
   const MOLTBOOK_MAX_ACTIONS_PER_TICK = 20; // cap bot actions per tick to limit broadcast storm
