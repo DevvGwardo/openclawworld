@@ -35,6 +35,15 @@ export const loadBotRegistry = () => {
         botRegistry.set(key, value);
       }
     }
+    // Purge expired pending bots
+    const now = new Date();
+    for (const [key, value] of botRegistry) {
+      if (value.status === "pending" && value.verificationExpiresAt && new Date(value.verificationExpiresAt) < now) {
+        botRegistry.delete(key);
+        migrated = true;
+        console.log(`Purged expired pending bot: ${value.name}`);
+      }
+    }
     if (migrated) saveBotRegistry();
     console.log(`Loaded ${botRegistry.size} registered bots`);
   } catch {
