@@ -56,7 +56,7 @@ export function initObjectives(socketId) {
     completed: false,
   }));
 
-  const state = { dailies, roomGoals, bondMilestones };
+  const state = { dailies, roomGoals, bondMilestones, placedItems: new Set() };
   objectivesState.set(socketId, state);
   return state;
 }
@@ -92,21 +92,23 @@ export function trackDaily(socketId, trackKey, uniqueValue) {
 }
 
 /**
- * Check room goals against current room items.
+ * Track a placed item and check room goals against items the player placed this session.
  * @param {string} socketId
- * @param {Array} roomItems - array of { name, ... }
+ * @param {string} itemName - the name of the item the player just placed
  * @returns {Array} newly completed objectives
  */
-export function checkRoomGoals(socketId, roomItems) {
+export function checkRoomGoals(socketId, itemName) {
   const state = objectivesState.get(socketId);
   if (!state) return [];
 
-  const itemNames = new Set(roomItems.map(i => i.name));
+  // Track the item the player placed
+  state.placedItems.add(itemName);
+
   const completed = [];
 
   for (const goal of state.roomGoals) {
     if (goal.completed) continue;
-    const hasMatch = goal.match.some(m => itemNames.has(m));
+    const hasMatch = goal.match.some(m => state.placedItems.has(m));
     if (hasMatch) {
       goal.completed = true;
       completed.push({ id: goal.id, label: goal.label, reward: goal.reward, type: "room" });

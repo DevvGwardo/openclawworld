@@ -185,10 +185,6 @@ export function registerSocketHandlers(deps) {
         // Initialize objectives for this session
         initObjectives(socket.id);
         socket.emit("objectives:init", objectivesPayload(socket.id));
-        // Check room goals against existing items
-        if (room.items.length > 0) {
-          handleObjectiveCompletions(checkRoomGoals(socket.id, room.items));
-        }
       });
 
       socket.on("observeRoom", () => {
@@ -373,9 +369,6 @@ export function registerSocketHandlers(deps) {
         // Re-initialize objectives on room switch
         initObjectives(socket.id);
         socket.emit("objectives:init", objectivesPayload(socket.id));
-        if (room.items.length > 0) {
-          handleObjectiveCompletions(checkRoomGoals(socket.id, room.items));
-        }
       });
 
       socket.on("characterAvatarUpdate", (avatarUrl) => {
@@ -1168,9 +1161,11 @@ export function registerSocketHandlers(deps) {
         // Check quest completion
         checkQuestCompletion(socket.id, room, io);
 
-        // Track items placed + room goals
+        // Track items placed + room goals (check each item the player saved)
         handleObjectiveCompletions(trackDaily(socket.id, "items_placed"));
-        handleObjectiveCompletions(checkRoomGoals(socket.id, room.items));
+        for (const item of items) {
+          handleObjectiveCompletions(checkRoomGoals(socket.id, item.name));
+        }
       });
 
       // Bot-initiated single item placement (LLM bots)
@@ -1258,18 +1253,8 @@ export function registerSocketHandlers(deps) {
           if (!c.isBot) checkQuestCompletion(c.id, room, io);
         });
 
-        // Check room goals for all players in the room
-        room.characters.forEach(c => {
-          const roomCompletions = checkRoomGoals(c.id, room.items);
-          for (const obj of roomCompletions) {
-            updateCoins(c.id, obj.reward, io);
-            io.to(c.id).emit("objectives:complete", obj);
-          }
-          if (roomCompletions.length > 0) {
-            const payload = objectivesPayload(c.id);
-            if (payload) io.to(c.id).emit("objectives:progress", payload);
-          }
-        });
+        // Check room goals for the bot that placed the item
+        handleObjectiveCompletions(checkRoomGoals(socket.id, itemName));
       });
 
       socket.on("disconnect", () => {
