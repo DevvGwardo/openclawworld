@@ -14,6 +14,7 @@ import { Apartment } from "./Apartment";
 import { ShopBuilding } from "./ShopBuilding";
 import { SmallBuilding } from "./SmallBuilding";
 import { Skyscraper } from "./Skyscraper";
+import { BulletinBoard } from "./BulletinBoard";
 import { avatarUrlAtom, mapAtom, roomIDAtom, roomsAtom, roomTransitionAtom, socket } from "./SocketManager";
 import { Tablet } from "./Tablet";
 let firstLoad = true;
@@ -186,6 +187,9 @@ export const Lobby = () => {
 
         {/* Town Hall - center back, the main building */}
         <TownHall scale={3.0} position={[0, 0, -2]} />
+
+        {/* Bulletin Board - in front of Town Hall */}
+        <BulletinBoard position={[0, 0, 0.5]} scale={1.4} />
 
         {/* Apartment building - left side */}
         <group position={[-5, 0, -1]}>
