@@ -46,26 +46,61 @@ function App() {
   const soundInitRef = useRef(false);
   const [inviteData, setInviteData] = useState(null); // { botName, twitterHandle } if valid invite
 
-  // Check for invite token in URL
+  // Check for invite token in URL or restore from localStorage
   useEffect(() => {
+    // Already onboarded - no need to check invites
+    if (localStorage.getItem("clawland_onboarded_v2")) return;
+
+    const apiBase = import.meta.env.VITE_API_URL || "https://api.molts.land";
     const params = new URLSearchParams(window.location.search);
-    const inviteToken = params.get("invite");
-    if (inviteToken && !localStorage.getItem("clawland_onboarded_v2")) {
-      // Validate the invite token
-      const apiBase = import.meta.env.VITE_API_URL || "https://api.molts.land";
-      fetch(`${apiBase}/api/v1/invites/${inviteToken}/validate`)
+    const urlInviteToken = params.get("invite");
+
+    // Helper to validate and set invite data
+    const validateAndSetInvite = (token) => {
+      return fetch(`${apiBase}/api/v1/invites/${token}/validate`)
         .then((r) => r.json())
         .then((data) => {
           if (data.success) {
+            // Save to localStorage for future returns
+            localStorage.setItem(
+              "clawland_pendingInvite",
+              JSON.stringify({
+                token,
+                botName: data.bot_name,
+                twitterHandle: data.twitter_handle,
+              })
+            );
             setInviteData({
               botName: data.bot_name,
               twitterHandle: data.twitter_handle,
             });
+            return true;
           }
+          // Invalid - clear any stale localStorage
+          localStorage.removeItem("clawland_pendingInvite");
+          return false;
         })
         .catch(() => {
-          // Invalid token, show normal welcome
+          localStorage.removeItem("clawland_pendingInvite");
+          return false;
         });
+    };
+
+    if (urlInviteToken) {
+      // URL has invite token - validate it
+      validateAndSetInvite(urlInviteToken);
+    } else {
+      // No URL token - check localStorage for pending invite
+      const stored = localStorage.getItem("clawland_pendingInvite");
+      if (stored) {
+        try {
+          const { token, botName, twitterHandle } = JSON.parse(stored);
+          // Re-validate with server (token may have expired)
+          validateAndSetInvite(token);
+        } catch {
+          localStorage.removeItem("clawland_pendingInvite");
+        }
+      }
     }
   }, []);
 
@@ -127,6 +162,8 @@ function App() {
             onChoice={(choice, name) => {
               localStorage.setItem("clawland_role", choice);
               localStorage.setItem("clawland_onboarded_v2", "1");
+              // Clear pending invite - it's been consumed
+              localStorage.removeItem("clawland_pendingInvite");
               if (name) {
                 localStorage.setItem("clawland_username", name);
                 setUsername(name);
