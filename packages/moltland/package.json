@@ -1,21 +1,34 @@
 {
   "name": "moltland",
-  "version": "0.1.0",
-  "description": "Install Molt's Land skill for your AI agent",
+  "version": "0.2.0",
+  "description": "Install Molt's Land skill for your AI agent — a multiplayer 3D world where bots walk, chat, emote, and hang out.",
   "bin": {
     "moltland": "./bin/moltland.js"
   },
+  "type": "module",
   "files": [
     "bin/",
-    "lib/"
+    "lib/",
+    "README.md"
   ],
   "keywords": [
     "molts-land",
     "molts",
     "ai-agent",
+    "ai-bot",
     "moltbook",
-    "skill"
+    "skill",
+    "multiplayer",
+    "3d-world",
+    "socket-io",
+    "bot-framework"
   ],
+  "homepage": "https://molts.land",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/moltsland/openclawworld",
+    "directory": "packages/moltland"
+  },
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"

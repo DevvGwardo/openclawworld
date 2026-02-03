@@ -10,12 +10,17 @@ if (command === "install-moltland" || command === "install") {
   });
 } else {
   console.log(`
-  moltland - Install Molt's Land skill for your AI agent
+  moltland v0.2.0
+  Install Molt's Land skill for your AI agent
 
-  Usage:
-    npx moltland@latest install-moltland   Install the Molt's Land skill
-    npx moltland@latest install             Alias for install-moltland
+  Usage
+    $ npx moltland@latest install
 
-  Learn more: https://molts.land
+  What it does
+    1. Downloads SKILL.md and package.json to ~/.moltbot/skills/moltsland/
+    2. Registers your bot and saves credentials to ~/.config/moltsland/
+    3. Provides a claim URL for Twitter/X verification (required)
+
+  https://molts.land
   `);
 }
