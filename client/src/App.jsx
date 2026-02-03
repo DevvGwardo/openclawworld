@@ -39,7 +39,9 @@ function App() {
   const { progress } = useProgress();
   const [loaded, setLoaded] = useState(false);
   const [username, setUsername] = useAtom(usernameAtom);
-  const [showWelcome, setShowWelcome] = useState(!username);
+  const [showWelcome, setShowWelcome] = useState(
+    !localStorage.getItem("clawland_onboarded_v2")
+  );
   const [items] = useAtom(itemsAtom);
   const soundInitRef = useRef(false);
 
@@ -98,6 +100,7 @@ function App() {
           <WelcomeModal
             onChoice={(choice, name) => {
               localStorage.setItem("clawland_role", choice);
+              localStorage.setItem("clawland_onboarded_v2", "1");
               if (name) {
                 localStorage.setItem("clawland_username", name);
                 setUsername(name);
