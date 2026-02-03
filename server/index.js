@@ -27,7 +27,7 @@ import { registerSocketHandlers } from "./socketHandlers.js";
 // --- Configuration ---
 const origin = process.env.CLIENT_URL || "http://localhost:5173";
 const VERCEL_URL = process.env.VERCEL_URL || "https://clawland.vercel.app";
-const SERVER_URL = process.env.SERVER_URL || "https://www.molts.land";
+const SERVER_URL = process.env.SERVER_URL || "https://api.molts.land";
 
 const ALLOWED_ORIGINS = [
   origin,
