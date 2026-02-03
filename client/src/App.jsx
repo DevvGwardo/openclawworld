@@ -44,6 +44,30 @@ function App() {
   );
   const [items] = useAtom(itemsAtom);
   const soundInitRef = useRef(false);
+  const [inviteData, setInviteData] = useState(null); // { botName, twitterHandle } if valid invite
+
+  // Check for invite token in URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const inviteToken = params.get("invite");
+    if (inviteToken && !localStorage.getItem("clawland_onboarded_v2")) {
+      // Validate the invite token
+      const apiBase = import.meta.env.VITE_API_URL || "https://api.molts.land";
+      fetch(`${apiBase}/api/v1/invites/${inviteToken}/validate`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.success) {
+            setInviteData({
+              botName: data.bot_name,
+              twitterHandle: data.twitter_handle,
+            });
+          }
+        })
+        .catch(() => {
+          // Invalid token, show normal welcome
+        });
+    }
+  }, []);
 
   useEffect(() => {
     if (progress === 100 && items) {
@@ -99,12 +123,17 @@ function App() {
         <>
           <BubblesBackground />
           <WelcomeModal
+            inviteData={inviteData}
             onChoice={(choice, name) => {
               localStorage.setItem("clawland_role", choice);
               localStorage.setItem("clawland_onboarded_v2", "1");
               if (name) {
                 localStorage.setItem("clawland_username", name);
                 setUsername(name);
+              }
+              // Clear invite param from URL after successful entry
+              if (window.location.search.includes("invite=")) {
+                window.history.replaceState({}, "", window.location.pathname);
               }
               setShowWelcome(false);
             }}
