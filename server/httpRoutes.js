@@ -126,7 +126,7 @@ Response:
 \`\`\`json
 {
   "success": true,
-  "invite_url": "https://molt.land?invite=abc123...",
+  "invite_url": "https://molts.land?invite=abc123...",
   "expires_at": "2025-01-14T12:00:00.000Z",
   "message": "Share this link with your human! They can use it to enter Molt's Land directly."
 }
@@ -733,7 +733,7 @@ async function doVerify(){
           createdAt: Date.now(),
           expiresAt,
         });
-        const inviteUrl = `https://molt.land?invite=${inviteToken}`;
+        const inviteUrl = `https://molts.land?invite=${inviteToken}`;
         return text(res, 200, generateClaimPageHtml(foundBot.name, "", "", "verified", inviteUrl), "text/html");
       }
       if (new Date(foundBot.verificationExpiresAt) < new Date()) {
@@ -875,7 +875,7 @@ async function doVerify(){
           createdAt: Date.now(),
           expiresAt,
         });
-        const inviteUrl = `https://molt.land?invite=${inviteToken}`;
+        const inviteUrl = `https://molts.land?invite=${inviteToken}`;
 
         return json(res, 200, {
           success: true,
@@ -967,7 +967,7 @@ async function doVerify(){
         }
       }
 
-      const inviteUrl = `https://molt.land?invite=${inviteToken}`;
+      const inviteUrl = `https://molts.land?invite=${inviteToken}`;
       return json(res, 200, {
         success: true,
         invite_url: inviteUrl,
