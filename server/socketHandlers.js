@@ -35,9 +35,12 @@ export function registerSocketHandlers(deps) {
     botRegistry,
     botSockets,
     sendWebhook,
+    saveBotRegistry,
     playerCoins,
     DEFAULT_COINS,
     updateCoins,
+    getCoins,
+    setCoins,
     activeQuests,
     checkQuestCompletion,
     moltbookSystem,
@@ -61,12 +64,22 @@ export function registerSocketHandlers(deps) {
     dbCountRooms,
     ROOM_ZONES,
     limitChat,
+    limitTransfer,
     hashApiKey,
     pendingInvites,
+    ensureUser,
+    getUser,
+    createUserId,
+    touchUser,
+    socketUserIds,
+    userSockets,
     FOOD_COLLECT_COOLDOWN,
     FOOD_EAT_COOLDOWN,
     FOOD_COLLECT_MIN,
     FOOD_COLLECT_MAX,
+    validateSessionToken,
+    setSessionToken,
+    createSessionToken,
   } = deps;
 
   // Destructure moltbook system parts
@@ -92,10 +105,36 @@ export function registerSocketHandlers(deps) {
         socket.data.officialBotKey = botAuthKey;
       }
 
+      const attachUserSocket = (userId) => {
+        if (!userId) return;
+        socketUserIds.set(socket.id, userId);
+        let sockets = userSockets.get(userId);
+        if (!sockets) {
+          sockets = new Set();
+          userSockets.set(userId, sockets);
+        }
+        sockets.add(socket.id);
+        socket.data.userId = userId;
+      };
+
+      const detachUserSocket = () => {
+        const userId = socketUserIds.get(socket.id);
+        if (!userId) return;
+        socketUserIds.delete(socket.id);
+        const sockets = userSockets.get(userId);
+        if (sockets) {
+          sockets.delete(socket.id);
+          if (sockets.size === 0) userSockets.delete(userId);
+        }
+      };
+
+      const getUserId = () => socketUserIds.get(socket.id) || socket.data.userId || null;
+
       // Helper: process completed objectives (award coins + emit events)
-      const handleObjectiveCompletions = (completions) => {
+      const handleObjectiveCompletions = async (completions) => {
+        const userId = getUserId();
         for (const obj of completions) {
-          updateCoins(socket.id, obj.reward, io);
+          if (userId) await updateCoins(userId, obj.reward, io, userSockets);
           socket.emit("objectives:complete", obj);
         }
         if (completions.length > 0) {
@@ -148,22 +187,62 @@ export function registerSocketHandlers(deps) {
         }
         cancelEviction(room.id);
         socket.join(room.id);
+        const requestedUserId = typeof opts?.userId === "string" ? opts.userId.trim() : null;
+        let resolvedUserId = requestedUserId && requestedUserId.length >= 8 ? requestedUserId : null;
+        if (opts?.isBot === true && socket.data.officialBotKey) {
+          const reg = botRegistry.get(socket.data.officialBotKey);
+          if (reg) {
+            if (!reg.userId) {
+              reg.userId = createUserId();
+              saveBotRegistry();
+            }
+            resolvedUserId = reg.userId;
+          }
+        }
+        if (!resolvedUserId) resolvedUserId = createUserId();
+
+        // Session token validation
+        const requestedSessionToken = typeof opts?.sessionToken === "string" ? opts.sessionToken : null;
+        let sessionValid = false;
+        let newSessionToken = null;
+
+        if (requestedUserId && requestedSessionToken) {
+          // Client claims to have an existing identity - validate it
+          sessionValid = await validateSessionToken(requestedUserId, requestedSessionToken);
+        }
+
+        if (!sessionValid) {
+          // Either new user or invalid token - generate new identity
+          resolvedUserId = createUserId();
+          newSessionToken = createSessionToken();
+        }
+
+        attachUserSocket(resolvedUserId);
+        const displayName = opts?.name || (socket.data.officialBotKey ? botRegistry.get(socket.data.officialBotKey)?.name : null) || null;
+        const userRecord = await ensureUser({ userId: resolvedUserId, name: displayName, isBot: opts?.isBot === true });
+        if (userRecord) {
+          playerCoins.set(resolvedUserId, typeof userRecord.coins === "number" ? userRecord.coins : DEFAULT_COINS);
+          await touchUser(resolvedUserId);
+        }
+        if (newSessionToken) {
+          await setSessionToken(resolvedUserId, newSessionToken);
+        }
         character = {
           id: socket.id,
+          userId: resolvedUserId,
           session: parseInt(Math.random() * 1000),
           position: generateRandomPosition(room),
           avatarUrl: sanitizeAvatarUrl(opts.avatarUrl),
           isBot: opts.isBot === true,
           isOfficialBot: opts.isBot === true && !!socket.data.officialBotKey,
-          name: opts.name || null,
-          coins: DEFAULT_COINS,
+          name: displayName,
+          coins: playerCoins.get(resolvedUserId) || DEFAULT_COINS,
           motives: { energy: 100, social: 100, fun: 100, hunger: 100 },
           interactionState: null,
           food: 0,
           lastCollectFood: 0,
           lastEat: 0,
         };
-        playerCoins.set(socket.id, DEFAULT_COINS);
         if (!room.password) character.canUpdateRoom = true;
         // Check if this join was triggered by a room invite
         const invite = pendingInvites.get(socket.id);
@@ -184,12 +263,14 @@ export function registerSocketHandlers(deps) {
           },
           characters: stripCharacters(room.characters),
           id: socket.id,
-          coins: DEFAULT_COINS,
+          userId: resolvedUserId,
+          coins: playerCoins.get(resolvedUserId) || DEFAULT_COINS,
           hasPassword: !!room.password,
           invitedBy: character.invitedBy || null,
           food: character.food,
           collectCooldownEnds: character.lastCollectFood ? character.lastCollectFood + FOOD_COLLECT_COOLDOWN : 0,
           eatCooldownEnds: character.lastEat ? character.lastEat + FOOD_EAT_COOLDOWN : 0,
+          sessionToken: newSessionToken || null, // Only send if newly generated
         });
         // Notify other players in the room about the new character (excludes the joiner)
         socket.broadcast.to(room.id).emit("characterJoined", {
@@ -323,27 +404,8 @@ export function registerSocketHandlers(deps) {
         // Join target room (lazy load from DB or auto-create)
         room = getCachedRoom(targetRoomId) || await getOrLoadRoom(targetRoomId, hydrateRoom);
 
-        // Auto-create generated rooms on demand (room-N where N is 1-100000)
-        if (!room) {
-          const match = targetRoomId.match(/^room-(\d+)$/);
-          if (match) {
-            const n = parseInt(match[1]);
-            if (n >= 1 && n <= 100000) {
-              room = hydrateRoom({
-                id: targetRoomId,
-                name: "Room " + n,
-                size: [15, 15],
-                gridDivision: 2,
-                items: [],
-                generated: true,
-                claimedBy: null,
-                password: null,
-              });
-              setCachedRoom(room);
-              persistRooms(room);
-            }
-          }
-        }
+        // Note: Auto-creation of generated rooms (room-N) is disabled.
+        // Only user-created rooms and Open Cloud bot-claimed rooms are allowed.
 
         if (!room) {
           socket.emit("switchRoomError", { error: "Room not found" });
@@ -365,6 +427,7 @@ export function registerSocketHandlers(deps) {
         }
         room.characters.push(character);
 
+        const currentUserId = getUserId() || character.userId || null;
         socket.emit("roomJoined", {
           map: {
             gridDivision: room.gridDivision,
@@ -373,6 +436,8 @@ export function registerSocketHandlers(deps) {
           },
           characters: stripCharacters(room.characters),
           id: socket.id,
+          userId: currentUserId,
+          coins: currentUserId ? (playerCoins.get(currentUserId) || DEFAULT_COINS) : DEFAULT_COINS,
           hasPassword: !!room.password,
           invitedBy: character.invitedBy || null,
           food: character.food,
@@ -665,7 +730,7 @@ export function registerSocketHandlers(deps) {
         });
       });
 
-      socket.on("wave:at", (targetId) => {
+      socket.on("wave:at", async (targetId) => {
         if (!room) return;
         if (typeof targetId !== "string") return;
         unsitCharacter(room, socket.id, broadcastToRoom);
@@ -714,7 +779,9 @@ export function registerSocketHandlers(deps) {
             if (targetSocket) {
               const targetCompletions = checkBondMilestones(targetId, level);
               for (const obj of targetCompletions) {
-                updateCoins(targetId, obj.reward, io);
+                if (targetSocket.userId) {
+                  await updateCoins(targetSocket.userId, obj.reward, io, userSockets);
+                }
                 io.to(targetId).emit("objectives:complete", obj);
               }
               if (targetCompletions.length > 0) {
@@ -1007,13 +1074,16 @@ export function registerSocketHandlers(deps) {
         const trimmed = message.slice(0, 500);
         const senderName = character?.name || "Player";
         const senderIsBot = character?.isBot || false;
+        const senderUserId = getUserId();
         if (senderIsBot && !character?.isOfficialBot) {
           socket.emit("directMessageError", { error: "Bot is not authorized to send DMs" });
           return;
         }
+        const targetChar = room.characters.find((c) => c.id === targetId);
         // Send to target
         io.to(targetId).emit("directMessage", {
           senderId: socket.id,
+          senderUserId,
           senderName,
           senderIsBot,
           message: trimmed,
@@ -1022,9 +1092,73 @@ export function registerSocketHandlers(deps) {
         // Confirm to sender
         socket.emit("directMessageSent", {
           targetId,
+          targetUserId: targetChar?.userId || null,
           message: trimmed,
           timestamp: Date.now(),
         });
+      });
+
+      // Coins transfer (global, userId-based)
+      socket.on("coins:transfer", async ({ toUserId, amount }) => {
+        if (!character) return;
+        if (limitTransfer(socket.id)) {
+          socket.emit("coinsTransferError", { error: "Too many transfers, slow down." });
+          return;
+        }
+        const fromUserId = getUserId();
+        if (!fromUserId) {
+          socket.emit("coinsTransferError", { error: "Missing sender identity." });
+          return;
+        }
+        const rawAmount = typeof amount === "number" ? amount : Number(amount);
+        const transferAmount = Number.isInteger(rawAmount) ? rawAmount : Math.floor(rawAmount);
+        if (!Number.isFinite(transferAmount) || transferAmount <= 0) {
+          socket.emit("coinsTransferError", { error: "Invalid amount." });
+          return;
+        }
+        if (transferAmount > 10000) {
+          socket.emit("coinsTransferError", { error: "Amount exceeds max transfer (10000)." });
+          return;
+        }
+        if (typeof toUserId !== "string" || toUserId.length < 8) {
+          socket.emit("coinsTransferError", { error: "Invalid recipient ID." });
+          return;
+        }
+        if (toUserId === fromUserId) {
+          socket.emit("coinsTransferError", { error: "Cannot transfer to yourself." });
+          return;
+        }
+        const recipient = await getUser(toUserId);
+        if (!recipient) {
+          socket.emit("coinsTransferError", { error: "Recipient not found." });
+          return;
+        }
+        const senderCoins = await getCoins(fromUserId);
+        if (senderCoins < transferAmount) {
+          socket.emit("coinsTransferError", { error: "Insufficient coins.", required: transferAmount, have: senderCoins });
+          return;
+        }
+        const newSenderBalance = await updateCoins(fromUserId, -transferAmount, io, userSockets);
+        const newRecipientBalance = await updateCoins(toUserId, transferAmount, io, userSockets);
+        socket.emit("coinsTransferSuccess", {
+          toUserId,
+          toName: recipient.name || "Player",
+          amount: transferAmount,
+          balance: newSenderBalance,
+        });
+        const recipientPayload = {
+          fromUserId,
+          fromName: character?.name || "Player",
+          fromIsBot: !!character?.isBot,
+          amount: transferAmount,
+          balance: newRecipientBalance,
+        };
+        const sockets = userSockets.get(toUserId);
+        if (sockets) {
+          for (const sid of sockets) {
+            io.to(sid).emit("coinsTransferReceived", recipientPayload);
+          }
+        }
       });
 
       // Quest-related socket events
@@ -1095,7 +1229,7 @@ export function registerSocketHandlers(deps) {
         socket.emit("botShopInventory", { botId, items: shop });
       });
 
-      socket.on("buyFromBot", ({ botId, itemName }) => {
+      socket.on("buyFromBot", async ({ botId, itemName }) => {
         if (!room || !character) return;
         // Find shop item
         let shopItem = null;
@@ -1112,13 +1246,14 @@ export function registerSocketHandlers(deps) {
           socket.emit("purchaseError", { error: "Item not found in shop" });
           return;
         }
-        const coins = playerCoins.get(socket.id) || 0;
+        const userId = getUserId();
+        const coins = userId ? await getCoins(userId) : 0;
         if (coins < shopItem.price) {
           socket.emit("purchaseError", { error: "Insufficient coins", required: shopItem.price, have: coins });
           return;
         }
         // Deduct coins
-        const newBalance = updateCoins(socket.id, -shopItem.price, io);
+        const newBalance = await updateCoins(userId, -shopItem.price, io, userSockets);
         // Place item near the player
         const itemDef = items[itemName];
         if (itemDef) {
@@ -1222,7 +1357,7 @@ export function registerSocketHandlers(deps) {
 
         persistRooms(room);
         // Check quest completion
-        checkQuestCompletion(socket.id, room, io);
+        await checkQuestCompletion(socket.id, getUserId(), room, io, userSockets);
 
         // Track items placed + room goals (check each item the player saved)
         handleObjectiveCompletions(trackDaily(socket.id, "items_placed"));
@@ -1313,7 +1448,7 @@ export function registerSocketHandlers(deps) {
         persistRooms(room);
         // Check quest completion for all players in the room
         room.characters.forEach(c => {
-          if (!c.isBot) checkQuestCompletion(c.id, room, io);
+          if (!c.isBot) checkQuestCompletion(c.id, c.userId, room, io, userSockets);
         });
 
         // Check room goals for the bot that placed the item
@@ -1323,7 +1458,7 @@ export function registerSocketHandlers(deps) {
       socket.on("disconnect", () => {
         console.log("User disconnected");
         unsitCharacter(room, socket.id, broadcastToRoom);
-        playerCoins.delete(socket.id);
+        detachUserSocket();
         _prevMotiveBuckets.delete(socket.id);
         cleanupObjectives(socket.id);
         // Clean up active quests for this player

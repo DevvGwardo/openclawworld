@@ -16,8 +16,9 @@ import { items, itemsCatalog, ALLOWED_EMOTES, randomAvatarUrl, sanitizeAvatarUrl
 import { ensureSeatMaps, getSitSpots, unsitCharacter, normalizeAngle, DEFAULT_SIT_FACING_OFFSET } from "./sittingSystem.js";
 import { findPath, updateGrid, addItemToGrid, removeItemFromGrid } from "./pathfinding.js";
 import { bonds, BOND_LEVELS, bondKey, getBondLevel, loadBonds, saveBonds } from "./bondSystem.js";
-import { playerCoins, DEFAULT_COINS, updateCoins, activeQuests, checkQuestCompletion } from "./currencyQuests.js";
+import { playerCoins, DEFAULT_COINS, updateCoins, activeQuests, checkQuestCompletion, getCoins, setCoins } from "./currencyQuests.js";
 import { botRegistry, botSockets, loadBotRegistry, saveBotRegistry, sendWebhook } from "./botRegistry.js";
+import { loadUserStore, ensureUser, getUser, createUserId, touchUser, validateSessionToken, setSessionToken, createSessionToken } from "./userStore.js";
 import { _prevMotiveBuckets, startMotiveDecayLoop } from "./motiveSystem.js";
 import { initObjectives, trackDaily, checkRoomGoals, checkBondMilestones, objectivesPayload, cleanupObjectives } from "./objectiveSystem.js";
 import { createMoltbookSystem } from "./moltbookBots.js";
@@ -47,12 +48,18 @@ const limitHttp = createRateLimiter(120, 60_000);
 const limitBotRegister = createRateLimiter(5, 3600_000);
 const limitChat = createRateLimiter(15, 10_000);
 const limitBotVerify = createRateLimiter(10, 3600_000);
+const limitTransfer = createRateLimiter(8, 10_000);
 
 // --- Load persisted data ---
 loadBotRegistry();
 loadBonds();
+loadUserStore();
 
 // --- Shared helpers (used by multiple modules) ---
+
+// Online user socket tracking
+const socketUserIds = new Map(); // socketId -> userId
+const userSockets = new Map(); // userId -> Set(socketId)
 
 // Strip volatile fields (path) from character objects before broadcasting.
 const stripCharacters = (chars) =>
@@ -223,26 +230,29 @@ const loadRoomsFromFile = async () => {
     }
   }
 
-  for (let i = 1; i <= 100; i++) {
-    const roomId = `room-${i}`;
-    const saved = savedGeneratedRooms.get(roomId);
-    const room = {
-      id: roomId,
-      name: saved?.claimedBy ? saved.name : `Room ${i}`,
-      size: [15, 15],
-      gridDivision: 2,
-      items: saved ? saved.items : [],
-      characters: [],
-      generated: true,
-      claimedBy: saved?.claimedBy || null,
-    };
-    room.grid = new pathfinding.Grid(room.size[0] * room.gridDivision, room.size[1] * room.gridDivision);
-    updateGrid(room);
-    setCachedRoom(room);
+  // Note: Test rooms (room-1 to room-100) are no longer auto-created.
+  // Only user-created rooms and Open Cloud bot-claimed rooms persist.
+  // Load any previously claimed/saved generated rooms from file
+  for (const [roomId, saved] of savedGeneratedRooms) {
+    if (saved.claimedBy || (saved.items && saved.items.length > 0)) {
+      const room = {
+        id: roomId,
+        name: saved.name || roomId,
+        size: [15, 15],
+        gridDivision: 2,
+        items: saved.items || [],
+        characters: [],
+        generated: true,
+        claimedBy: saved.claimedBy || null,
+      };
+      room.grid = new pathfinding.Grid(room.size[0] * room.gridDivision, room.size[1] * room.gridDivision);
+      updateGrid(room);
+      setCachedRoom(room);
+    }
   }
   const allCached = getAllCachedRooms();
-  const withItems = [...savedGeneratedRooms.values()].length;
-  console.log(`Loaded ${allCached.length} rooms (${allCached.length - 100} persisted + 100 generated, ${withItems} with saved items)`);
+  const claimedCount = [...savedGeneratedRooms.values()].filter(r => r.claimedBy).length;
+  console.log(`Loaded ${allCached.length} rooms (${claimedCount} claimed by bots)`);
 };
 
 await loadRooms();
@@ -307,13 +317,15 @@ registerSocketHandlers({
   ensureSeatMaps, getSitSpots, normalizeAngle, DEFAULT_SIT_FACING_OFFSET,
   sanitizeAvatarUrl, ALLOWED_EMOTES, OBJECT_AFFORDANCES, MOTIVE_CLAMP,
   bonds, bondKey, getBondLevel, BOND_LEVELS, saveBonds,
-  botRegistry, botSockets, sendWebhook,
-  playerCoins, DEFAULT_COINS, updateCoins, activeQuests, checkQuestCompletion,
+  botRegistry, botSockets, sendWebhook, saveBotRegistry,
+  playerCoins, DEFAULT_COINS, updateCoins, activeQuests, checkQuestCompletion, getCoins, setCoins,
   moltbookSystem, tryPlaceItemInRoom, _prevMotiveBuckets,
   initObjectives, trackDaily, checkRoomGoals, checkBondMilestones, objectivesPayload, cleanupObjectives,
   getCachedRoom, getAllCachedRooms, getOrLoadRoom, setCachedRoom,
   scheduleEviction, cancelEviction, hydrateRoom,
-  isDbAvailable, dbListRooms, dbCountRooms, ROOM_ZONES, limitChat, hashApiKey,
+  isDbAvailable, dbListRooms, dbCountRooms, ROOM_ZONES, limitChat, limitTransfer, hashApiKey,
+  ensureUser, getUser, createUserId, touchUser, validateSessionToken, setSessionToken, createSessionToken,
+  socketUserIds, userSockets,
   pendingInvites,
   FOOD_COLLECT_COOLDOWN, FOOD_EAT_COOLDOWN, FOOD_COLLECT_MIN, FOOD_COLLECT_MAX,
 });

@@ -32,7 +32,8 @@ function createMoltbookSystem(deps) {
 
   // --- Moltbook Virtual Bots: fetch posts and spawn them as live characters ---
   const MOLTBOOK_API = "https://www.moltbook.com/api/v1/posts";
-  const MOLTBOOK_BOT_COUNT = 50;
+  const MOLTBOOK_BOT_COUNT = 200; // Dynamic based on recent posts (up to this limit)
+  const MOLTBOOK_RECENT_MINUTES = 20; // Only spawn bots from posts within this time window
   const MOLTBOOK_REFRESH_INTERVAL = 30_000; // fetch new data & cull stale bots every 30s
   const MOLTBOOK_TICK_INTERVAL = 4_000; // bots act every 4 seconds
   const MOLTBOOK_MAX_ACTIONS_PER_TICK = 20; // cap bot actions per tick to limit broadcast storm
@@ -68,6 +69,16 @@ function createMoltbookSystem(deps) {
   let moltbookPageOffset = 0;
   const moltbookVirtualBots = new Map(); // id -> { character, postData, joinedAt }
 
+  // Filter posts to only include those within the recent time window
+  const getRecentPosts = () => {
+    const cutoffTime = Date.now() - (MOLTBOOK_RECENT_MINUTES * 60 * 1000);
+    return moltbookPostPool.filter(post => {
+      if (!post.created_at) return false;
+      const postTime = new Date(post.created_at).getTime();
+      return postTime >= cutoffTime;
+    });
+  };
+
   const fetchMoltbookPosts = async () => {
     try {
       const allPosts = [];
@@ -80,7 +91,8 @@ function createMoltbookSystem(deps) {
       }
       if (allPosts.length > 0) {
         moltbookPostPool = allPosts;
-        console.log(`[moltbook] Fetched ${allPosts.length} posts`);
+        const recentPosts = getRecentPosts();
+        console.log(`[moltbook] Fetched ${allPosts.length} posts, ${recentPosts.length} from last ${MOLTBOOK_RECENT_MINUTES} minutes`);
       }
     } catch (err) {
       console.error("[moltbook] Fetch error:", err.message);
@@ -90,12 +102,16 @@ function createMoltbookSystem(deps) {
   const spawnMoltbookBot = (room) => {
     if (moltbookPostPool.length === 0 || !room) return null;
 
-    // Pick a random post — prefer unused ones, but allow reuse if pool is exhausted
+    // Only consider posts from the last 20 minutes
+    const recentPosts = getRecentPosts();
+    if (recentPosts.length === 0) return null;
+
+    // Pick a random post from recent ones — prefer unused ones, but allow reuse if pool is exhausted
     const activePostIds = new Set([...moltbookVirtualBots.values()].map(b => b.postData.id));
-    const available = moltbookPostPool.filter(p => !activePostIds.has(p.id));
-    const post = available.length > 0
-      ? available[Math.floor(Math.random() * available.length)]
-      : moltbookPostPool[Math.floor(Math.random() * moltbookPostPool.length)];
+    const available = recentPosts.filter(p => !activePostIds.has(p.id));
+    if (available.length === 0) return null; // Don't reuse posts, only spawn for unique recent posts
+
+    const post = available[Math.floor(Math.random() * available.length)];
     const title = post.title || "";
 
     // Derive name
@@ -486,54 +502,7 @@ function createMoltbookSystem(deps) {
         }
       }
 
-      // ~5% chance to switch rooms
-      if (action < 0.05) {
-        const plaza = getCachedRoom("plaza");
-        const isInPlaza = room.id === (plaza ? plaza.id : "plaza");
-
-        if (isInPlaza) {
-          const allCached = getAllCachedRooms();
-          const generatedRooms = allCached.filter(r => r.generated);
-          const targetRoom = generatedRooms.length > 0
-            ? generatedRooms[Math.floor(Math.random() * generatedRooms.length)]
-            : null;
-          if (targetRoom) {
-            const pos = bot.character.position || [0, 0];
-            const ex = ENTRANCE_ZONE.x[0] + Math.floor(Math.random() * (ENTRANCE_ZONE.x[1] - ENTRANCE_ZONE.x[0]));
-            const ey = ENTRANCE_ZONE.y[0] + Math.floor(Math.random() * (ENTRANCE_ZONE.y[1] - ENTRANCE_ZONE.y[0]));
-
-            if (room.grid.isWalkableAt(ex, ey)) {
-              const path = findPath(room, pos, [ex, ey]);
-              if (path && path.length > 0) {
-                bot.character.position = pos;
-                bot.character.path = path;
-                queueMove(room.id, bot.character);
-                bot.character.position = path[path.length - 1];
-              }
-            }
-
-            pendingRoomSwitch.set(botId, { targetRoomId: targetRoom.id, startedAt: now });
-          }
-        } else {
-          const pos = bot.character.position || [0, 0];
-          const maxGrid = room.size[0] * room.gridDivision - 1;
-          const cx = Math.floor(maxGrid / 2);
-          const cy = Math.floor(maxGrid / 2);
-
-          if (room.grid.isWalkableAt(cx, cy)) {
-            const path = findPath(room, pos, [cx, cy]);
-            if (path && path.length > 0) {
-              bot.character.position = pos;
-              bot.character.path = path;
-              queueMove(room.id, bot.character);
-              bot.character.position = path[path.length - 1];
-            }
-          }
-
-          pendingRoomSwitch.set(botId, { targetRoomId: plaza.id, startedAt: now });
-        }
-        continue;
-      }
+      // MoltBook bots stay in the plaza (Town Hall) — no room switching
 
       if (action < 0.50) {
         // Move — no redundant "walking" playerAction broadcast
@@ -723,7 +692,7 @@ function createMoltbookSystem(deps) {
     }
   };
 
-  // Refresh: fetch new posts, cull bots over limit (oldest first), respawn to fill back
+  // Refresh: fetch new posts, remove bots whose posts are no longer recent, spawn new ones
   const moltbookRefresh = async (room) => {
     if (!room) return;
 
@@ -731,21 +700,37 @@ function createMoltbookSystem(deps) {
     await fetchMoltbookPosts();
     broadcastMoltbookPosts();
 
-    // Remove stale bots if count exceeds limit (oldest first)
-    const bots = [...moltbookVirtualBots.entries()].sort((a, b) => a[1].joinedAt - b[1].joinedAt);
-    const excess = bots.length - MOLTBOOK_BOT_COUNT;
-    if (excess > 0) {
-      for (let i = 0; i < excess; i++) {
-        removeMoltbookBot(bots[i][0]); // room is auto-detected via getBotRoom
+    // Get current recent posts
+    const recentPosts = getRecentPosts();
+    const recentPostIds = new Set(recentPosts.map(p => p.id));
+
+    // Remove bots whose posts are no longer within the time window
+    let removed = 0;
+    for (const [botId, bot] of moltbookVirtualBots) {
+      if (!recentPostIds.has(bot.postData.id)) {
+        removeMoltbookBot(botId);
+        removed++;
       }
-      console.log(`[moltbook] Culled ${excess} stale bots`);
+    }
+    if (removed > 0) {
+      console.log(`[moltbook] Removed ${removed} bots (posts no longer recent)`);
     }
 
-    // Spawn replacements up to the target count, emitting incremental joins
+    // Also cap at max count if somehow exceeded
+    if (moltbookVirtualBots.size > MOLTBOOK_BOT_COUNT) {
+      const bots = [...moltbookVirtualBots.entries()].sort((a, b) => a[1].joinedAt - b[1].joinedAt);
+      const excess = bots.length - MOLTBOOK_BOT_COUNT;
+      for (let i = 0; i < excess; i++) {
+        removeMoltbookBot(bots[i][0]);
+      }
+      console.log(`[moltbook] Culled ${excess} excess bots`);
+    }
+
+    // Spawn new bots for recent posts not yet represented
     let spawned = 0;
-    while (moltbookVirtualBots.size < MOLTBOOK_BOT_COUNT) {
+    while (moltbookVirtualBots.size < Math.min(recentPosts.length, MOLTBOOK_BOT_COUNT)) {
       const bot = spawnMoltbookBot(room);
-      if (!bot) break; // no more available posts
+      if (!bot) break; // no more available recent posts
       io.to(room.id).emit("characterJoined", {
         character: stripCharacters([bot])[0],
         roomName: room.name,
@@ -755,7 +740,7 @@ function createMoltbookSystem(deps) {
 
     // Broadcast room counts only (lightweight)
     io.emit("roomsUpdate", rooms.map(r => ({ id: r.id, name: r.name, nbCharacters: r.characters.length, claimedBy: r.claimedBy || null, generated: r.generated || false })));
-    console.log(`[moltbook] Refresh complete — spawned ${spawned}, active: ${moltbookVirtualBots.size}`);
+    console.log(`[moltbook] Refresh complete — ${recentPosts.length} recent posts, spawned ${spawned}, active: ${moltbookVirtualBots.size}`);
   };
 
   // Initialize moltbook bots after rooms are loaded
@@ -765,25 +750,32 @@ function createMoltbookSystem(deps) {
       const plaza = getCachedRoom("plaza");
       if (!plaza) return setTimeout(waitForPlaza, 500);
 
+      const recentPosts = getRecentPosts();
+      const targetCount = Math.min(recentPosts.length, MOLTBOOK_BOT_COUNT);
+      console.log(`[moltbook] Found ${recentPosts.length} posts from last ${MOLTBOOK_RECENT_MINUTES} minutes, spawning up to ${targetCount} bots`);
+
       const BATCH_SIZE = 25;
       const BATCH_DELAY = 200;
       let spawned = 0;
 
       const spawnBatch = () => {
-        const batchEnd = Math.min(spawned + BATCH_SIZE, MOLTBOOK_BOT_COUNT);
+        const currentTarget = Math.min(getRecentPosts().length, MOLTBOOK_BOT_COUNT);
+        const batchEnd = Math.min(spawned + BATCH_SIZE, currentTarget);
         for (let i = spawned; i < batchEnd; i++) {
           const bot = spawnMoltbookBot(plaza);
-          if (bot) moltbookBotRooms.set(bot.id, plaza.id);
+          if (!bot) break; // no more recent posts available
+          moltbookBotRooms.set(bot.id, plaza.id);
         }
-        spawned = batchEnd;
+        spawned = moltbookVirtualBots.size;
 
         io.to(plaza.id).emit("characters", stripCharacters(plaza.characters));
 
-        if (spawned < MOLTBOOK_BOT_COUNT) {
+        const newTarget = Math.min(getRecentPosts().length, MOLTBOOK_BOT_COUNT);
+        if (spawned < newTarget) {
           setTimeout(spawnBatch, BATCH_DELAY);
         } else {
           broadcastMoltbookPosts();
-          console.log(`[moltbook] Spawned ${moltbookVirtualBots.size} virtual bots in "${plaza.name}"`);
+          console.log(`[moltbook] Spawned ${moltbookVirtualBots.size} virtual bots in "${plaza.name}" (Town Hall)`);
           setInterval(() => moltbookBotTick(), MOLTBOOK_TICK_INTERVAL);
           setInterval(() => moltbookRefresh(plaza), MOLTBOOK_REFRESH_INTERVAL);
         }
