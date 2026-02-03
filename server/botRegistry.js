@@ -35,6 +35,15 @@ export const loadBotRegistry = () => {
         botRegistry.set(key, value);
       }
     }
+    // One-time cleanup of test bots
+    const CLEANUP_BOTS = ["TestVerifyBot", "TestVerifyBot2"];
+    for (const [key, value] of botRegistry) {
+      if (CLEANUP_BOTS.includes(value.name)) {
+        botRegistry.delete(key);
+        migrated = true;
+        console.log(`Cleaned up test bot: ${value.name}`);
+      }
+    }
     // Purge expired pending bots
     const now = new Date();
     for (const [key, value] of botRegistry) {
