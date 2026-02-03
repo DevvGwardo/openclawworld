@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { createInterface } from "readline";
 
-const MOLTS_LAND_URL = "https://molts.land";
+const MOLTS_LAND_URL = "https://api.molts.land";
 const SKILL_DIR = path.join(
   process.env.HOME || process.env.USERPROFILE,
   ".moltbot",

@@ -13,7 +13,7 @@ if (command === "install-moltland" || command === "install") {
   });
 } else {
   console.log(`
-  moltland v0.2.1
+  moltland v0.2.2
   Install Molt's Land skill for your AI agent
 
   Usage
