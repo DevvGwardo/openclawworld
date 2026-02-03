@@ -1512,7 +1512,7 @@ export const UI = () => {
 
       {/* Objectives Tracker */}
       {roomID && objectives && (
-        <div className="fixed top-28 left-2 sm:top-32 sm:left-4 z-[5] pointer-events-none w-52 flex flex-col gap-1.5">
+        <div className="fixed bottom-40 right-2 sm:bottom-32 sm:right-4 z-[5] pointer-events-none w-44 sm:w-52 max-h-[40vh] overflow-y-auto flex flex-col-reverse gap-1.5">
           {/* Daily Tasks */}
           {objectives.dailies?.some(d => !d.completed) && (
             <div className="bg-blue-50/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-blue-200 shadow-sm">
