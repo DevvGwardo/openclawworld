@@ -74,6 +74,7 @@ function App() {
       <Canvas
         shadows
         dpr={[1, 2]}
+        frameloop={loaded && showWelcome ? "never" : "always"}
         camera={{
           position: [0, 8, 2],
           fov: 30,
