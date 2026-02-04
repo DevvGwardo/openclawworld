@@ -2,16 +2,18 @@
 
 import fs from "fs";
 import crypto from "crypto";
-import {
+import * as db from "./db.js";
+
+const {
   isDbAvailable,
   getUserById,
   upsertUser,
-  setUserCoins as dbSetUserCoins,
-  touchUser as dbTouchUser,
-  validateSessionToken as dbValidateSessionToken,
-  setSessionToken as dbSetSessionToken,
-  updateUserCoinsAtomic as dbUpdateUserCoinsAtomic,
-} from "./db.js";
+  setUserCoins: dbSetUserCoins,
+  touchUser: dbTouchUser,
+  validateSessionToken: dbValidateSessionToken,
+  updateUserCoinsAtomic: dbUpdateUserCoinsAtomic,
+} = db;
+const dbSetSessionToken = db.setSessionToken;
 
 export const DEFAULT_COINS = 100;
 
@@ -164,7 +166,7 @@ export const validateSessionToken = async (userId, token) => {
 
 export const setSessionToken = async (userId, token) => {
   if (!userId || !token) return false;
-  if (isDbAvailable()) {
+  if (isDbAvailable() && typeof dbSetSessionToken === "function") {
     return await dbSetSessionToken(userId, token);
   }
   const user = users.get(userId);
@@ -173,4 +175,3 @@ export const setSessionToken = async (userId, token) => {
   persistUsers();
   return true;
 };
-

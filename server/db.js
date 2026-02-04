@@ -33,6 +33,24 @@ export async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_rooms_generated ON rooms(generated);
     CREATE INDEX IF NOT EXISTS idx_rooms_claimed_by ON rooms(claimed_by) WHERE claimed_by IS NOT NULL;
+
+    CREATE TABLE IF NOT EXISTS users (
+        id            TEXT PRIMARY KEY,
+        name          TEXT,
+        is_bot        BOOLEAN NOT NULL DEFAULT false,
+        coins         INTEGER NOT NULL DEFAULT 100,
+        session_token TEXT,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_seen_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_users_is_bot ON users(is_bot);
+
+    -- Add session_token column if it doesn't exist (migration for existing DBs)
+    DO $$ BEGIN
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS session_token TEXT;
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$;
   `);
 
   // Migrate plaintext passwords to bcrypt
@@ -46,6 +64,20 @@ export async function initDb() {
   if (rows.length > 0) {
     console.log(`Migrated ${rows.length} room password(s) to bcrypt`);
   }
+}
+
+function rowToUser(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    isBot: row.is_bot,
+    coins: row.coins,
+    sessionToken: row.session_token,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    lastSeenAt: row.last_seen_at,
+  };
 }
 
 function rowToRoom(row) {
@@ -162,4 +194,84 @@ export async function getAllRooms() {
      FROM rooms`
   );
   return rows.map(rowToRoom);
+}
+
+export async function getUserById(id) {
+  if (!pool) return null;
+  const { rows } = await pool.query(
+    `SELECT id, name, is_bot, coins, session_token, created_at, updated_at, last_seen_at
+     FROM users WHERE id = $1`,
+    [id]
+  );
+  return rowToUser(rows[0]);
+}
+
+export async function upsertUser({ id, name = null, isBot = false, coins = 100, sessionToken = null } = {}) {
+  if (!pool || !id) return null;
+  await pool.query(
+    `INSERT INTO users (id, name, is_bot, coins, session_token, created_at, updated_at, last_seen_at)
+     VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), NOW())
+     ON CONFLICT (id) DO UPDATE SET
+       name         = COALESCE(EXCLUDED.name, users.name),
+       is_bot       = EXCLUDED.is_bot,
+       session_token = COALESCE(EXCLUDED.session_token, users.session_token),
+       updated_at   = NOW(),
+       last_seen_at = NOW()`,
+    [id, name, !!isBot, coins, sessionToken]
+  );
+  return await getUserById(id);
+}
+
+export async function setUserCoins(id, coins) {
+  if (!pool || !id) return null;
+  const { rows } = await pool.query(
+    `UPDATE users
+     SET coins = $2, updated_at = NOW(), last_seen_at = NOW()
+     WHERE id = $1
+     RETURNING coins`,
+    [id, coins]
+  );
+  return rows[0]?.coins ?? null;
+}
+
+export async function updateUserCoinsAtomic(id, delta) {
+  if (!pool || !id) return null;
+  const { rows } = await pool.query(
+    `UPDATE users
+     SET coins = GREATEST(0, coins + $2), updated_at = NOW(), last_seen_at = NOW()
+     WHERE id = $1
+     RETURNING coins`,
+    [id, delta]
+  );
+  return rows[0]?.coins ?? null;
+}
+
+export async function touchUser(id) {
+  if (!pool || !id) return;
+  await pool.query(
+    `UPDATE users
+     SET last_seen_at = NOW(), updated_at = NOW()
+     WHERE id = $1`,
+    [id]
+  );
+}
+
+export async function validateSessionToken(userId, token) {
+  if (!pool || !userId || !token) return false;
+  const { rows } = await pool.query(
+    `SELECT 1 FROM users WHERE id = $1 AND session_token = $2`,
+    [userId, token]
+  );
+  return rows.length > 0;
+}
+
+export async function setSessionToken(userId, token) {
+  if (!pool || !userId) return false;
+  const { rowCount } = await pool.query(
+    `UPDATE users
+     SET session_token = $2, updated_at = NOW()
+     WHERE id = $1`,
+    [userId, token]
+  );
+  return rowCount > 0;
 }
