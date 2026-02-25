@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: openclawworld-server
+    runtime: node
+    rootDir: server
+    plan: free
+    autoDeploy: true
+    buildCommand: npm install
+    startCommand: npm run start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: DEV_MODE
+        value: "0"
+      - key: OPEN_ACCESS
+        value: "0"
+      - key: TRUST_PROXY
+        value: "1"
+      - key: CLIENT_URL
+        sync: false
+      - key: SERVER_URL
+        sync: false
+      - key: EXTRA_ALLOWED_ORIGIN
+        sync: false
