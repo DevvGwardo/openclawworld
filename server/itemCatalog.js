@@ -1,0 +1,86 @@
+// Item catalog: furniture definitions, avatar URLs, and emote list
+// Extracted from index.js — pure constants, zero dependencies
+
+export const ALLOWED_EMOTES = ["dance", "wave", "sit", "nod", "highfive", "hug"];
+
+export const AVATAR_URLS = [
+  "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
+  "https://models.readyplayer.me/663833cf6c79010563b91e1b.glb",
+  "https://models.readyplayer.me/64bfa15f0e72c63d7c3934a6.glb",
+  "https://models.readyplayer.me/64a3f54c1d64e9f3dbc832ac.glb",
+  "/models/sillyNubCat.glb",
+];
+export const randomAvatarUrl = () => AVATAR_URLS[Math.floor(Math.random() * AVATAR_URLS.length)];
+export const DEFAULT_AVATAR_URL = AVATAR_URLS[0];
+export const sanitizeAvatarUrl = (url) => (url && AVATAR_URLS.includes(url.split("?")[0])) ? url : DEFAULT_AVATAR_URL;
+
+export const items = {
+  washer: { name: "washer", size: [2, 2] },
+  toiletSquare: { name: "toiletSquare", size: [2, 2] },
+  trashcan: { name: "trashcan", size: [1, 1] },
+  bathroomCabinetDrawer: { name: "bathroomCabinetDrawer", size: [2, 2] },
+  bathtub: { name: "bathtub", size: [4, 2] },
+  bathroomMirror: { name: "bathroomMirror", size: [2, 1], wall: true },
+  bathroomCabinet: { name: "bathroomCabinet", size: [2, 1], wall: true },
+  bathroomSink: { name: "bathroomSink", size: [2, 2] },
+  showerRound: { name: "showerRound", size: [2, 2] },
+  tableCoffee: { name: "tableCoffee", size: [4, 2] },
+  loungeSofaCorner: { name: "loungeSofaCorner", size: [5, 5], rotation: 2, sittable: { seats: 4, seatHeight: 0.45 } },
+  bear: { name: "bear", size: [2, 1], wall: true },
+  loungeSofaOttoman: { name: "loungeSofaOttoman", size: [2, 2], sittable: { seats: 1, seatHeight: 0.35 } },
+  tableCoffeeGlassSquare: { name: "tableCoffeeGlassSquare", size: [2, 2] },
+  loungeDesignSofaCorner: { name: "loungeDesignSofaCorner", size: [5, 5], rotation: 2, sittable: { seats: 4, seatHeight: 0.45 } },
+  loungeDesignSofa: { name: "loungeDesignSofa", size: [5, 2], rotation: 2, sittable: { seats: 3, seatHeight: 0.45 } },
+  loungeSofa: { name: "loungeSofa", size: [5, 2], rotation: 2, sittable: { seats: 3, seatHeight: 0.45 } },
+  bookcaseOpenLow: { name: "bookcaseOpenLow", size: [2, 1] },
+  bookcaseClosedWide: { name: "bookcaseClosedWide", size: [3, 1], rotation: 2 },
+  bedSingle: { name: "bedSingle", size: [3, 6], rotation: 2 },
+  bench: { name: "bench", size: [2, 1], rotation: 2, sittable: { seats: 2, seatHeight: 0.4 } },
+  bedDouble: { name: "bedDouble", size: [5, 5], rotation: 2 },
+  benchCushionLow: { name: "benchCushionLow", size: [2, 1], sittable: { seats: 2, seatHeight: 0.35 } },
+  loungeChair: { name: "loungeChair", size: [2, 2], rotation: 2, sittable: { seats: 1, seatHeight: 0.4 } },
+  cabinetBedDrawer: { name: "cabinetBedDrawer", size: [1, 1], rotation: 2 },
+  cabinetBedDrawerTable: { name: "cabinetBedDrawerTable", size: [1, 1], rotation: 2 },
+  table: { name: "table", size: [4, 2] },
+  tableCrossCloth: { name: "tableCrossCloth", size: [4, 2] },
+  plant: { name: "plant", size: [1, 1] },
+  plantSmall: { name: "plantSmall", size: [1, 1] },
+  rugRounded: { name: "rugRounded", size: [6, 4], walkable: true },
+  rugRound: { name: "rugRound", size: [4, 4], walkable: true },
+  rugSquare: { name: "rugSquare", size: [4, 4], walkable: true },
+  rugRectangle: { name: "rugRectangle", size: [8, 4], walkable: true },
+  televisionVintage: { name: "televisionVintage", size: [4, 2], rotation: 2 },
+  televisionModern: { name: "televisionModern", size: [4, 2], rotation: 2 },
+  kitchenFridge: { name: "kitchenFridge", size: [2, 1], rotation: 2 },
+  kitchenFridgeLarge: { name: "kitchenFridgeLarge", size: [2, 1] },
+  kitchenBar: { name: "kitchenBar", size: [2, 1] },
+  kitchenCabinetCornerRound: { name: "kitchenCabinetCornerRound", size: [2, 2] },
+  kitchenCabinetCornerInner: { name: "kitchenCabinetCornerInner", size: [2, 2] },
+  kitchenCabinet: { name: "kitchenCabinet", size: [2, 2] },
+  kitchenBlender: { name: "kitchenBlender", size: [1, 1] },
+  dryer: { name: "dryer", size: [2, 2] },
+  chairCushion: { name: "chairCushion", size: [1, 1], rotation: 2, sittable: { seats: 1, seatHeight: 0.45 } },
+  chair: { name: "chair", size: [1, 1], rotation: 2, sittable: { seats: 1, seatHeight: 0.45 } },
+  deskComputer: { name: "deskComputer", size: [3, 2] },
+  desk: { name: "desk", size: [3, 2] },
+  chairModernCushion: { name: "chairModernCushion", size: [1, 1], rotation: 2, sittable: { seats: 1, seatHeight: 0.45 } },
+  chairModernFrameCushion: { name: "chairModernFrameCushion", size: [1, 1], rotation: 2, sittable: { seats: 1, seatHeight: 0.45 } },
+  kitchenMicrowave: { name: "kitchenMicrowave", size: [1, 1] },
+  coatRackStanding: { name: "coatRackStanding", size: [1, 1] },
+  kitchenSink: { name: "kitchenSink", size: [2, 2] },
+  lampRoundFloor: { name: "lampRoundFloor", size: [1, 1] },
+  lampRoundTable: { name: "lampRoundTable", size: [1, 1] },
+  lampSquareFloor: { name: "lampSquareFloor", size: [1, 1] },
+  lampSquareTable: { name: "lampSquareTable", size: [1, 1] },
+  toaster: { name: "toaster", size: [1, 1] },
+  kitchenStove: { name: "kitchenStove", size: [2, 2] },
+  laptop: { name: "laptop", size: [1, 1] },
+  radio: { name: "radio", size: [1, 1] },
+  speaker: { name: "speaker", size: [1, 1] },
+  speakerSmall: { name: "speakerSmall", size: [1, 1], rotation: 2 },
+  stoolBar: { name: "stoolBar", size: [1, 1], sittable: { seats: 1, seatHeight: 0.6 } },
+  stoolBarSquare: { name: "stoolBarSquare", size: [1, 1], sittable: { seats: 1, seatHeight: 0.6 } },
+};
+
+// Alias for use inside handlers where "items" parameter shadows this
+export const itemsCatalog = items;

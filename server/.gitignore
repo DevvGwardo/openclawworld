@@ -1,0 +1,7 @@
+node_modules
+rooms.json
+bonds.json
+users.json
+.env
+.env.*
+!.env.example

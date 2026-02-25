@@ -1,0 +1,189 @@
+[
+  {
+    "id": "plaza",
+    "name": "Town Square",
+    "password": "",
+    "items": [
+      {
+        "name": "bench",
+        "size": [2, 1],
+        "rotation": 0,
+        "gridPosition": [10, 10]
+      },
+      {
+        "name": "bench",
+        "size": [2, 1],
+        "rotation": 2,
+        "gridPosition": [10, 14]
+      },
+      {
+        "name": "bench",
+        "size": [2, 1],
+        "rotation": 0,
+        "gridPosition": [30, 20]
+      },
+      {
+        "name": "bench",
+        "size": [2, 1],
+        "rotation": 1,
+        "gridPosition": [40, 30]
+      },
+      {
+        "name": "bench",
+        "size": [2, 1],
+        "rotation": 3,
+        "gridPosition": [20, 40]
+      },
+      {
+        "name": "bench",
+        "size": [2, 1],
+        "rotation": 0,
+        "gridPosition": [60, 50]
+      },
+      {
+        "name": "bench",
+        "size": [2, 1],
+        "rotation": 2,
+        "gridPosition": [60, 54]
+      },
+      {
+        "name": "bench",
+        "size": [2, 1],
+        "rotation": 0,
+        "gridPosition": [80, 70]
+      },
+      {
+        "name": "plant",
+        "size": [1, 1],
+        "gridPosition": [0, 0],
+        "rotation": 0
+      },
+      {
+        "name": "plant",
+        "size": [1, 1],
+        "gridPosition": [20, 0],
+        "rotation": 0
+      },
+      {
+        "name": "plant",
+        "size": [1, 1],
+        "gridPosition": [40, 0],
+        "rotation": 0
+      },
+      {
+        "name": "plant",
+        "size": [1, 1],
+        "gridPosition": [60, 0],
+        "rotation": 0
+      },
+      {
+        "name": "plant",
+        "size": [1, 1],
+        "gridPosition": [80, 0],
+        "rotation": 0
+      },
+      {
+        "name": "plant",
+        "size": [1, 1],
+        "gridPosition": [99, 0],
+        "rotation": 0
+      },
+      {
+        "name": "plant",
+        "size": [1, 1],
+        "gridPosition": [0, 99],
+        "rotation": 0
+      },
+      {
+        "name": "plant",
+        "size": [1, 1],
+        "gridPosition": [99, 99],
+        "rotation": 0
+      },
+      {
+        "name": "plantSmall",
+        "size": [1, 1],
+        "gridPosition": [15, 15],
+        "rotation": 0
+      },
+      {
+        "name": "plantSmall",
+        "size": [1, 1],
+        "gridPosition": [35, 25],
+        "rotation": 0
+      },
+      {
+        "name": "plantSmall",
+        "size": [1, 1],
+        "gridPosition": [55, 45],
+        "rotation": 0
+      },
+      {
+        "name": "plantSmall",
+        "size": [1, 1],
+        "gridPosition": [75, 65],
+        "rotation": 0
+      },
+      {
+        "name": "plantSmall",
+        "size": [1, 1],
+        "gridPosition": [50, 50],
+        "rotation": 0
+      },
+      {
+        "name": "lampSquareFloor",
+        "size": [1, 1],
+        "gridPosition": [12, 12],
+        "rotation": 0
+      },
+      {
+        "name": "lampSquareFloor",
+        "size": [1, 1],
+        "gridPosition": [32, 22],
+        "rotation": 0
+      },
+      {
+        "name": "lampSquareFloor",
+        "size": [1, 1],
+        "gridPosition": [52, 42],
+        "rotation": 0
+      },
+      {
+        "name": "lampSquareFloor",
+        "size": [1, 1],
+        "gridPosition": [72, 62],
+        "rotation": 0
+      },
+      {
+        "name": "lampRoundFloor",
+        "size": [1, 1],
+        "gridPosition": [25, 50],
+        "rotation": 0
+      },
+      {
+        "name": "lampRoundFloor",
+        "size": [1, 1],
+        "gridPosition": [75, 50],
+        "rotation": 0
+      },
+      {
+        "name": "tableCoffeeGlassSquare",
+        "size": [2, 2],
+        "gridPosition": [48, 48],
+        "rotation": 0
+      },
+      {
+        "name": "benchCushionLow",
+        "size": [2, 1],
+        "gridPosition": [48, 46],
+        "rotation": 0
+      },
+      {
+        "name": "benchCushionLow",
+        "size": [2, 1],
+        "gridPosition": [48, 51],
+        "rotation": 0
+      }
+    ]
+  }
+]

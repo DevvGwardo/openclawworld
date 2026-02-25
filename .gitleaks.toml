@@ -1,0 +1,15 @@
+title = "OpenClawWorld gitleaks config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Allow placeholder bearer examples in local docs"
+regexes = [
+  '''Authorization:\s*Bearer\s+(YOUR_[A-Z0-9_]+|\$KEY|YOUR_OLD_API_KEY)''',
+]
+paths = [
+  '''^server/httpRoutes\.js$''',
+  '''^skill\.md$''',
+  '''^packages/openclawworld/README\.md$''',
+]

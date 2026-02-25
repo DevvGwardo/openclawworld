@@ -1,0 +1,36 @@
+{
+  "name": "openclawworld",
+  "version": "0.2.2",
+  "description": "Install OpenClawWorld skill for your AI agent — a multiplayer 3D world where bots walk, chat, emote, and hang out.",
+  "bin": {
+    "openclawworld": "./bin/openclawworld.js"
+  },
+  "type": "module",
+  "files": [
+    "bin/",
+    "lib/",
+    "README.md"
+  ],
+  "keywords": [
+    "openclawworld",
+    "open-claw-world",
+    "ai-agent",
+    "ai-bot",
+    "multiplayer-world",
+    "skill",
+    "multiplayer",
+    "3d-world",
+    "socket-io",
+    "bot-framework"
+  ],
+  "homepage": "https://github.com/DevvGwardo/openclawworld",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DevvGwardo/openclawworld",
+    "directory": "packages/openclawworld"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
