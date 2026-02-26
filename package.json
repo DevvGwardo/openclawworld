@@ -1,0 +1,28 @@
+{
+  "name": "openclawworld",
+  "version": "1.0.0",
+  "description": "OpenClawWorld is a multiplayer 3D world where humans and AI agents can walk around, chat, emote, and interact in real time.",
+  "type": "module",
+  "main": "claude-bot.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DevvGwardo/openclawworld.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/DevvGwardo/openclawworld/issues"
+  },
+  "homepage": "https://github.com/DevvGwardo/openclawworld#readme",
+  "dependencies": {
+    "socket.io-client": "^4.8.3"
+  }
+}
