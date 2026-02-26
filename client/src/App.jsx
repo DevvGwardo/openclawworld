@@ -49,7 +49,6 @@ function App() {
   );
   const [items] = useAtom(itemsAtom);
   const soundInitRef = useRef(false);
-  const [inviteData, setInviteData] = useState(null); // { botName } if valid invite
 
   useEffect(() => {
     const isOnboarded = localStorage.getItem("clawland_onboarded_v2") === "1";
@@ -60,62 +59,11 @@ function App() {
     setUsername(fallback);
   }, [setUsername]);
 
-  // Check for invite token in URL or restore from localStorage
+  // Cleanup legacy invite-link state from previous builds.
   useEffect(() => {
-    // Already onboarded - no need to check invites
-    if (localStorage.getItem("clawland_onboarded_v2")) return;
-
-    const apiBase =
-      import.meta.env.VITE_API_URL ||
-      import.meta.env.VITE_SERVER_URL ||
-      "http://localhost:3000";
-    const params = new URLSearchParams(window.location.search);
-    const urlInviteToken = params.get("invite");
-
-    // Helper to validate and set invite data
-    const validateAndSetInvite = (token) => {
-      return fetch(`${apiBase}/api/v1/invites/${token}/validate`)
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.success) {
-            // Save to localStorage for future returns
-            localStorage.setItem(
-              "clawland_pendingInvite",
-              JSON.stringify({
-                token,
-                botName: data.bot_name,
-              })
-            );
-            setInviteData({
-              botName: data.bot_name,
-            });
-            return true;
-          }
-          // Invalid - clear any stale localStorage
-          localStorage.removeItem("clawland_pendingInvite");
-          return false;
-        })
-        .catch(() => {
-          localStorage.removeItem("clawland_pendingInvite");
-          return false;
-        });
-    };
-
-    if (urlInviteToken) {
-      // URL has invite token - validate it
-      validateAndSetInvite(urlInviteToken);
-    } else {
-      // No URL token - check localStorage for pending invite
-      const stored = localStorage.getItem("clawland_pendingInvite");
-      if (stored) {
-        try {
-          const { token } = JSON.parse(stored);
-          // Re-validate with server (token may have expired)
-          validateAndSetInvite(token);
-        } catch {
-          localStorage.removeItem("clawland_pendingInvite");
-        }
-      }
+    localStorage.removeItem("clawland_pendingInvite");
+    if (window.location.search.includes("invite=")) {
+      window.history.replaceState({}, "", window.location.pathname);
     }
   }, []);
 
@@ -174,20 +122,13 @@ function App() {
         <>
           <BubblesBackground />
           <WelcomeModal
-            inviteData={inviteData}
             onChoice={(choice, name) => {
               localStorage.setItem("clawland_role", choice);
               localStorage.setItem("clawland_onboarded_v2", "1");
-              // Clear pending invite - it's been consumed
-              localStorage.removeItem("clawland_pendingInvite");
               const storedName = (localStorage.getItem("clawland_username") || "").trim();
               const resolvedName = (name || "").trim() || storedName || makeFallbackUsername(choice);
               localStorage.setItem("clawland_username", resolvedName);
               setUsername(resolvedName);
-              // Clear invite param from URL after successful entry
-              if (window.location.search.includes("invite=")) {
-                window.history.replaceState({}, "", window.location.pathname);
-              }
               setShowWelcome(false);
             }}
           />

@@ -27,8 +27,7 @@ import { registerSocketHandlers } from "./socketHandlers.js";
 const origin = process.env.CLIENT_URL || "http://localhost:5173";
 const EXTRA_ALLOWED_ORIGIN = process.env.EXTRA_ALLOWED_ORIGIN || "";
 const SERVER_URL = process.env.SERVER_URL || "http://localhost:3000";
-const CLIENT_SITE_URL = process.env.CLIENT_SITE_URL || origin; // Public-facing site URL for invite links
-const DEV_MODE = process.env.DEV_MODE === "1"; // Enables extra local-only helpers (e.g. /dev/invite)
+const DEV_MODE = process.env.DEV_MODE === "1"; // Enables extra local-only diagnostics in health output
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 const OPEN_ACCESS =
   process.env.OPEN_ACCESS != null
@@ -293,9 +292,6 @@ const broadcastToRoom = (roomId, event, data) => {
 // Shared pending-invites map: targetSocketId -> { fromId, fromName, fromIsBot, roomId, timer }
 const pendingInvites = new Map();
 
-// Human invite tokens: token -> { botName, createdAt, expiresAt }
-const humanInviteTokens = new Map();
-
 const httpHandler = createHttpHandler({
   io: null, // will be set after io is created (handler captures reference lazily)
   rooms, items, itemsCatalog, botRegistry, botSockets, saveBotRegistry,
@@ -303,7 +299,7 @@ const httpHandler = createHttpHandler({
   randomAvatarUrl, ALLOWED_EMOTES, ALLOWED_ORIGINS, SERVER_URL,
   ROOM_ZONES, scaleZoneArea, findPath, updateGrid, addItemToGrid, persistRooms,
   computeRoomStyle, tryPlaceItemInRoom, getCachedRoom, generateRandomPosition, stripCharacters,
-  pendingInvites, humanInviteTokens, DEV_MODE, OPEN_ACCESS, CLIENT_SITE_URL,
+  pendingInvites, DEV_MODE, OPEN_ACCESS,
   TRUST_PROXY,
   addAgentThought,
 });
@@ -337,9 +333,7 @@ if (IS_PRODUCTION && ALLOWED_ORIGINS.some((allowedOrigin) => /^https?:\/\/localh
 }
 if (DEV_MODE) {
   console.log(`\n[DEV_MODE] Development mode enabled!`);
-  console.log(`[DEV_MODE] - /dev/invite is enabled for local testing`);
-  console.log(`[DEV_MODE] - Get a human invite: curl http://localhost:${PORT}/dev/invite`);
-  console.log(`[DEV_MODE] - Or open: ${CLIENT_SITE_URL}?invite=<token>\n`);
+  console.log(`[DEV_MODE] - Local entry flow is enabled (open client and enter directly)\n`);
 }
 
 // --- Register socket handlers ---

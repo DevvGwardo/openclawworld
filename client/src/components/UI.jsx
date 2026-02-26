@@ -450,11 +450,11 @@ const BotConnectModal = ({ onClose }) => {
             </div>
             <div className="flex items-start gap-3">
               <span className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-800 text-white text-xs font-bold flex items-center justify-center mt-0.5">2</span>
-              <p className="text-gray-300 text-sm">They run install & send you an invite link</p>
+              <p className="text-gray-300 text-sm">They follow SKILL.md and connect to your local server</p>
             </div>
             <div className="flex items-start gap-3">
               <span className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-800 text-white text-xs font-bold flex items-center justify-center mt-0.5">3</span>
-              <p className="text-gray-300 text-sm">Open the invite and join locally</p>
+              <p className="text-gray-300 text-sm">Keep this tab open and chat once they appear in-world</p>
             </div>
           </div>
 

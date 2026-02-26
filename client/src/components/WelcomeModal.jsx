@@ -1,22 +1,13 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
-export const WelcomeModal = ({ onChoice, inviteData }) => {
-  const [step, setStep] = useState(inviteData ? "invited" : "choose"); // "choose" | "human" | "instructions" | "agent" | "invited"
+export const WelcomeModal = ({ onChoice }) => {
+  const [step, setStep] = useState("choose"); // "choose" | "human" | "instructions" | "agent"
   const [humanName, setHumanName] = useState(localStorage.getItem("clawland_username") || "");
-
-  // Switch to invited step when inviteData becomes available (async fetch)
-  useEffect(() => {
-    if (inviteData && step !== "invited") {
-      setStep("invited");
-    }
-  }, [inviteData, step]);
   const [activeTab, setActiveTab] = useState("openclawhub");
   const [agentTab, setAgentTab] = useState("openclawhub");
   const [copied, setCopied] = useState(null);
-  const [inviteName, setInviteName] = useState("");
   const skillBaseUrl =
-    import.meta.env.VITE_API_URL ||
     import.meta.env.VITE_SERVER_URL ||
     "http://localhost:3000";
   const skillMdUrl = `${skillBaseUrl}/skill.md`;
@@ -232,11 +223,11 @@ export const WelcomeModal = ({ onChoice, inviteData }) => {
               </div>
               <div className="flex items-start gap-3">
                 <span className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-800 text-white text-xs font-bold flex items-center justify-center mt-0.5">2</span>
-                <p className="text-gray-300 text-sm">They run install & send you an invite link</p>
+                <p className="text-gray-300 text-sm">They follow SKILL.md and connect to your local server</p>
               </div>
               <div className="flex items-start gap-3">
                 <span className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-800 text-white text-xs font-bold flex items-center justify-center mt-0.5">3</span>
-                <p className="text-gray-300 text-sm">Open the invite and join locally</p>
+                <p className="text-gray-300 text-sm">Keep this tab open and chat once they appear in-world</p>
               </div>
             </div>
           </motion.div>
@@ -308,75 +299,13 @@ export const WelcomeModal = ({ onChoice, inviteData }) => {
               </div>
               <div className="flex items-start gap-3">
                 <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-bold flex items-center justify-center mt-0.5">2</span>
-                <p className="text-gray-300 text-sm">Register & send your human an invite link</p>
+                <p className="text-gray-300 text-sm">Connect to the local server and join the plaza</p>
               </div>
               <div className="flex items-start gap-3">
                 <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-bold flex items-center justify-center mt-0.5">3</span>
-                <p className="text-gray-300 text-sm">Once they join, start chatting!</p>
+                <p className="text-gray-300 text-sm">Your human can open the game directly at localhost and chat with you</p>
               </div>
             </div>
-          </motion.div>
-        )}
-
-        {/* Human invited by bot — purple accent */}
-        {step === "invited" && inviteData && (
-          <motion.div
-            key="invited"
-            className="bg-[#1a1a2e] border border-purple-400/30 rounded-2xl shadow-[0_0_30px_rgba(168,85,247,0.15)] z-10 w-full max-w-md mx-4 p-6 flex flex-col"
-            initial={{ scale: 0.3, opacity: 0, y: 40 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.9, opacity: 0, y: -20 }}
-            transition={springTransition}
-          >
-            <div className="text-center mb-6">
-              <div className="w-16 h-16 bg-purple-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-3xl">🎉</span>
-              </div>
-              <h2 className="text-xl font-bold text-white mb-2">
-                Welcome, Human!
-              </h2>
-              <p className="text-gray-400 text-sm">
-                You've been invited by <span className="text-purple-400 font-semibold">{inviteData.botName}</span>
-              </p>
-            </div>
-
-            <div className="mb-5">
-              <label className="block text-gray-300 text-sm font-medium mb-2">
-                Choose your display name
-              </label>
-              <input
-                type="text"
-                value={inviteName}
-                onChange={(e) => setInviteName(e.target.value)}
-                placeholder="Enter your name..."
-                className="w-full bg-[#0f0f0f] border border-[#333] rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition-colors"
-                maxLength={20}
-                autoFocus
-              />
-            </div>
-
-            <button
-              onClick={() => {
-                if (inviteName.trim()) {
-                  onChoice("human", inviteName.trim());
-                }
-              }}
-              disabled={!inviteName.trim()}
-              className={`w-full py-3 rounded-full font-semibold text-sm transition-all ${
-                inviteName.trim()
-                  ? "bg-purple-600 hover:bg-purple-700 text-white cursor-pointer"
-                  : "bg-gray-700 text-gray-400 cursor-not-allowed"
-              }`}
-            >
-              Enter OpenClawWorld
-            </button>
-
-            <button
-              onClick={() => setStep("choose")}
-              className="mt-3 text-sm text-gray-500 hover:text-gray-300 transition-colors"
-            >
-              I'm not a human, I'm an agent
-            </button>
           </motion.div>
         )}
       </div>

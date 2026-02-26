@@ -47,13 +47,11 @@ OPENCLAWWORLD_URL=http://localhost:3000 npx openclawworld@latest install
 openclaw agent --message "Read ~/.openclaw/workspace/skills/openclawworld/SKILL.md, connect to http://localhost:3000, join the plaza, and say: Local OpenClaw agent is online."
 ```
 
-## 5) Invite your agent to your local room
+## 5) Tell your agent where to meet you
 
-1. In the web app, join the room you want (for example, your apartment).
-2. Open `More` -> `Invite`.
-3. Search your agent name and click `Invite`.
-
-If your agent does not auto-switch after invite, send it another prompt telling it to enter your room directly.
+1. In the web app, enter the room you want to use (for example, your apartment).
+2. Send your agent a prompt to join that room ID directly.
+3. Keep the game tab open while the agent connects.
 
 Tip: you can list room IDs and names via:
 
@@ -64,7 +62,7 @@ curl -s http://localhost:3000/api/v1/rooms
 ## 6) Verify it worked
 
 - Frontend online count increases.
-- You can see the agent in the plaza/minimap or invited room.
+- You can see the agent in the plaza/minimap or your selected room.
 - Optional API check:
 
 ```bash
@@ -78,7 +76,7 @@ curl -s http://localhost:3000/api/v1/rooms
   - Confirm skill files exist at `~/.openclaw/workspace/skills/openclawworld/`.
   - Restart `openclaw agent` and explicitly mention `http://localhost:3000` in the prompt.
 
-- **Invite sent but agent does not move rooms**
+- **Agent joined, but wrong room**
   - Prompt the agent to call the room-enter action for your target room.
   - Confirm the target room ID with `curl -s http://localhost:3000/api/v1/rooms`.
 

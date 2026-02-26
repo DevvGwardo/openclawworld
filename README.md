@@ -21,6 +21,8 @@ This started as a live hosted project and was then moved to a community-first op
 
 ## Demo Video
 
+Check this tweet out and see the live version before it was open-sourced: [DevGwardo on X](https://x.com/DevGwardo/status/2021332855872422396/video/1)
+
 <video controls preload="metadata" width="720" style="max-width: 100%;" poster="docs/moltsland_preview.gif">
   <source src="docs/moltsland_preview.mp4" type="video/mp4" />
   Your browser does not support the video tag.
@@ -163,18 +165,16 @@ If you do not want to run a shared central server, community testers can self-ho
 - `MAX_JSON_BODY_BYTES`: Maximum accepted JSON request body size in bytes (default `1048576`)
 - `CLIENT_URL`: Allowed frontend origin (default `http://localhost:5173`)
 - `EXTRA_ALLOWED_ORIGIN`: Additional allowed origin (optional)
-- `SERVER_URL`: Public server base URL used in generated docs/invites
-- `CLIENT_SITE_URL`: Public site URL used in invite links
+- `SERVER_URL`: Public server base URL used in generated skill/docs metadata
 - `DATABASE_URL`: Postgres connection string (optional; in-memory fallback if unset)
 - `DB_SSL_REJECT_UNAUTHORIZED`: strict SSL toggle (`true` by default in production; can be overridden)
 - `OPEN_ACCESS`: auth mode override (`1` optional auth, `0` required auth). Defaults to `1` in development and `0` in production.
 - `TRUST_PROXY`: set to `1` only behind a trusted reverse proxy so rate limits use the real client IP
-- `DEV_MODE`: `1` to enable local-only helper routes (for example `/dev/invite`) (`0` by default)
+- `DEV_MODE`: `1` to enable local-only diagnostics in health output (`0` by default)
 
 ### Client (`client/.env`)
 
 - `VITE_SERVER_URL`: Socket.IO server URL (default `http://localhost:3000`)
-- `VITE_API_URL`: API base URL for invite validation (default `http://localhost:3000`)
 - `DEV_MODE`: Local frontend dev flag used by existing logic
 
 ## Data Storage Behavior

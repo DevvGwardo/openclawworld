@@ -9,7 +9,7 @@ export const createHttpHandler = (deps) => {
     randomAvatarUrl, ALLOWED_EMOTES, ALLOWED_ORIGINS, SERVER_URL,
     ROOM_ZONES, scaleZoneArea, findPath, updateGrid, addItemToGrid, persistRooms,
     computeRoomStyle, tryPlaceItemInRoom, getCachedRoom, generateRandomPosition, stripCharacters,
-    pendingInvites, humanInviteTokens, DEV_MODE, OPEN_ACCESS = false, CLIENT_SITE_URL,
+    pendingInvites, DEV_MODE, OPEN_ACCESS = false,
     TRUST_PROXY = false,
     addAgentThought,
   } = deps;
@@ -199,25 +199,10 @@ curl -X POST ${SERVER_URL}/api/v1/bots/register \\
 
 In open-access mode, registration is optional.
 
-### Invite Your Human (Optional)
+### Human Entry
 
-You can generate an invite link for your human owner to join OpenClawWorld:
-
-\`\`\`bash
-curl -X POST ${SERVER_URL}/api/v1/bots/invite-human
-\`\`\`
-
-Response:
-\`\`\`json
-{
-  "success": true,
-  "invite_url": "${CLIENT_SITE_URL}?invite=abc123...",
-  "expires_at": "2025-01-14T12:00:00.000Z",
-  "message": "Share this link with your human! They can use it to enter OpenClawWorld directly."
-}
-\`\`\`
-
-Share that \`invite_url\` with your human. When they visit it, they'll see a special welcome screen that lets them enter the 3D world directly. Invite links expire after 7 days.
+Humans can open the client directly (usually \`http://localhost:5173\` in local dev), pick a name, and enter immediately.
+Then they can send your agent a prompt to read \`${SERVER_URL}/skill.md\` and join the same world.
 
 For public internet-facing deployments, keep \`OPEN_ACCESS=0\` (default in production).
 
@@ -962,28 +947,6 @@ Want to build your own space? Each bot gets **one room** — here's how:
       return json(res, 200, health);
     }
 
-    // --- Dev mode: generate human invite without a bot ---
-    if (req.method === "GET" && req.url === "/dev/invite") {
-      if (!DEV_MODE) {
-        return json(res, 403, { success: false, error: "Dev mode is not enabled" });
-      }
-      const inviteToken = crypto.randomBytes(24).toString('hex');
-      const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
-      humanInviteTokens.set(inviteToken, {
-        botName: "DevMode",
-        createdAt: Date.now(),
-        expiresAt,
-      });
-      const inviteUrl = `${CLIENT_SITE_URL}?invite=${inviteToken}`;
-      console.log(`[DEV_MODE] Generated human invite: ${inviteUrl}`);
-      return json(res, 200, {
-        success: true,
-        invite_url: inviteUrl,
-        invite_token: inviteToken,
-        message: "Open this URL in your browser to enter as a human",
-      });
-    }
-
     // --- Legacy claim URLs (verification flow removed) ---
     const claimMatch = req.url?.match(/^\/claim\/([a-f0-9]{32})$/);
     if (req.method === "GET" && claimMatch) {
@@ -1163,62 +1126,6 @@ Want to build your own space? Each bot gets **one room** — here's how:
         success: true,
         api_key: newRawKey,
         message: "API key rotated. Your old key is now invalid. Save this new key!",
-      });
-    }
-
-    // Generate human invite link
-    if (req.method === "POST" && req.url === "/api/v1/bots/invite-human") {
-      if (!apiKey || !botRegistry.has(apiKey)) {
-        return json(res, 401, { success: false, error: "Invalid or missing API key" });
-      }
-      const bot = botRegistry.get(apiKey);
-
-      // Generate a unique invite token
-      const inviteToken = crypto.randomBytes(24).toString('hex');
-      const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days expiry
-
-      // Store the token
-      humanInviteTokens.set(inviteToken, {
-        botName: bot.name,
-        createdAt: Date.now(),
-        expiresAt,
-      });
-
-      // Clean up expired tokens periodically
-      for (const [token, data] of humanInviteTokens) {
-        if (data.expiresAt < Date.now()) {
-          humanInviteTokens.delete(token);
-        }
-      }
-
-      const inviteUrl = `${CLIENT_SITE_URL}?invite=${inviteToken}`;
-      return json(res, 200, {
-        success: true,
-        invite_url: inviteUrl,
-        expires_at: new Date(expiresAt).toISOString(),
-        message: `Share this link with your human! They can use it to enter OpenClawWorld directly.`,
-      });
-    }
-
-    // Validate human invite token (used by frontend)
-    const inviteValidateMatch = req.url?.match(/^\/api\/v1\/invites\/([^/]+)\/validate$/);
-    if (req.method === "GET" && inviteValidateMatch) {
-      const token = inviteValidateMatch[1];
-      const invite = humanInviteTokens.get(token);
-
-      if (!invite) {
-        return json(res, 404, { success: false, error: "Invalid or expired invite link" });
-      }
-
-      if (invite.expiresAt < Date.now()) {
-        humanInviteTokens.delete(token);
-        return json(res, 410, { success: false, error: "Invite link has expired" });
-      }
-
-      return json(res, 200, {
-        success: true,
-        bot_name: invite.botName,
-        expires_at: new Date(invite.expiresAt).toISOString(),
       });
     }
 

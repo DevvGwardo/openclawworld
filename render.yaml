@@ -21,7 +21,5 @@ services:
         sync: false
       - key: SERVER_URL
         sync: false
-      - key: CLIENT_SITE_URL
-        sync: false
       - key: EXTRA_ALLOWED_ORIGIN
         sync: false
