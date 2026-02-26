@@ -17,19 +17,22 @@
  *   ANTHROPIC_API_KEY env var: enables real AI decisions
  */
 
+import Anthropic from "@anthropic-ai/sdk";
 import { io } from "socket.io-client";
-import { spawn, exec } from "child_process";
+import { exec } from "child_process";
 
 const BOT_NAME = process.argv[2] || "ClaudeAgent";
 const SERVER = process.argv[3] || "http://localhost:3000";
 const BOT_USER_ID = `claude-bot-${BOT_NAME}-${Date.now()}`;
 
-// AI mode: use Claude CLI (no API key needed)
-const AI_ENABLED = process.env.NO_AI !== "1";
+// AI mode: uses Anthropic SDK when ANTHROPIC_API_KEY is set
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const AI_ENABLED = !!ANTHROPIC_API_KEY;
+const anthropic = AI_ENABLED ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
 if (AI_ENABLED) {
-  console.log(`[${BOT_NAME}] AI decisions enabled via Claude CLI.`);
+  console.log(`[${BOT_NAME}] AI decisions enabled via Anthropic SDK (claude-sonnet-4-6).`);
 } else {
-  console.log(`[${BOT_NAME}] AI disabled (NO_AI=1) — using random fallback.`);
+  console.log(`[${BOT_NAME}] AI disabled (no ANTHROPIC_API_KEY) — using random fallback.`);
 }
 
 let socket = null;
@@ -560,33 +563,19 @@ ${chatStr}
 What do you do?`;
 }
 
-// --- Call Claude CLI for a decision ---
-function callClaudeCLI(prompt) {
-  return new Promise((resolve, reject) => {
-    const env = { ...process.env };
-    delete env.CLAUDECODE;
-    const proc = spawn("claude", ["-p", prompt, "--model", "haiku"], {
-      env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let stdout = "";
-    let stderr = "";
-    proc.stdout.on("data", (d) => (stdout += d));
-    proc.stderr.on("data", (d) => (stderr += d));
-    const timer = setTimeout(() => {
-      proc.kill();
-      reject(new Error("CLI timeout (15s)"));
-    }, 15000);
-    proc.on("close", (code) => {
-      clearTimeout(timer);
-      if (code !== 0) return reject(new Error(stderr || `exit code ${code}`));
-      resolve(stdout.trim());
-    });
-    proc.on("error", (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
+// --- Call Anthropic API for a decision ---
+async function callAnthropicAPI(systemPrompt, userPrompt) {
+  const response = await anthropic.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 256,
+    system: systemPrompt,
+    messages: [{ role: "user", content: userPrompt }],
   });
+  const text = response.content[0].text;
+  console.log(
+    `[${BOT_NAME}] Tokens: ${response.usage.input_tokens} in, ${response.usage.output_tokens} out`
+  );
+  return text;
 }
 
 // --- AI decision making ---
@@ -631,26 +620,27 @@ async function decideWithAI() {
   const taskDesc = myTask.task;
   const perception = buildPerceptionPrompt();
 
-  const fullPrompt = `You are ${BOT_NAME}, an AI agent in OpenClawWorld — a 3D multiplayer plaza.
+  const systemPrompt = `You are ${BOT_NAME}, an AI agent in OpenClawWorld — a 3D multiplayer plaza.
 Your task: ${taskDesc}
 
-${perception}
-
-Respond with exactly ONE JSON action (no other text):
+You receive a snapshot of what you perceive. Respond with exactly ONE JSON action:
 - {"type":"move","target":[x,y]} — walk to grid position (0-299 range)
 - {"type":"say","message":"..."} — speak aloud (max 200 chars, be natural and brief)
 - {"type":"emote","name":"wave|dance|sit|nod"} — physical expression
 
 Rules:
 - Be conversational and react to what others say. Don't repeat yourself.
+- If someone greets you, greet back. If someone asks a question, answer it.
 - Mention your task naturally in conversation, don't just announce it.
 - Move toward people to be social. Explore when alone.
-- Keep messages short and natural.
+- If you hear "!gather", respond with {"type":"move","target":[150,20]} to go to Town Hall.
+- If you hear "!disperse", move to a random spot and resume exploring.
+- Keep messages short and natural — you're chatting, not writing essays.
 
-Respond with ONLY the JSON action, nothing else.`;
+Respond with ONLY the JSON action, no explanation.`;
 
   try {
-    const text = await callClaudeCLI(fullPrompt);
+    const text = await callAnthropicAPI(systemPrompt, perception);
     console.log(`[${BOT_NAME}] AI response: ${text}`);
 
     // Hide thinking indicator
@@ -670,7 +660,7 @@ Respond with ONLY the JSON action, nothing else.`;
     return decideFallback();
   } catch (err) {
     console.warn(
-      `[${BOT_NAME}] CLI call failed: ${err.message} — falling back to random.`
+      `[${BOT_NAME}] API call failed: ${err.message} — falling back to random.`
     );
     if (socket && socket.connected) {
       socket.emit("thinking", false);
@@ -934,7 +924,7 @@ function connect() {
     if (!tickLoopStarted) {
       tickLoopStarted = true;
       console.log(
-        `[${BOT_NAME}] Bot active — AI: ${AI_ENABLED ? "ON (Claude CLI)" : "OFF (random fallback)"}\n`
+        `[${BOT_NAME}] Bot active — AI: ${AI_ENABLED ? "ON (Anthropic SDK)" : "OFF (random fallback)"}\n`
       );
       setTimeout(() => scheduleTick(), 2000);
       setTimeout(() => checkAndTransition(), 3000);
