@@ -185,5 +185,38 @@
         "rotation": 0
       }
     ]
+  },
+  {
+    "id": "office",
+    "name": "Bot Office",
+    "size": [15, 15],
+    "gridDivision": 2,
+    "password": "",
+    "items": [
+      { "name": "deskComputer",       "size": [3, 2], "rotation": 0, "gridPosition": [0,  2]  },
+      { "name": "chairModernCushion", "size": [1, 1], "rotation": 1, "gridPosition": [4,  2]  },
+      { "name": "deskComputer",       "size": [3, 2], "rotation": 0, "gridPosition": [0,  9]  },
+      { "name": "chairModernCushion", "size": [1, 1], "rotation": 1, "gridPosition": [4,  9]  },
+      { "name": "deskComputer",       "size": [3, 2], "rotation": 0, "gridPosition": [0,  17] },
+      { "name": "chairModernCushion", "size": [1, 1], "rotation": 1, "gridPosition": [4,  17] },
+      { "name": "deskComputer",       "size": [3, 2], "rotation": 0, "gridPosition": [27, 2]  },
+      { "name": "chairModernCushion", "size": [1, 1], "rotation": 3, "gridPosition": [25, 2]  },
+      { "name": "deskComputer",       "size": [3, 2], "rotation": 0, "gridPosition": [27, 9]  },
+      { "name": "chairModernCushion", "size": [1, 1], "rotation": 3, "gridPosition": [25, 9]  },
+      { "name": "deskComputer",       "size": [3, 2], "rotation": 0, "gridPosition": [27, 17] },
+      { "name": "chairModernCushion", "size": [1, 1], "rotation": 3, "gridPosition": [25, 17] },
+      { "name": "tableCoffee",        "size": [4, 2], "rotation": 0, "gridPosition": [13, 22] },
+      { "name": "benchCushionLow",    "size": [2, 1], "rotation": 0, "gridPosition": [13, 20] },
+      { "name": "benchCushionLow",    "size": [2, 1], "rotation": 2, "gridPosition": [13, 25] },
+      { "name": "plant",              "size": [1, 1], "rotation": 0, "gridPosition": [0,  0]  },
+      { "name": "plant",              "size": [1, 1], "rotation": 0, "gridPosition": [28, 0]  },
+      { "name": "plant",              "size": [1, 1], "rotation": 0, "gridPosition": [0,  28] },
+      { "name": "plant",              "size": [1, 1], "rotation": 0, "gridPosition": [28, 28] },
+      { "name": "bookcaseOpenLow",    "size": [2, 1], "rotation": 0, "gridPosition": [13, 0]  },
+      { "name": "lampSquareFloor",    "size": [1, 1], "rotation": 0, "gridPosition": [6,  6]  },
+      { "name": "lampSquareFloor",    "size": [1, 1], "rotation": 0, "gridPosition": [22, 6]  },
+      { "name": "lampSquareFloor",    "size": [1, 1], "rotation": 0, "gridPosition": [6,  21] },
+      { "name": "lampSquareFloor",    "size": [1, 1], "rotation": 0, "gridPosition": [22, 21] }
+    ]
   }
 ]

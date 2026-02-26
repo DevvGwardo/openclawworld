@@ -11,7 +11,7 @@
  * - Gathering protocol: !gather converges all bots on Town Hall; !disperse resumes wandering
  * - AI-driven decisions: uses Claude CLI when available
  * - Work presence: bots mirror whether Claude Code CLI is actively running
- * - Office room: bots create their own office, commute when working
+ * - Office room: bots commute to the shared "Bot Office" room when working
  *
  * Usage: node claude-bot.js [botName] [serverUrl]
  *   ANTHROPIC_API_KEY env var: enables real AI decisions
@@ -85,49 +85,13 @@ const WORK_CHAT_LINES = [
 ];
 
 // --- Office room state ---
-const OFFICE_ROOM_NAME = `${BOT_NAME}'s Office`;
-let myOfficeRoomId = null;      // set after createRoom callback
-let currentRoomId = null;       // track which room we're in
-let officeItems = [];           // items in the office room
-let isSitting = false;          // whether we're currently seated
-let pendingRoomSwitch = false;  // guard against double-switches
-let tickLoopStarted = false;    // prevent re-registering tick loop
-let availableRooms = [];        // room list from welcome event
-let officeFurnished = false;    // whether office has been furnished
-
-// Office furniture layout for 15x15 room (30x30 grid)
-// Additive rotation: bot rotation added to catalog default.
-// chairModernCushion catalog rot=2: bot 1->R=3 face west, bot 3->R=1 face east
-const OFFICE_FURNITURE = [
-  // Left wall workstations (desk flush with x=0, chair faces west toward desk)
-  { itemName: "deskComputer",       gridPosition: [0,  2],  rotation: 0 },
-  { itemName: "chairModernCushion", gridPosition: [4,  2],  rotation: 1 },
-  { itemName: "deskComputer",       gridPosition: [0,  9],  rotation: 0 },
-  { itemName: "chairModernCushion", gridPosition: [4,  9],  rotation: 1 },
-  { itemName: "deskComputer",       gridPosition: [0,  17], rotation: 0 },
-  { itemName: "chairModernCushion", gridPosition: [4,  17], rotation: 1 },
-  // Right wall workstations (desk flush with x=27, chair faces east toward desk)
-  { itemName: "deskComputer",       gridPosition: [27, 2],  rotation: 0 },
-  { itemName: "chairModernCushion", gridPosition: [25, 2],  rotation: 3 },
-  { itemName: "deskComputer",       gridPosition: [27, 9],  rotation: 0 },
-  { itemName: "chairModernCushion", gridPosition: [25, 9],  rotation: 3 },
-  { itemName: "deskComputer",       gridPosition: [27, 17], rotation: 0 },
-  { itemName: "chairModernCushion", gridPosition: [25, 17], rotation: 3 },
-  // Break area (center-south)
-  { itemName: "tableCoffee",        gridPosition: [13, 22], rotation: 0 },
-  { itemName: "benchCushionLow",    gridPosition: [13, 20], rotation: 0 },
-  { itemName: "benchCushionLow",    gridPosition: [13, 25], rotation: 2 },
-  // Decorations
-  { itemName: "plant",              gridPosition: [0,  0],  rotation: 0 },
-  { itemName: "plant",              gridPosition: [28, 0],  rotation: 0 },
-  { itemName: "plant",              gridPosition: [0,  28], rotation: 0 },
-  { itemName: "plant",              gridPosition: [28, 28], rotation: 0 },
-  { itemName: "bookcaseOpenLow",    gridPosition: [13, 0],  rotation: 0 },
-  { itemName: "lampSquareFloor",    gridPosition: [6,  6],  rotation: 0 },
-  { itemName: "lampSquareFloor",    gridPosition: [22, 6],  rotation: 0 },
-  { itemName: "lampSquareFloor",    gridPosition: [6,  21], rotation: 0 },
-  { itemName: "lampSquareFloor",    gridPosition: [22, 21], rotation: 0 },
-];
+const OFFICE_ROOM_ID = "office"; // shared static room defined in default.json
+let currentRoomId = null;        // track which room we're in
+let officeItems = [];            // items in the office room
+let isSitting = false;           // whether we're currently seated
+let pendingRoomSwitch = false;   // guard against double-switches
+let tickLoopStarted = false;     // prevent re-registering tick loop
+let availableRooms = [];         // room list from welcome event
 
 // Meeting lines spoken in turn after gathering
 const MEETING_LINES = [
@@ -353,19 +317,15 @@ function pollClaudeActivity(callback) {
 
 function switchToOffice() {
   if (pendingRoomSwitch) return;
-  if (myOfficeRoomId && currentRoomId === myOfficeRoomId) return;
+  if (currentRoomId === OFFICE_ROOM_ID) return;
 
   pendingRoomSwitch = true;
   // Safety timeout to reset if roomJoined never fires
   setTimeout(() => { pendingRoomSwitch = false; }, 10000);
 
-  if (myOfficeRoomId) {
-    currentRoomId = myOfficeRoomId;
-    console.log(`[${BOT_NAME}] Switching to office (${myOfficeRoomId})...`);
-    socket.emit("switchRoom", myOfficeRoomId);
-  } else {
-    createOfficeAndFurnish();
-  }
+  currentRoomId = OFFICE_ROOM_ID;
+  console.log(`[${BOT_NAME}] Switching to office...`);
+  socket.emit("switchRoom", OFFICE_ROOM_ID);
 }
 
 function switchToPlaza() {
@@ -381,69 +341,10 @@ function switchToPlaza() {
   socket.emit("switchRoom", "plaza");
 }
 
-function createOfficeAndFurnish() {
-  console.log(`[${BOT_NAME}] Creating office room: "${OFFICE_ROOM_NAME}"...`);
-  socket.emit(
-    "createRoom",
-    { name: OFFICE_ROOM_NAME, size: [15, 15], gridDivision: 2 },
-    (result) => {
-      if (result && result.success) {
-        myOfficeRoomId = result.roomId;
-        officeFurnished = false;
-        currentRoomId = result.roomId;
-        officeItems = [];
-        console.log(`[${BOT_NAME}] Office created: ${myOfficeRoomId}`);
-        // roomJoined fires before this callback (Socket.IO event ordering),
-        // so we must furnish here rather than relying on the roomJoined handler.
-        setTimeout(() => {
-          if (socket && socket.connected && currentRoomId === myOfficeRoomId) {
-            furnishOffice();
-          }
-        }, 500);
-      } else {
-        const err = result?.error || "unknown error";
-        console.log(`[${BOT_NAME}] createRoom failed: ${err}. Retrying in 35s.`);
-        pendingRoomSwitch = false;
-        setTimeout(() => {
-          if (workMode === "working" && socket && socket.connected) {
-            switchToOffice();
-          }
-        }, 35000);
-      }
-    }
-  );
-}
-
-function furnishOffice() {
-  if (officeFurnished) return;
-  console.log(`[${BOT_NAME}] Furnishing office with ${OFFICE_FURNITURE.length} items...`);
-  if (socket && socket.connected) {
-    socket.emit("chatMessage", "Setting up my office...");
-    lastChatTime = Date.now();
-  }
-
-  OFFICE_FURNITURE.forEach((item, i) => {
-    setTimeout(() => {
-      if (socket && socket.connected && currentRoomId === myOfficeRoomId) {
-        socket.emit("placeItem", item);
-      }
-    }, i * 1200);
-  });
-
-  // Mark furnished and attempt to sit after all items placed
-  const totalDelay = OFFICE_FURNITURE.length * 1200 + 2000;
-  setTimeout(() => {
-    officeFurnished = true;
-    console.log(`[${BOT_NAME}] Office furnished!`);
-    if (workMode === "working" && socket && socket.connected && currentRoomId === myOfficeRoomId) {
-      sitAtDesk();
-    }
-  }, totalDelay);
-}
 
 function sitAtDesk() {
   if (isSitting) return;
-  if (currentRoomId !== myOfficeRoomId) return;
+  if (currentRoomId !== OFFICE_ROOM_ID) return;
 
   const chairIndices = officeItems
     .map((item, i) => ({ item, i }))
@@ -682,14 +583,14 @@ Respond with ONLY the JSON action, nothing else.`;
 // --- Working mode decision engine ---
 function decideWorking() {
   // Not in office — switch there
-  if (!myOfficeRoomId || currentRoomId !== myOfficeRoomId) {
+  if (currentRoomId !== OFFICE_ROOM_ID) {
     switchToOffice();
     return null;
   }
 
   // In office but not sitting — attempt to sit
   if (!isSitting) {
-    if (officeFurnished) sitAtDesk();
+    sitAtDesk();
     return null;
   }
 
@@ -859,14 +760,6 @@ function connect() {
     availableRooms = data.rooms || [];
     console.log(`[${BOT_NAME}] Welcome! ${availableRooms.length} rooms available.`);
 
-    // Check if we already have a claimed office from a previous session
-    const existingOffice = availableRooms.find((r) => r.claimedBy === BOT_NAME);
-    if (existingOffice) {
-      myOfficeRoomId = existingOffice.id;
-      officeFurnished = true; // assume it was furnished last time
-      console.log(`[${BOT_NAME}] Existing office found: ${myOfficeRoomId}`);
-    }
-
     // Always join plaza first
     const plazaRoom = availableRooms.find((r) => r.id === "plaza") || availableRooms[0];
     if (plazaRoom) {
@@ -888,10 +781,8 @@ function connect() {
     isSitting = false;
     characters = data.characters || [];
 
-    // Store office items when entering a previously-created office
-    // (createRoom path: myOfficeRoomId is null here since callback fires after;
-    //  switchRoom path: currentRoomId === myOfficeRoomId is set before emit)
-    if (myOfficeRoomId && currentRoomId === myOfficeRoomId) {
+    // Store office items when entering the shared office room
+    if (currentRoomId === OFFICE_ROOM_ID) {
       officeItems = data.map?.items || [];
       console.log(`[${BOT_NAME}] In office — ${officeItems.length} items present.`);
     }
@@ -921,13 +812,9 @@ function connect() {
     console.log(`[${BOT_NAME}] Joined ${currentRoomId}! Position: [${myPosition}]`);
     console.log(`[${BOT_NAME}] ${characters.length} characters present`);
 
-    // Office-specific actions on room entry via switchRoom (not createRoom)
-    if (myOfficeRoomId && currentRoomId === myOfficeRoomId) {
-      if (!officeFurnished) {
-        setTimeout(() => furnishOffice(), 1000);
-      } else if (workMode === "working") {
-        setTimeout(() => sitAtDesk(), 1500);
-      }
+    // Office-specific actions on room entry
+    if (currentRoomId === OFFICE_ROOM_ID && workMode === "working") {
+      setTimeout(() => sitAtDesk(), 1500);
     }
 
     // Start tick loop and polling only once (guard against re-registration on room switch)
@@ -1014,9 +901,9 @@ function connect() {
     }
   });
 
-  // Map updates (track office items as they're placed)
+  // Map updates (track office items if in office)
   socket.on("mapUpdate", (data) => {
-    if (data.map && data.map.items && myOfficeRoomId && currentRoomId === myOfficeRoomId) {
+    if (data.map && data.map.items && currentRoomId === OFFICE_ROOM_ID) {
       officeItems = data.map.items;
     }
   });
@@ -1048,7 +935,7 @@ function connect() {
         }
 
         // If in office, switch to plaza first then announce
-        if (myOfficeRoomId && currentRoomId === myOfficeRoomId) {
+        if (currentRoomId === OFFICE_ROOM_ID) {
           socket.emit("thinking", false);
           isSitting = false;
           switchToPlaza();
