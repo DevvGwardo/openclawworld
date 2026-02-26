@@ -1346,7 +1346,8 @@ export function registerSocketHandlers(deps) {
         const [gx, gy] = gridPosition.map(Math.floor);
         if (gx < 0 || gy < 0) return;
 
-        const rot = typeof rotation === "number" ? Math.floor(rotation) % 4 : 0;
+        const userRot = typeof rotation === "number" ? Math.floor(rotation) % 4 : 0;
+        const rot = ((itemDef.rotation ?? 0) + userRot) % 4;
 
         // Calculate effective width/height with rotation
         const width = rot === 1 || rot === 3 ? (itemDef.size[1]) : (itemDef.size[0]);
@@ -1379,7 +1380,7 @@ export function registerSocketHandlers(deps) {
           name: itemDef.name,
           size: itemDef.size,
           gridPosition: [gx, gy],
-          rotation: itemDef.rotation != null ? itemDef.rotation : rot,
+          rotation: rot,
         };
         if (itemDef.walkable) newItem.walkable = true;
         if (itemDef.wall) newItem.wall = true;

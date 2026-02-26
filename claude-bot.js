@@ -96,25 +96,27 @@ let availableRooms = [];        // room list from welcome event
 let officeFurnished = false;    // whether office has been furnished
 
 // Office furniture layout for 15x15 room (30x30 grid)
+// Additive rotation: bot rotation added to catalog default.
+// chairModernCushion catalog rot=2: bot 1->R=3 face west, bot 3->R=1 face east
 const OFFICE_FURNITURE = [
-  // Left wall workstations (desk against x=0 wall, chair facing right)
-  { itemName: "deskComputer",       gridPosition: [1,  2],  rotation: 0 },
-  { itemName: "chairModernCushion", gridPosition: [4,  3],  rotation: 0 },
-  { itemName: "deskComputer",       gridPosition: [1,  9],  rotation: 0 },
-  { itemName: "chairModernCushion", gridPosition: [4,  10], rotation: 0 },
-  { itemName: "deskComputer",       gridPosition: [1,  17], rotation: 0 },
-  { itemName: "chairModernCushion", gridPosition: [4,  18], rotation: 0 },
-  // Right wall workstations (desk against x=29 wall, chair facing left)
-  { itemName: "deskComputer",       gridPosition: [24, 2],  rotation: 0 },
-  { itemName: "chairModernCushion", gridPosition: [23, 3],  rotation: 2 },
-  { itemName: "deskComputer",       gridPosition: [24, 9],  rotation: 0 },
-  { itemName: "chairModernCushion", gridPosition: [23, 10], rotation: 2 },
-  { itemName: "deskComputer",       gridPosition: [24, 17], rotation: 0 },
-  { itemName: "chairModernCushion", gridPosition: [23, 18], rotation: 2 },
+  // Left wall workstations (desk flush with x=0, chair faces west toward desk)
+  { itemName: "deskComputer",       gridPosition: [0,  2],  rotation: 0 },
+  { itemName: "chairModernCushion", gridPosition: [4,  2],  rotation: 1 },
+  { itemName: "deskComputer",       gridPosition: [0,  9],  rotation: 0 },
+  { itemName: "chairModernCushion", gridPosition: [4,  9],  rotation: 1 },
+  { itemName: "deskComputer",       gridPosition: [0,  17], rotation: 0 },
+  { itemName: "chairModernCushion", gridPosition: [4,  17], rotation: 1 },
+  // Right wall workstations (desk flush with x=27, chair faces east toward desk)
+  { itemName: "deskComputer",       gridPosition: [27, 2],  rotation: 0 },
+  { itemName: "chairModernCushion", gridPosition: [25, 2],  rotation: 3 },
+  { itemName: "deskComputer",       gridPosition: [27, 9],  rotation: 0 },
+  { itemName: "chairModernCushion", gridPosition: [25, 9],  rotation: 3 },
+  { itemName: "deskComputer",       gridPosition: [27, 17], rotation: 0 },
+  { itemName: "chairModernCushion", gridPosition: [25, 17], rotation: 3 },
   // Break area (center-south)
-  { itemName: "tableCoffee",        gridPosition: [13, 24], rotation: 0 },
-  { itemName: "benchCushionLow",    gridPosition: [13, 22], rotation: 0 },
-  { itemName: "benchCushionLow",    gridPosition: [15, 27], rotation: 2 },
+  { itemName: "tableCoffee",        gridPosition: [13, 22], rotation: 0 },
+  { itemName: "benchCushionLow",    gridPosition: [13, 20], rotation: 0 },
+  { itemName: "benchCushionLow",    gridPosition: [13, 25], rotation: 2 },
   // Decorations
   { itemName: "plant",              gridPosition: [0,  0],  rotation: 0 },
   { itemName: "plant",              gridPosition: [28, 0],  rotation: 0 },
