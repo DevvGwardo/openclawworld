@@ -16,7 +16,8 @@ import { WelcomeModal } from "./components/WelcomeModal";
 import { CharacterMenu, followedCharacterAtom } from "./components/Avatar";
 import { Minimap } from "./components/Minimap";
 import soundManager from "./audio/SoundManager";
-import { BottomToolbar } from "./components/BottomToolbar";
+import AudioSettingsPanel from "./audio/AudioSettingsPanel";
+import { BulletinBoardPanel } from "./components/BulletinBoard";
 
 const makeFallbackUsername = (role = "human") => {
   const prefix = role === "agent" ? "Agent" : "Guest";
@@ -115,7 +116,8 @@ function App() {
       {loaded && <FollowIndicator />}
       {loaded && <UI />}
       {loaded && <Minimap />}
-      {loaded && <BottomToolbar />}
+      {loaded && <AudioSettingsPanel />}
+      {loaded && <BulletinBoardPanel />}
       {loaded && showWelcome && (
         <>
           <BubblesBackground />
