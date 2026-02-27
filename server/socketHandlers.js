@@ -73,6 +73,7 @@ export function registerSocketHandlers(deps) {
     createSessionToken,
     agentThoughts,
     addAgentThought,
+    aiDecisionGuardrails,
     OPEN_ACCESS = false,
     TRUST_PROXY = false,
   } = deps;
@@ -1412,6 +1413,27 @@ export function registerSocketHandlers(deps) {
         // Persist
         persistRooms(room);
       });
+
+      // AI decision guardrails — bot-only socket events
+      if (aiDecisionGuardrails) {
+        socket.on("aiDecision:request", (callback) => {
+          if (!character?.isBot) return;
+          const result = aiDecisionGuardrails.requestPermission(socket.id);
+          if (typeof callback === "function") callback(result);
+        });
+
+        socket.on("aiDecision:report", (data) => {
+          if (!character?.isBot) return;
+          if (data?.error) {
+            aiDecisionGuardrails.reportError(socket.id);
+          } else {
+            aiDecisionGuardrails.reportUsage(socket.id, {
+              inputTokens: data?.inputTokens ?? 0,
+              outputTokens: data?.outputTokens ?? 0,
+            });
+          }
+        });
+      }
 
       socket.on("disconnect", () => {
         console.log("User disconnected");

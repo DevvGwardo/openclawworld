@@ -22,6 +22,7 @@ import { loadUserStore, loadCompletedQuests, ensureUser, getUser, createUserId, 
 import { initObjectives, checkBondMilestones, objectivesPayload, cleanupObjectives } from "./objectiveSystem.js";
 import { createHttpHandler } from "./httpRoutes.js";
 import { registerSocketHandlers } from "./socketHandlers.js";
+import { createAIDecisionGuardrails } from "./aiDecisionGuardrails.js";
 
 // --- Configuration ---
 const origin = process.env.CLIENT_URL || "http://localhost:5173";
@@ -284,6 +285,8 @@ const loadRoomsFromFile = async () => {
 
 await loadRooms();
 
+const aiDecisionGuardrails = createAIDecisionGuardrails();
+
 // --- Create HTTP server + Socket.IO ---
 const broadcastToRoom = (roomId, event, data) => {
   io.to(roomId).emit(event, data);
@@ -302,6 +305,7 @@ const httpHandler = createHttpHandler({
   pendingInvites, DEV_MODE, OPEN_ACCESS,
   TRUST_PROXY,
   addAgentThought,
+  aiDecisionGuardrails,
 });
 
 const httpServer = http.createServer(async (req, res) => {
@@ -357,6 +361,7 @@ const socketHelpers = registerSocketHandlers({
   OPEN_ACCESS,
   TRUST_PROXY,
   agentThoughts, addAgentThought,
+  aiDecisionGuardrails,
 });
 
 // Patch socketHelpers into httpHandler's deps for agent messaging

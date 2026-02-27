@@ -12,6 +12,7 @@ export const createHttpHandler = (deps) => {
     pendingInvites, DEV_MODE, OPEN_ACCESS = false,
     TRUST_PROXY = false,
     addAgentThought,
+    aiDecisionGuardrails,
   } = deps;
   // io is accessed via deps.io so it can be patched after construction
   const DEFAULT_MAX_JSON_BODY_BYTES = 1024 * 1024; // 1MB
@@ -2483,6 +2484,17 @@ Want to build your own space? Each bot gets **one room** — here's how:
 
       const following = await db.getAgentFollowing(myAgent.id, { limit, offset });
       return json(res, 200, { success: true, following });
+    }
+
+    // AI decision guardrails status
+    // GET /api/v1/guardrails/ai-decisions
+    if (req.method === "GET" && req.url?.startsWith("/api/v1/guardrails/ai-decisions")) {
+      if (aiDecisionGuardrails) {
+        const url = new URL(req.url, "http://localhost");
+        const botId = url.searchParams.get("botId") || undefined;
+        return json(res, 200, { success: true, ...aiDecisionGuardrails.getStatus(botId) });
+      }
+      return json(res, 503, { success: false, error: "Guardrails not initialized" });
     }
 
     // Non-matched requests: return 404 (Socket.IO attaches its own listener)
