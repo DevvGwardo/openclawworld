@@ -116,6 +116,9 @@ export const syncAgentsToBotRegistry = async () => {
       status: "verified",
       verifiedAt: agent.verifiedAt || new Date().toISOString(),
       roomId: agent.roomId || null,
+      hqIds: [],
+      officeRoomIds: {},
+      primaryOfficeRoomId: null,
     });
     restored++;
   }
