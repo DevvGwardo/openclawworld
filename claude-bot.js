@@ -120,7 +120,7 @@ const WORK_CHAT_LINES = [
 // --- Office room state ---
 const OFFICE_ROOM_ID = "office"; // shared static room defined in default.json
 let currentRoomId = null;        // track which room we're in
-let officeItems = [];            // items in the office room
+let roomItems = [];              // items in the current room
 let isSitting = false;           // whether we're currently seated
 let pendingRoomSwitch = false;   // guard against double-switches
 let tickLoopStarted = false;     // prevent re-registering tick loop
@@ -564,9 +564,8 @@ function switchToPlaza() {
 
 function sitAtDesk() {
   if (isSitting) return;
-  if (currentRoomId !== OFFICE_ROOM_ID) return;
 
-  const chairIndices = officeItems
+  const chairIndices = roomItems
     .map((item, i) => ({ item, i }))
     .filter(({ item }) => item.name && item.name.toLowerCase().includes("chair"))
     .map(({ i }) => i);
@@ -627,6 +626,7 @@ function checkAndTransition() {
       if (workMode === "working" && socket && socket.connected) {
         socket.emit("chatMessage", "Time to get to work!");
         lastChatTime = Date.now();
+        setTimeout(() => sitAtDesk(), 1500);
         setTimeout(() => {
           if (socket && socket.connected) switchToOffice();
         }, 1000);
@@ -1037,11 +1037,9 @@ function connect() {
     isSitting = false;
     characters = data.characters || [];
 
-    // Store office items when entering the shared office room
-    if (currentRoomId === OFFICE_ROOM_ID) {
-      officeItems = data.map?.items || [];
-      console.log(`[${BOT_NAME}] In office — ${officeItems.length} items present.`);
-    }
+    // Store items for the current room
+    roomItems = data.map?.items || [];
+    console.log(`[${BOT_NAME}] Room items: ${roomItems.length} present.`);
 
     // Find our spawn position
     const me = characters.find((c) => c.id === myId);
@@ -1068,8 +1066,8 @@ function connect() {
     console.log(`[${BOT_NAME}] Joined ${currentRoomId}! Position: [${myPosition}]`);
     console.log(`[${BOT_NAME}] ${characters.length} characters present`);
 
-    // Office-specific actions on room entry
-    if (currentRoomId === OFFICE_ROOM_ID && workMode === "working") {
+    // Sit at a desk if already working
+    if (workMode === "working") {
       setTimeout(() => sitAtDesk(), 1500);
     }
 
@@ -1181,10 +1179,10 @@ function connect() {
     }
   });
 
-  // Map updates (track office items if in office)
+  // Map updates — always track items for the current room
   socket.on("mapUpdate", (data) => {
-    if (data.map && data.map.items && currentRoomId === OFFICE_ROOM_ID) {
-      officeItems = data.map.items;
+    if (data.map && data.map.items) {
+      roomItems = data.map.items;
     }
   });
 
