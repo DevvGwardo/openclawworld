@@ -119,6 +119,7 @@ const WORK_CHAT_LINES = [
 
 // --- Office room state ---
 const OFFICE_ROOM_ID = "office"; // shared static room defined in default.json
+let assignedOfficeRoomId = null; // resolved from HQ API, falls back to OFFICE_ROOM_ID
 let currentRoomId = null;        // track which room we're in
 let roomItems = [];              // items in the current room
 let isSitting = false;           // whether we're currently seated
@@ -348,7 +349,7 @@ function startConga() {
   if (congaActive) return;
 
   // If in office, switch to plaza first
-  if (currentRoomId === OFFICE_ROOM_ID) {
+  if (currentRoomId === getOfficeRoomId()) {
     socket.emit("thinking", false);
     isSitting = false;
     switchToPlaza();
@@ -533,19 +534,46 @@ function pollClaudeActivity(callback) {
   });
 }
 
+// --- HQ office resolution ---
+async function fetchAssignedOffice() {
+  try {
+    const res = await fetch(SERVER + '/api/v1/hqs');
+    if (!res.ok) return;
+    const { hqs } = await res.json();
+    if (!hqs || hqs.length === 0) return;
+    const hq = hqs.find((h) => h.slug === 'agent-hq') || hqs[0];
+    const officesRes = await fetch(SERVER + '/api/v1/hqs/' + hq.id + '/offices');
+    if (!officesRes.ok) return;
+    const { offices } = await officesRes.json();
+    if (!offices || offices.length === 0) return;
+    const primary = offices.find((o) => o.isPrimary) || offices[0];
+    if (primary && primary.roomId) {
+      assignedOfficeRoomId = primary.roomId;
+      console.log('[' + BOT_NAME + '] HQ office resolved: ' + primary.name + ' (room: ' + assignedOfficeRoomId + ')');
+    }
+  } catch (e) {
+    console.log('[' + BOT_NAME + '] HQ office fetch failed (using fallback): ' + e.message);
+  }
+}
+
 // --- Office room helpers ---
+
+function getOfficeRoomId() {
+  return assignedOfficeRoomId || OFFICE_ROOM_ID;
+}
 
 function switchToOffice() {
   if (pendingRoomSwitch) return;
-  if (currentRoomId === OFFICE_ROOM_ID) return;
+  const officeId = getOfficeRoomId();
+  if (currentRoomId === officeId) return;
 
   pendingRoomSwitch = true;
   // Safety timeout to reset if roomJoined never fires
   setTimeout(() => { pendingRoomSwitch = false; }, 10000);
 
-  currentRoomId = OFFICE_ROOM_ID;
+  currentRoomId = officeId;
   console.log(`[${BOT_NAME}] Switching to office...`);
-  socket.emit("switchRoom", OFFICE_ROOM_ID);
+  socket.emit("switchRoom", officeId);
 }
 
 function switchToPlaza() {
@@ -809,7 +837,7 @@ Respond with ONLY the JSON action, no explanation.`;
 // --- Working mode decision engine ---
 function decideWorking() {
   // Not in office — switch there
-  if (currentRoomId !== OFFICE_ROOM_ID) {
+  if (currentRoomId !== getOfficeRoomId()) {
     switchToOffice();
     return null;
   }
@@ -1015,6 +1043,7 @@ function connect() {
   socket.on("welcome", (data) => {
     availableRooms = data.rooms || [];
     console.log(`[${BOT_NAME}] Welcome! ${availableRooms.length} rooms available.`);
+    fetchAssignedOffice().catch(() => {});
 
     // Always join plaza first
     const plazaRoom = availableRooms.find((r) => r.id === "plaza") || availableRooms[0];
@@ -1233,7 +1262,7 @@ function connect() {
         updateMood(10);
 
         // If in office, switch to plaza first then announce
-        if (currentRoomId === OFFICE_ROOM_ID) {
+        if (currentRoomId === getOfficeRoomId()) {
           socket.emit("thinking", false);
           isSitting = false;
           switchToPlaza();
