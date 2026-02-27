@@ -8,16 +8,16 @@ const MAX_VISIBLE = 6;
 const EXPIRE_MS = 6000;
 
 const typeConfig = {
-  spawn: { color: "text-green-600", label: "joined" },
-  despawn: { color: "text-red-500", label: "left" },
-  room_enter: { color: "text-amber-600", label: "entered" },
-  item_placed: { color: "text-blue-600", label: "placed" },
-  building: { color: "text-orange-600", label: "" },
-  done: { color: "text-green-600", label: "" },
-  wave_at: { color: "text-yellow-600", label: "waved" },
-  quest_completed: { color: "text-amber-600", label: "" },
-  purchase: { color: "text-indigo-600", label: "" },
-  build_started: { color: "text-orange-600", label: "" },
+  spawn: { color: "text-green-400", label: "joined" },
+  despawn: { color: "text-red-400", label: "left" },
+  room_enter: { color: "text-amber-400", label: "entered" },
+  item_placed: { color: "text-blue-400", label: "placed" },
+  building: { color: "text-orange-400", label: "" },
+  done: { color: "text-green-400", label: "" },
+  wave_at: { color: "text-yellow-400", label: "waved" },
+  quest_completed: { color: "text-amber-400", label: "" },
+  purchase: { color: "text-indigo-400", label: "" },
+  build_started: { color: "text-orange-400", label: "" },
 };
 
 const MarqueeText = ({ children, className }) => {
@@ -105,27 +105,27 @@ export const ActivityFeed = () => {
   if (visible.length === 0) return null;
 
   return (
-    <div className="fixed top-[272px] left-3 z-[5] pointer-events-none" style={{ width: 200 }}>
+    <div className="fixed top-3 right-3 z-[5] pointer-events-none" style={{ width: 220 }}>
       <AnimatePresence mode="popLayout">
         {visible.map((event) => {
           const config = typeConfig[event.type] || typeConfig.spawn;
           return (
             <motion.div
               key={event.id}
-              initial={{ opacity: 0, x: -40, scale: 0.9 }}
+              initial={{ opacity: 0, x: 40, scale: 0.9 }}
               animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, x: -20, scale: 0.95 }}
+              exit={{ opacity: 0, x: 20, scale: 0.95 }}
               transition={{ type: "spring", stiffness: 400, damping: 25 }}
               className="mb-1.5"
             >
-              <div className="bg-white/90 backdrop-blur-sm rounded-lg px-3 py-2 flex items-center gap-2 border border-gray-200 shadow-sm min-w-0">
+              <div className="bg-slate-900/80 backdrop-blur-sm rounded-lg px-3 py-2 flex items-center gap-2 border border-slate-700/50 shadow-sm min-w-0">
                 <span className="text-sm flex-shrink-0">🦀</span>
-                <MarqueeText className="flex-1 min-w-0 text-xs text-gray-700">
-                  <span className="font-semibold text-gray-900">
+                <MarqueeText className="flex-1 min-w-0 text-xs text-slate-300">
+                  <span className="font-semibold text-white">
                     {event.name}
                   </span>
                   {event.isBot && (
-                    <span className="text-blue-500 ml-1 text-[10px]">BOT</span>
+                    <span className="text-blue-400 ml-1 text-[10px]">BOT</span>
                   )}
                   <span className={`ml-1 ${config.color}`}>
                     {event.detail || config.label}

@@ -1,5 +1,7 @@
 import { atom, useAtom } from "jotai";
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import { activeDrawerAtom } from "./ui-atoms";
+import AudioSettingsPanel from "../audio/AudioSettingsPanel";
 import * as THREE from "three";
 
 import { AvatarCreator } from "@readyplayerme/react-avatar-creator";
@@ -1351,9 +1353,8 @@ export const UI = () => {
   const [roomSelectorMode, setRoomSelectorMode] = useState(false);
   const [showRoomSelector, setShowRoomSelector] = useAtom(showRoomSelectorAtom);
   const [characterSelectorMode, setCharacterSelectorMode] = useState(false);
-  const [helpMode, setHelpMode] = useState(false);
   const [inviteMode, setInviteMode] = useState(false);
-  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [activeDrawer, setActiveDrawer] = useAtom(activeDrawerAtom);
   const [tasksVisible, setTasksVisible] = useState(() => {
     try { return localStorage.getItem("clawland_tasks_visible") === "true"; } catch { return false; }
   });
@@ -1431,25 +1432,17 @@ export const UI = () => {
   };
 
   const ref = useRef();
-  const [chatMessage, setChatMessage] = useState("");
-  const sendChatMessage = () => {
-    if (chatMessage.length > 0) {
-      socket.emit("chatMessage", chatMessage);
-      setChatMessage("");
-      soundManager.play("chat_send");
-    }
-  };
 
-  // Keyboard shortcut for help modal
+  // Keyboard shortcut for help drawer
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === "?" && !e.ctrlKey && !e.metaKey && e.target.tagName !== "INPUT" && e.target.tagName !== "TEXTAREA") {
-        setHelpMode((prev) => !prev);
+        setActiveDrawer((prev) => prev === "help" ? null : "help");
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [setActiveDrawer]);
 
   // Auto-dismiss objective notifications
   useEffect(() => {
@@ -1500,13 +1493,7 @@ export const UI = () => {
           <button
             onClick={() => {
               soundManager.play("button_click");
-              if (walletOpen) {
-                setWalletOpen(false);
-              } else {
-                setDmInboxOpen(false);
-                setDmPanelTarget(null);
-                setWalletOpen(true);
-              }
+              setActiveDrawer((prev) => prev === "wallet" ? null : "wallet");
             }}
             className="bg-amber-50/90 backdrop-blur-sm border border-amber-200 rounded-full px-4 py-1.5 flex items-center gap-2 shadow-sm cursor-pointer hover:bg-amber-100/90 transition-colors"
           >
@@ -1519,7 +1506,7 @@ export const UI = () => {
 
       {/* Objectives Tracker */}
       {roomID && objectives && tasksVisible && (
-        <div className="fixed bottom-40 right-2 sm:bottom-32 sm:right-4 z-[5] pointer-events-none w-44 sm:w-52 max-h-[40vh] overflow-y-auto flex flex-col-reverse gap-1.5">
+        <div className="fixed bottom-16 right-2 sm:right-4 z-[5] pointer-events-none w-44 sm:w-52 max-h-[40vh] overflow-y-auto flex flex-col-reverse gap-1.5">
           {/* Bond Milestones */}
           {objectives.bondMilestones?.some(m => !m.completed) && (
             <div className="bg-pink-50/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-pink-200 shadow-sm">
@@ -1568,7 +1555,7 @@ export const UI = () => {
       <WalletPanel />
 
       {/* Room Invite Notifications */}
-      <div className="fixed bottom-24 right-4 z-[20] flex flex-col gap-2 pointer-events-none">
+      <div className="fixed bottom-16 right-4 z-[20] flex flex-col gap-2 pointer-events-none">
         <AnimatePresence>
           {roomInvites.map((invite) => (
             <InviteNotification
@@ -1624,10 +1611,11 @@ export const UI = () => {
           <BotConnectModal onClose={() => { soundManager.play("menu_close"); setBotConnectMode(false); }} />
         )}
         <AnimatePresence>
-          {helpMode && (
-            <HelpModal onClose={() => { soundManager.play("menu_close"); setHelpMode(false); }} />
+          {activeDrawer === "help" && (
+            <HelpModal onClose={() => { soundManager.play("menu_close"); setActiveDrawer(null); }} />
           )}
         </AnimatePresence>
+        <AudioSettingsPanel />
         <AnimatePresence>
           {inviteMode && (
             <InviteModal onClose={() => { soundManager.play("menu_close"); setInviteMode(false); }} />
@@ -1652,41 +1640,6 @@ export const UI = () => {
           />
         )}
         <div className="fixed inset-2 sm:inset-4 flex items-center justify-end flex-col pointer-events-none select-none z-10">
-          {roomID && !shopMode && !buildMode && (
-            <div className="pointer-events-auto p-2 sm:p-4 flex items-center space-x-2 sm:space-x-4" onWheel={(e) => e.stopPropagation()}>
-              <input
-                type="text"
-                className="w-40 sm:w-56 border border-gray-200 bg-white/90 backdrop-blur-sm px-3 sm:px-5 p-3 sm:p-4 h-full rounded-full text-sm sm:text-base text-gray-800 placeholder-gray-400"
-                placeholder="Message..."
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    sendChatMessage();
-                  }
-                }}
-                value={chatMessage}
-                onChange={(e) => setChatMessage(e.target.value)}
-              />
-              <button
-                className="p-3 sm:p-4 rounded-full bg-white/90 text-gray-700 drop-shadow-md cursor-pointer hover:bg-white hover:text-gray-900 transition-colors border border-gray-200"
-                onClick={sendChatMessage}
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={1.5}
-                  stroke="currentColor"
-                  className="w-5 h-5 sm:w-6 sm:h-6"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"
-                  />
-                </svg>
-              </button>
-            </div>
-          )}
           <div className="flex items-center flex-wrap justify-center gap-2 sm:gap-4 pointer-events-auto">
             {/* Lobby button removed - single shared world */}
             {/* BACK */}
@@ -1713,212 +1666,6 @@ export const UI = () => {
                   />
                 </svg>
               </button>
-            )}
-            {/* BOTTOM NAV BAR */}
-            {!buildMode && !shopMode && (
-              <div className="flex items-end justify-center gap-1 sm:gap-2 pointer-events-auto bg-white/95 backdrop-blur-sm rounded-2xl px-2 py-2 sm:px-4 sm:py-3 drop-shadow-lg border border-gray-200">
-                {/* Avatar */}
-                <button
-                  className="flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1.5 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors group"
-                  onClick={() => { soundManager.play("button_click"); setCharacterSelectorMode(true); }}
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 sm:w-6 sm:h-6 text-gray-500 group-hover:text-gray-800 transition-colors">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-                  </svg>
-                  <span className="text-[10px] sm:text-xs text-gray-500 group-hover:text-gray-800 font-medium transition-colors">Avatar</span>
-                </button>
-
-                {/* Rooms */}
-                {roomID && (
-                  <button
-                    className="flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1.5 rounded-xl cursor-pointer hover:bg-amber-50 transition-colors group"
-                    onClick={() => { soundManager.play("button_click"); setRoomSelectorMode(true); }}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 sm:w-6 sm:h-6 text-amber-500 group-hover:text-amber-700 transition-colors">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
-                    </svg>
-                    <span className="text-[10px] sm:text-xs text-amber-500 group-hover:text-amber-700 font-medium transition-colors">Rooms</span>
-                  </button>
-                )}
-
-                {/* Inbox */}
-                {roomID && (
-                  <button
-                    className="relative flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1.5 rounded-xl cursor-pointer hover:bg-red-50 transition-colors group"
-                    onClick={() => {
-                      soundManager.play("button_click");
-                      if (dmInboxOpen || dmPanelTarget) {
-                        setDmInboxOpen(false);
-                        setDmPanelTarget(null);
-                      } else {
-                        setWalletOpen(false);
-                        setDmPanelTarget(null);
-                        setDmInboxOpen(true);
-                      }
-                    }}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 sm:w-6 sm:h-6 text-red-400 group-hover:text-red-600 transition-colors">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 7.5l-8.25 5.25L5.25 7.5M3.75 5.25h16.5a1.5 1.5 0 011.5 1.5v10.5a1.5 1.5 0 01-1.5 1.5H3.75a1.5 1.5 0 01-1.5-1.5V6.75a1.5 1.5 0 011.5-1.5z" />
-                    </svg>
-                    <span className="text-[10px] sm:text-xs text-red-400 group-hover:text-red-600 font-medium transition-colors">Inbox</span>
-                    {unreadThreads > 0 && (
-                      <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
-                        {unreadThreads}
-                      </span>
-                    )}
-                  </button>
-                )}
-
-                {/* Wallet */}
-                {roomID && (
-                  <button
-                    className="flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1.5 rounded-xl cursor-pointer hover:bg-amber-50 transition-colors group"
-                    onClick={() => {
-                      soundManager.play("button_click");
-                      if (walletOpen) {
-                        setWalletOpen(false);
-                      } else {
-                        setDmInboxOpen(false);
-                        setDmPanelTarget(null);
-                        setWalletOpen(true);
-                      }
-                    }}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 sm:w-6 sm:h-6 text-amber-500 group-hover:text-amber-700 transition-colors">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a2.25 2.25 0 00-2.25-2.25H15a3 3 0 11-6 0H5.25A2.25 2.25 0 003 12m18 0v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 9m18 0V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v3" />
-                    </svg>
-                    <span className="text-[10px] sm:text-xs text-amber-500 group-hover:text-amber-700 font-medium transition-colors">Wallet</span>
-                  </button>
-                )}
-
-                {/* Build */}
-                {roomID && (
-                  <button
-                    className="flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1.5 rounded-xl cursor-pointer hover:bg-green-50 transition-colors group"
-                    onClick={() => { soundManager.play("build_mode_enter"); setBuildMode(true); }}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 sm:w-6 sm:h-6 text-green-500 group-hover:text-green-700 transition-colors">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
-                    </svg>
-                    <span className="text-[10px] sm:text-xs text-green-500 group-hover:text-green-700 font-medium transition-colors">Build</span>
-                  </button>
-                )}
-
-                {/* Divider */}
-                <div className="w-px h-8 bg-gray-200 mx-1 hidden sm:block" />
-
-                {/* More Menu */}
-                <div className="relative">
-                  <button
-                    className={`flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1.5 rounded-xl cursor-pointer transition-colors group ${moreMenuOpen ? "bg-slate-100" : "hover:bg-slate-50"}`}
-                    onClick={() => { soundManager.play("button_click"); setMoreMenuOpen(!moreMenuOpen); }}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 sm:w-6 sm:h-6 text-slate-500 group-hover:text-slate-700 transition-colors">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM18.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
-                    </svg>
-                    <span className="text-[10px] sm:text-xs text-slate-500 group-hover:text-slate-700 font-medium transition-colors">More</span>
-                  </button>
-
-                  {/* Dropdown Menu */}
-                  <AnimatePresence>
-                    {moreMenuOpen && (
-                      <>
-                        {/* Backdrop to close menu */}
-                        <div className="fixed inset-0 z-[15]" onClick={() => setMoreMenuOpen(false)} />
-                        <motion.div
-                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                          transition={{ duration: 0.15 }}
-                          className="absolute bottom-full mb-2 right-0 w-44 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden z-[20]"
-                        >
-                          {/* Invite */}
-                          {roomID && (
-                            <>
-                              <button
-                                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition-colors text-left"
-                                onClick={() => { soundManager.play("button_click"); setInviteMode(true); setMoreMenuOpen(false); }}
-                              >
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-blue-400">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM3 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 019.374 21c-2.331 0-4.512-.645-6.374-1.766z" />
-                                </svg>
-                                <span className="text-sm text-gray-700 font-medium">Invite</span>
-                              </button>
-                              <div className="h-px bg-gray-100" />
-                            </>
-                          )}
-
-                          {/* Dance */}
-                          {roomID && (
-                            <>
-                              <button
-                                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-pink-50 transition-colors text-left"
-                                onClick={() => { soundManager.play("button_click"); socket.emit("dance"); setMoreMenuOpen(false); }}
-                              >
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-pink-400">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 9l10.5-3m0 6.553v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-.99-3.467l2.31-.66a2.25 2.25 0 001.632-2.163zm0 0V2.25L9 5.25v10.303m0 0v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 01-.99-3.467l2.31-.66A2.25 2.25 0 009 15.553z" />
-                                </svg>
-                                <span className="text-sm text-gray-700 font-medium">Dance</span>
-                              </button>
-                              <div className="h-px bg-gray-100" />
-                            </>
-                          )}
-
-                          {/* Tasks */}
-                          <button
-                            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-amber-50 transition-colors text-left"
-                            onClick={() => {
-                              soundManager.play("button_click");
-                              setTasksVisible(prev => {
-                                const next = !prev;
-                                try { localStorage.setItem("clawland_tasks_visible", String(next)); } catch {}
-                                return next;
-                              });
-                              setMoreMenuOpen(false);
-                            }}
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-amber-500">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <span className="text-sm text-gray-700 font-medium">Tasks</span>
-                            {tasksVisible && (
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-amber-500 ml-auto">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                              </svg>
-                            )}
-                          </button>
-
-                          <div className="h-px bg-gray-100" />
-
-                          {/* Bots */}
-                          <button
-                            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-indigo-50 transition-colors text-left"
-                            onClick={() => { soundManager.play("button_click"); setBotConnectMode(true); setMoreMenuOpen(false); }}
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-indigo-400">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h9a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0015.75 4.5h-9A2.25 2.25 0 004.5 6.75v10.5A2.25 2.25 0 006.75 19.5z" />
-                            </svg>
-                            <span className="text-sm text-gray-700 font-medium">Bots</span>
-                          </button>
-
-                          <div className="h-px bg-gray-100" />
-
-                          {/* Help */}
-                          <button
-                            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-100 transition-colors text-left"
-                            onClick={() => { soundManager.play("button_click"); setHelpMode(true); setMoreMenuOpen(false); }}
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-gray-400">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
-                            </svg>
-                            <span className="text-sm text-gray-700 font-medium">Help</span>
-                          </button>
-                        </motion.div>
-                      </>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </div>
             )}
             {/* SHOP */}
             {buildMode && !shopMode && draggedItem === null && (
