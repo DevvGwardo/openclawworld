@@ -9,6 +9,8 @@
  * - Shared awareness: tracks all characters' positions, chat, emotes
  * - Reactive behavior: follows nearby bots, mirrors emotes, contextual chat
  * - Gathering protocol: !gather converges all bots on Town Hall; !disperse resumes wandering
+ * - Conga line: !conga forms a conga line; !conga stop ends it
+ * - Bot moods: mood score shifts based on social activity, affects behavior
  * - AI-driven decisions: uses Claude CLI when available
  * - Work presence: bots mirror whether Claude Code CLI is actively running
  * - Office room: bots commute to the shared "Bot Office" room when working
@@ -70,6 +72,34 @@ let meetingTimeout = null;
 
 const GATHER_POINT = [150, 20]; // Town Hall
 const GATHER_RADIUS = 20;
+
+// --- Conga state ---
+let congaActive = false;
+let congaRole = null;         // "leader" | "follower"
+let congaRoute = [];          // landmark positions for leader to visit
+let congaRouteIndex = 0;      // leader's current waypoint index
+let congaQueue = [];          // ordered bot names in line (alphabetical)
+let congaLeaderName = null;   // name of conga leader
+
+const CONGA_LINES = [
+  "Conga conga conga!",
+  "Keep the line moving!",
+  "This is so fun!",
+  "Shake shake shake!",
+  "Everybody conga!",
+  "Next stop coming up!",
+  "Follow the leader!",
+];
+
+// --- Mood state ---
+let moodScore = 50;
+let mood = "neutral"; // "happy" | "neutral" | "bored"
+let lastAloneCheck = Date.now();
+
+const MOOD_LINES = {
+  happy: ["What a great day!", "Loving this!", "Everything's awesome!", "Best plaza ever!"],
+  bored: ["Pretty quiet around here...", "Anybody out there?", "I could use some company...", "*yawns*"],
+};
 
 // --- Work presence state ---
 let workMode = "idle"; // "idle" | "working"
@@ -209,6 +239,18 @@ function addChatMessage(name, message) {
   if (chatHistory.length > MAX_CHAT_HISTORY) chatHistory.shift();
 }
 
+// --- Mood helpers ---
+function updateMood(delta) {
+  moodScore = Math.max(0, Math.min(100, moodScore + delta));
+  const oldMood = mood;
+  if (moodScore <= 30) mood = "bored";
+  else if (moodScore >= 71) mood = "happy";
+  else mood = "neutral";
+  if (mood !== oldMood) {
+    console.log(`[${BOT_NAME}] Mood: ${oldMood} → ${mood} (score: ${moodScore})`);
+  }
+}
+
 // --- World state helpers ---
 function updateCharacterState(id, updates) {
   const existing = worldState.get(id) || {};
@@ -248,6 +290,13 @@ function getDancingBots() {
   return dancing;
 }
 
+function getCharacterByName(name) {
+  for (const [id, state] of worldState.entries()) {
+    if (state.name === name) return { id, ...state };
+  }
+  return null;
+}
+
 // --- Gathering protocol helpers ---
 function gatherOffset(index, total) {
   // Spread bots around Town Hall within GATHER_RADIUS
@@ -276,6 +325,174 @@ function botCount() {
     if (state.isBot) count++;
   }
   return count;
+}
+
+// --- Conga helpers ---
+function buildCongaQueue() {
+  const botNames = [BOT_NAME];
+  for (const [, state] of worldState.entries()) {
+    if (state.isBot && state.name !== BOT_NAME) botNames.push(state.name);
+  }
+  botNames.sort();
+  return botNames;
+}
+
+function pickCongaRoute() {
+  // Pick 3-4 random landmarks (no duplicates)
+  const shuffled = [...LANDMARKS].sort(() => Math.random() - 0.5);
+  const count = randomInt(3, 4);
+  return shuffled.slice(0, count).map((l) => l.pos);
+}
+
+function startConga() {
+  if (congaActive) return;
+
+  // If in office, switch to plaza first
+  if (currentRoomId === OFFICE_ROOM_ID) {
+    socket.emit("thinking", false);
+    isSitting = false;
+    switchToPlaza();
+    setTimeout(() => startConga(), 3500);
+    return;
+  }
+
+  // Cancel any ongoing gathering
+  gatheringActive = false;
+  gatheringPhase = "idle";
+  gatheringArrived = false;
+  if (meetingTimeout) {
+    clearTimeout(meetingTimeout);
+    meetingTimeout = null;
+  }
+
+  congaActive = true;
+  congaQueue = buildCongaQueue();
+  congaLeaderName = congaQueue[0];
+  congaRole = congaLeaderName === BOT_NAME ? "leader" : "follower";
+  congaRouteIndex = 0;
+
+  console.log(`[${BOT_NAME}] Conga started! Queue: [${congaQueue.join(", ")}] Role: ${congaRole}`);
+  updateMood(15);
+
+  if (congaRole === "leader") {
+    congaRoute = pickCongaRoute();
+    const myIdx = 0;
+    setTimeout(() => {
+      if (socket && socket.connected && congaActive) {
+        socket.emit("chatMessage", "Conga! Follow me!");
+        lastChatTime = Date.now();
+        socket.emit("emote:play", "dance");
+        runCongaLeader();
+      }
+    }, 1000);
+  } else {
+    const myIdx = congaQueue.indexOf(BOT_NAME);
+    const delay = myIdx * 1500;
+    setTimeout(() => {
+      if (socket && socket.connected && congaActive) {
+        socket.emit("chatMessage", randomChoice(CONGA_LINES));
+        lastChatTime = Date.now();
+        socket.emit("emote:play", "dance");
+      }
+    }, delay);
+  }
+}
+
+function runCongaLeader() {
+  if (!congaActive || congaRole !== "leader") return;
+  if (congaRouteIndex >= congaRoute.length) {
+    // All waypoints visited — announce completion
+    if (socket && socket.connected) {
+      socket.emit("chatMessage", "Conga complete! That was amazing!");
+      lastChatTime = Date.now();
+    }
+    setTimeout(() => stopConga(), 2000);
+    return;
+  }
+
+  const target = congaRoute[congaRouteIndex];
+  console.log(`[${BOT_NAME}] Conga leader moving to waypoint ${congaRouteIndex}: [${target}]`);
+
+  if (socket && socket.connected) {
+    socket.emit("move", myPosition, target);
+    myPosition = target;
+
+    // Say a conga line en route
+    if (Math.random() < 0.7) {
+      setTimeout(() => {
+        if (socket && socket.connected && congaActive) {
+          socket.emit("chatMessage", randomChoice(CONGA_LINES));
+          lastChatTime = Date.now();
+        }
+      }, randomInt(500, 2000));
+    }
+  }
+
+  congaRouteIndex++;
+  // Pause 2-3s at each waypoint before moving to next
+  setTimeout(() => runCongaLeader(), randomInt(2000, 3000));
+}
+
+function stopConga() {
+  if (!congaActive) return;
+  congaActive = false;
+  congaRole = null;
+  congaRoute = [];
+  congaRouteIndex = 0;
+  congaQueue = [];
+  congaLeaderName = null;
+
+  if (socket && socket.connected) {
+    const endLines = ["That was a blast!", "Great conga everyone!", "What a ride!"];
+    socket.emit("chatMessage", randomChoice(endLines));
+    lastChatTime = Date.now();
+  }
+  console.log(`[${BOT_NAME}] Conga ended.`);
+}
+
+function decideConga() {
+  if (!congaActive) return null;
+
+  if (congaRole === "leader") {
+    // Leader movement is handled by runCongaLeader() via setTimeout chain
+    // Just occasionally say conga lines
+    if (Math.random() < 0.2 && Date.now() - lastChatTime > CHAT_COOLDOWN) {
+      return { type: "say", message: randomChoice(CONGA_LINES) };
+    }
+    return null;
+  }
+
+  // Follower: target the position of the bot ahead in the queue
+  const myIdx = congaQueue.indexOf(BOT_NAME);
+  if (myIdx <= 0) {
+    // We became the leader (shouldn't normally happen mid-conga) — just wander
+    return null;
+  }
+
+  const leaderInQueueName = congaQueue[myIdx - 1];
+  const leaderState = getCharacterByName(leaderInQueueName);
+
+  if (leaderState && leaderState.position) {
+    // Trail behind with a small offset to avoid stacking
+    const offset = myIdx * 3; // stagger distance
+    const target = [
+      Math.max(5, Math.min(295, leaderState.position[0] + randomInt(-4, 4))),
+      Math.max(5, Math.min(295, leaderState.position[1] + offset)),
+    ];
+    updateMood(2);
+    // Occasionally say a conga line
+    if (Math.random() < 0.15 && Date.now() - lastChatTime > CHAT_COOLDOWN) {
+      setTimeout(() => {
+        if (socket && socket.connected && congaActive) {
+          socket.emit("chatMessage", randomChoice(CONGA_LINES));
+          lastChatTime = Date.now();
+        }
+      }, randomInt(500, 2000));
+    }
+    return { type: "move", target };
+  }
+
+  return null;
 }
 
 // --- Contextual chat response ---
@@ -426,6 +643,18 @@ function checkAndTransition() {
   });
 }
 
+// --- Loneliness decay ---
+function checkLoneliness() {
+  const now = Date.now();
+  if (now - lastAloneCheck >= 30000) {
+    lastAloneCheck = now;
+    const nearby = getNearbyCharacters(60);
+    if (nearby.length === 0) {
+      updateMood(-5);
+    }
+  }
+}
+
 // --- Build perception prompt for Claude ---
 function buildPerceptionPrompt() {
   const nearby = getNearbyCharacters(80);
@@ -455,6 +684,7 @@ function buildPerceptionPrompt() {
 
   return `[You] ${BOT_NAME} at [${myPosition[0]},${myPosition[1]}]
 [Task] ${taskDesc}
+[Mood] ${mood} (score: ${moodScore})
 [Nearby] ${nearbyStr}
 [Chat]
 ${chatStr}
@@ -488,6 +718,11 @@ async function decideWithAI() {
       greetedPlayers.add(player.id);
       return { type: "say", message: randomChoice(GREETINGS) };
     }
+  }
+
+  // Conga mode — use deterministic conga behavior
+  if (congaActive) {
+    return decideConga();
   }
 
   // Working mode — skip AI, use deterministic office behavior
@@ -537,6 +772,7 @@ Rules:
 - If you hear "!gather", respond with {"type":"move","target":[150,20]} to go to Town Hall.
 - If you hear "!disperse", move to a random spot and resume exploring.
 - Keep messages short and natural — you're chatting, not writing essays.
+- Your [Mood] affects your personality: happy = enthusiastic, bored = subdued, neutral = normal.
 
 Respond with ONLY the JSON action, no explanation.`;
 
@@ -604,6 +840,11 @@ function decideFallback() {
     }
   }
 
+  // Bored: 30% chance to skip tick
+  if (mood === "bored" && Math.random() < 0.3) {
+    return null;
+  }
+
   // --- Gathering mode ---
   if (gatheringActive) {
     if (gatheringPhase === "moving") {
@@ -646,8 +887,18 @@ function decideFallback() {
   const dancing = getDancingBots();
   const isAlone = nearby.length === 0;
 
-  if (dancing.length > 0 && Math.random() < 0.5) {
+  // Happy: 2x chance to join dancing
+  const danceThreshold = mood === "happy" ? 0.7 : 0.5;
+  if (dancing.length > 0 && Math.random() < danceThreshold) {
     return { type: "emote", name: "dance" };
+  }
+
+  // Occasionally say a mood line
+  if (mood !== "neutral" && Math.random() < 0.08 && Date.now() - lastChatTime > CHAT_COOLDOWN) {
+    const moodLineArr = MOOD_LINES[mood];
+    if (moodLineArr) {
+      return { type: "say", message: randomChoice(moodLineArr) };
+    }
   }
 
   if (recentChats.length > 0 && Math.random() < 0.25) {
@@ -656,7 +907,12 @@ function decideFallback() {
 
   if (!isAlone) {
     const roll = Math.random();
-    if (roll < 0.2) {
+    // Happy: more likely to follow (social) and emote
+    const followThreshold = mood === "happy" ? 0.25 : 0.2;
+    const chatThreshold = mood === "happy" ? 0.45 : 0.4;
+    const emoteThreshold = mood === "happy" ? 0.7 : 0.6;
+
+    if (roll < followThreshold) {
       const target = randomChoice(nearby);
       if (target.position) {
         const followTarget = [
@@ -665,10 +921,13 @@ function decideFallback() {
         ];
         return { type: "move", target: followTarget };
       }
-    } else if (roll < 0.4) {
+    } else if (roll < chatThreshold) {
       return { type: "say", message: randomChoice(CHAT_LINES) };
-    } else if (roll < 0.6) {
-      return { type: "emote", name: randomChoice(EMOTES) };
+    } else if (roll < emoteThreshold) {
+      // Bored: prefer sit; happy: prefer dance
+      const emoteChoices = mood === "happy" ? ["dance", "wave", "nod", "dance"] :
+                           mood === "bored" ? ["sit", "nod"] : EMOTES;
+      return { type: "emote", name: randomChoice(emoteChoices) };
     } else if (roll < 0.7) {
       return { type: "think" };
     } else {
@@ -676,17 +935,24 @@ function decideFallback() {
     }
   }
 
+  // Alone behavior
   const roll = Math.random();
   if (roll < 0.4) {
-    if (Math.random() < 0.35) {
-      const landmark = randomChoice(LANDMARKS);
-      console.log(`  -> Heading towards ${landmark.name}`);
-      return { type: "move", target: landmark.pos };
+    // Bored: prefer far-off lonely landmarks
+    const landmarkChoice = mood === "bored"
+      ? randomChoice([LANDMARKS[6], LANDMARKS[3], LANDMARKS[4]]) // south, NW, NE
+      : (Math.random() < 0.35 ? randomChoice(LANDMARKS) : null);
+
+    if (landmarkChoice) {
+      console.log(`  -> Heading towards ${landmarkChoice.name}`);
+      return { type: "move", target: landmarkChoice.pos };
     } else {
       return { type: "move", target: [randomInt(20, 280), randomInt(20, 280)] };
     }
   } else if (roll < 0.55) {
-    return { type: "emote", name: randomChoice(EMOTES) };
+    const emoteChoices = mood === "happy" ? ["dance", "wave", "nod"] :
+                         mood === "bored" ? ["sit", "nod"] : EMOTES;
+    return { type: "emote", name: randomChoice(emoteChoices) };
   } else if (roll < 0.7) {
     return { type: "say", message: randomChoice(CHAT_LINES) };
   } else if (roll < 0.8) {
@@ -816,6 +1082,7 @@ function connect() {
       setTimeout(() => scheduleTick(), 2000);
       setTimeout(() => checkAndTransition(), 3000);
       setInterval(() => checkAndTransition(), 10000);
+      setInterval(() => checkLoneliness(), 30000);
     }
   });
 
@@ -838,6 +1105,7 @@ function connect() {
         `[${BOT_NAME}] + ${char.name} joined${char.isBot ? " [BOT]" : ""}`
       );
       addEvent(`${char.name} joined`);
+      updateMood(3);
 
       // Greeting chain: wave when someone joins nearby
       if (myPosition && char.position) {
@@ -864,6 +1132,28 @@ function connect() {
     characters = characters.filter((c) => c.id !== data.id);
     worldState.delete(data.id);
     addEvent(`${data.name} left`);
+    updateMood(-3);
+
+    // If conga leader left, promote next bot to leader
+    if (congaActive && data.name === congaLeaderName) {
+      congaQueue = congaQueue.filter((n) => n !== data.name);
+      if (congaQueue.length === 0) {
+        stopConga();
+      } else {
+        congaLeaderName = congaQueue[0];
+        congaRole = congaLeaderName === BOT_NAME ? "leader" : "follower";
+        if (congaRole === "leader") {
+          console.log(`[${BOT_NAME}] Promoted to conga leader!`);
+          congaRoute = pickCongaRoute();
+          congaRouteIndex = 0;
+          if (socket && socket.connected) {
+            socket.emit("chatMessage", "I'm taking over the conga! Follow me!");
+            lastChatTime = Date.now();
+          }
+          runCongaLeader();
+        }
+      }
+    }
   });
 
   // Sitting events
@@ -910,12 +1200,31 @@ function connect() {
       });
 
       addChatMessage(data.name || "someone", data.message);
+      updateMood(5); // someone chatted nearby
 
       const msg = data.message.trim().toLowerCase();
+
+      // Handle !conga command
+      if (msg === "!conga") {
+        console.log(`[${BOT_NAME}] Conga command received!`);
+        startConga();
+        return;
+      }
+
+      // Handle !conga stop command
+      if (msg === "!conga stop") {
+        console.log(`[${BOT_NAME}] Conga stop command received!`);
+        stopConga();
+        return;
+      }
 
       // Handle !gather command
       if (msg === "!gather") {
         console.log(`[${BOT_NAME}] Gather command received!`);
+
+        // End conga if active
+        if (congaActive) stopConga();
+
         gatheringActive = true;
         gatheringPhase = "moving";
         gatheringArrived = false;
@@ -923,6 +1232,7 @@ function connect() {
           clearTimeout(meetingTimeout);
           meetingTimeout = null;
         }
+        updateMood(10);
 
         // If in office, switch to plaza first then announce
         if (currentRoomId === OFFICE_ROOM_ID) {
@@ -949,6 +1259,10 @@ function connect() {
       // Handle !disperse command
       if (msg === "!disperse") {
         console.log(`[${BOT_NAME}] Disperse command received! Resuming wandering.`);
+
+        // End conga if active
+        if (congaActive) stopConga();
+
         gatheringActive = false;
         gatheringPhase = "idle";
         gatheringArrived = false;
@@ -976,7 +1290,10 @@ function connect() {
       ].includes(data.message.toLowerCase());
       const cooldownOk = Date.now() - lastChatTime > CHAT_COOLDOWN;
 
-      if (gatheringPhase !== "meeting" && cooldownOk && !isGenericResponse &&
+      // Generic/repeated chat heard slightly lowers mood
+      if (isGenericResponse) updateMood(-1);
+
+      if (gatheringPhase !== "meeting" && !congaActive && cooldownOk && !isGenericResponse &&
           Math.random() < (isFromBot ? 0.15 : 0.5)) {
         const delay = randomInt(2000, 5000);
         setTimeout(() => {
@@ -1001,7 +1318,7 @@ function connect() {
         lastAction: "move",
       });
 
-      if (!gatheringActive && !isSitting) {
+      if (!gatheringActive && !congaActive && !isSitting) {
         const state = worldState.get(data.id);
         if (state && state.isBot && state.position) {
           const d = dist(myPosition, state.position);
@@ -1013,10 +1330,11 @@ function connect() {
                 Math.max(5, Math.min(295, target[1] + randomInt(-8, 8))),
               ];
               setTimeout(() => {
-                if (socket && socket.connected && !gatheringActive && !isSitting) {
+                if (socket && socket.connected && !gatheringActive && !congaActive && !isSitting) {
                   socket.emit("move", myPosition, followPos);
                   myPosition = followPos;
                   console.log(`[${BOT_NAME}] Following ${state.name} to [${followPos}]`);
+                  updateMood(2);
                 }
               }, randomInt(1000, 3000));
             }
@@ -1035,17 +1353,20 @@ function connect() {
         lastAction: "emote",
       });
 
-      if (data.name === "dance" && !gatheringActive && !isSitting) {
+      if (data.name === "dance") {
         const state = worldState.get(data.id);
         if (state && state.position) {
           const d = dist(myPosition, state.position);
-          if (d <= 50 && Math.random() < 0.4) {
-            setTimeout(() => {
-              if (socket && socket.connected) {
-                socket.emit("emote:play", "dance");
-                console.log(`[${BOT_NAME}] Joining dance party with ${state.name}!`);
-              }
-            }, randomInt(500, 2000));
+          if (d <= 50) {
+            updateMood(8); // someone dancing nearby
+            if (!gatheringActive && !congaActive && !isSitting && Math.random() < 0.4) {
+              setTimeout(() => {
+                if (socket && socket.connected) {
+                  socket.emit("emote:play", "dance");
+                  console.log(`[${BOT_NAME}] Joining dance party with ${state.name}!`);
+                }
+              }, randomInt(500, 2000));
+            }
           }
         }
       }
