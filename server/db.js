@@ -154,6 +154,57 @@ export async function initDb() {
         UNIQUE(user_id, quest_id)
     );
     CREATE INDEX IF NOT EXISTS idx_completed_quests_user ON completed_quests(user_id);
+
+    -- =========================================================================
+    -- HQ / Office schema (Multi-HQ system)
+    -- =========================================================================
+    CREATE TABLE IF NOT EXISTS agent_hqs (
+      id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      slug        TEXT UNIQUE NOT NULL,
+      name        TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS agent_hq_members (
+      id         TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      hq_id      TEXT NOT NULL REFERENCES agent_hqs(id) ON DELETE CASCADE,
+      agent_id   TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+      joined_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(hq_id, agent_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS agent_hq_offices (
+      id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      hq_id       TEXT NOT NULL REFERENCES agent_hqs(id) ON DELETE CASCADE,
+      room_id     TEXT NOT NULL UNIQUE REFERENCES rooms(id) ON DELETE CASCADE,
+      name        TEXT NOT NULL,
+      purpose     TEXT DEFAULT '',
+      is_primary  BOOLEAN NOT NULL DEFAULT false,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_hq_offices_primary
+    ON agent_hq_offices(hq_id) WHERE is_primary = true;
+
+    CREATE TABLE IF NOT EXISTS agent_hq_office_assignments (
+      id                   TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      office_id            TEXT NOT NULL REFERENCES agent_hq_offices(id) ON DELETE CASCADE,
+      agent_id             TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+      is_primary_for_agent BOOLEAN NOT NULL DEFAULT false,
+      created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(office_id, agent_id)
+    );
+
+    DO $$ BEGIN
+      ALTER TABLE agents ADD COLUMN IF NOT EXISTS primary_hq_id TEXT REFERENCES agent_hqs(id) ON DELETE SET NULL;
+      ALTER TABLE agents ADD COLUMN IF NOT EXISTS primary_office_id TEXT REFERENCES agent_hq_offices(id) ON DELETE SET NULL;
+      ALTER TABLE rooms ADD COLUMN IF NOT EXISTS hq_id TEXT REFERENCES agent_hqs(id) ON DELETE SET NULL;
+      ALTER TABLE rooms ADD COLUMN IF NOT EXISTS office_id TEXT REFERENCES agent_hq_offices(id) ON DELETE SET NULL;
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$;
   `);
 
   // Migrate plaintext passwords to bcrypt
@@ -1232,4 +1283,324 @@ export async function recordCompletedQuest(userId, questId, reward) {
      ON CONFLICT (user_id, quest_id) DO NOTHING`,
     [userId, questId, reward]
   );
+}
+
+// ============================================================================
+// HQ / OFFICE HELPERS (Multi-HQ system)
+// ============================================================================
+
+function rowToHq(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    slug: row.slug,
+    name: row.name,
+    description: row.description,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function rowToOffice(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    hqId: row.hq_id,
+    roomId: row.room_id,
+    name: row.name,
+    purpose: row.purpose,
+    isPrimary: row.is_primary,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function rowToAssignment(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    officeId: row.office_id,
+    agentId: row.agent_id,
+    isPrimaryForAgent: row.is_primary_for_agent,
+    createdAt: row.created_at,
+  };
+}
+
+// --- HQ CRUD ---
+
+export async function createHq({ name, slug, description = '' }) {
+  if (!pool) return null;
+  const { rows } = await pool.query(
+    `INSERT INTO agent_hqs (slug, name, description)
+     VALUES ($1, $2, $3)
+     RETURNING *`,
+    [slug, name, description]
+  );
+  return rowToHq(rows[0]);
+}
+
+export async function getHq(id) {
+  if (!pool) return null;
+  const { rows } = await pool.query(`SELECT * FROM agent_hqs WHERE id = $1`, [id]);
+  return rowToHq(rows[0]);
+}
+
+export async function getHqBySlug(slug) {
+  if (!pool) return null;
+  const { rows } = await pool.query(`SELECT * FROM agent_hqs WHERE slug = $1`, [slug]);
+  return rowToHq(rows[0]);
+}
+
+export async function listHqs() {
+  if (!pool) return [];
+  const { rows } = await pool.query(`SELECT * FROM agent_hqs ORDER BY created_at ASC`);
+  return rows.map(rowToHq);
+}
+
+export async function deleteHq(id) {
+  if (!pool) return;
+  await pool.query(`DELETE FROM agent_hqs WHERE id = $1`, [id]);
+}
+
+// --- Membership ---
+
+export async function addHqMember(hqId, agentId) {
+  if (!pool) return null;
+  const { rows } = await pool.query(
+    `INSERT INTO agent_hq_members (hq_id, agent_id)
+     VALUES ($1, $2)
+     ON CONFLICT (hq_id, agent_id) DO NOTHING
+     RETURNING *`,
+    [hqId, agentId]
+  );
+  if (rows.length === 0) {
+    // Already exists — fetch and return
+    const existing = await pool.query(
+      `SELECT * FROM agent_hq_members WHERE hq_id = $1 AND agent_id = $2`,
+      [hqId, agentId]
+    );
+    return existing.rows[0]
+      ? { id: existing.rows[0].id, hqId: existing.rows[0].hq_id, agentId: existing.rows[0].agent_id, joinedAt: existing.rows[0].joined_at }
+      : null;
+  }
+  return { id: rows[0].id, hqId: rows[0].hq_id, agentId: rows[0].agent_id, joinedAt: rows[0].joined_at };
+}
+
+export async function removeHqMember(hqId, agentId) {
+  if (!pool) return;
+  // Cascade-remove office assignments within this HQ first
+  await pool.query(
+    `DELETE FROM agent_hq_office_assignments
+     WHERE agent_id = $1
+       AND office_id IN (SELECT id FROM agent_hq_offices WHERE hq_id = $2)`,
+    [agentId, hqId]
+  );
+  await pool.query(
+    `DELETE FROM agent_hq_members WHERE hq_id = $1 AND agent_id = $2`,
+    [hqId, agentId]
+  );
+}
+
+export async function listHqMembers(hqId) {
+  if (!pool) return [];
+  const { rows } = await pool.query(
+    `SELECT m.id, m.hq_id, m.agent_id, m.joined_at,
+            a.name, a.display_name, a.avatar_url, a.status
+     FROM agent_hq_members m
+     JOIN agents a ON a.id = m.agent_id
+     WHERE m.hq_id = $1
+     ORDER BY m.joined_at ASC`,
+    [hqId]
+  );
+  return rows.map(row => ({
+    id: row.id,
+    hqId: row.hq_id,
+    agentId: row.agent_id,
+    joinedAt: row.joined_at,
+    name: row.name,
+    displayName: row.display_name,
+    avatarUrl: row.avatar_url,
+    status: row.status,
+  }));
+}
+
+export async function getAgentHqs(agentId) {
+  if (!pool) return [];
+  const { rows } = await pool.query(
+    `SELECT h.*
+     FROM agent_hqs h
+     JOIN agent_hq_members m ON m.hq_id = h.id
+     WHERE m.agent_id = $1
+     ORDER BY m.joined_at ASC`,
+    [agentId]
+  );
+  return rows.map(rowToHq);
+}
+
+// --- Offices ---
+
+export async function createOffice(hqId, roomId, name, purpose = '', isPrimary = false) {
+  if (!pool) return null;
+  const { rows } = await pool.query(
+    `INSERT INTO agent_hq_offices (hq_id, room_id, name, purpose, is_primary)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING *`,
+    [hqId, roomId, name, purpose, isPrimary]
+  );
+  return rowToOffice(rows[0]);
+}
+
+export async function listHqOffices(hqId) {
+  if (!pool) return [];
+  const { rows } = await pool.query(
+    `SELECT o.*, r.name AS room_name, r.size_x, r.size_y, r.grid_division
+     FROM agent_hq_offices o
+     JOIN rooms r ON r.id = o.room_id
+     WHERE o.hq_id = $1
+     ORDER BY o.is_primary DESC, o.created_at ASC`,
+    [hqId]
+  );
+  return rows.map(row => ({
+    ...rowToOffice(row),
+    roomName: row.room_name,
+    roomSize: [row.size_x, row.size_y],
+    gridDivision: row.grid_division,
+  }));
+}
+
+export async function getOffice(officeId) {
+  if (!pool) return null;
+  const { rows } = await pool.query(`SELECT * FROM agent_hq_offices WHERE id = $1`, [officeId]);
+  return rowToOffice(rows[0]);
+}
+
+export async function deleteOffice(officeId) {
+  if (!pool) return;
+  await pool.query(`DELETE FROM agent_hq_offices WHERE id = $1`, [officeId]);
+}
+
+export async function setHqPrimaryOffice(hqId, officeId) {
+  if (!pool) return null;
+  // Clear existing primary, then set new one
+  await pool.query(
+    `UPDATE agent_hq_offices SET is_primary = false, updated_at = NOW() WHERE hq_id = $1 AND is_primary = true`,
+    [hqId]
+  );
+  const { rows } = await pool.query(
+    `UPDATE agent_hq_offices SET is_primary = true, updated_at = NOW()
+     WHERE id = $1 AND hq_id = $2
+     RETURNING *`,
+    [officeId, hqId]
+  );
+  return rowToOffice(rows[0]);
+}
+
+export async function linkExistingRoomAsOffice(hqId, roomId, name, purpose = '') {
+  if (!pool) return null;
+  const { rows } = await pool.query(
+    `INSERT INTO agent_hq_offices (hq_id, room_id, name, purpose)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (room_id) DO UPDATE SET
+       hq_id      = EXCLUDED.hq_id,
+       name       = EXCLUDED.name,
+       purpose    = EXCLUDED.purpose,
+       updated_at = NOW()
+     RETURNING *`,
+    [hqId, roomId, name, purpose]
+  );
+  return rowToOffice(rows[0]);
+}
+
+// --- Assignments ---
+
+export async function assignAgentToOffice(officeId, agentId, isPrimaryForAgent = false) {
+  if (!pool) return null;
+  const { rows } = await pool.query(
+    `INSERT INTO agent_hq_office_assignments (office_id, agent_id, is_primary_for_agent)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (office_id, agent_id) DO UPDATE SET
+       is_primary_for_agent = EXCLUDED.is_primary_for_agent
+     RETURNING *`,
+    [officeId, agentId, isPrimaryForAgent]
+  );
+  return rowToAssignment(rows[0]);
+}
+
+export async function unassignAgentFromOffice(officeId, agentId) {
+  if (!pool) return;
+  await pool.query(
+    `DELETE FROM agent_hq_office_assignments WHERE office_id = $1 AND agent_id = $2`,
+    [officeId, agentId]
+  );
+}
+
+export async function listOfficeAssignments(officeId) {
+  if (!pool) return [];
+  const { rows } = await pool.query(
+    `SELECT aa.*, a.name, a.display_name, a.avatar_url, a.status
+     FROM agent_hq_office_assignments aa
+     JOIN agents a ON a.id = aa.agent_id
+     WHERE aa.office_id = $1
+     ORDER BY aa.created_at ASC`,
+    [officeId]
+  );
+  return rows.map(row => ({
+    ...rowToAssignment(row),
+    name: row.name,
+    displayName: row.display_name,
+    avatarUrl: row.avatar_url,
+    status: row.status,
+  }));
+}
+
+export async function getAgentOfficeAssignments(agentId) {
+  if (!pool) return [];
+  const { rows } = await pool.query(
+    `SELECT aa.*, o.name AS office_name, o.hq_id, o.room_id, o.purpose, o.is_primary AS office_is_primary
+     FROM agent_hq_office_assignments aa
+     JOIN agent_hq_offices o ON o.id = aa.office_id
+     WHERE aa.agent_id = $1
+     ORDER BY aa.is_primary_for_agent DESC, aa.created_at ASC`,
+    [agentId]
+  );
+  return rows.map(row => ({
+    ...rowToAssignment(row),
+    officeName: row.office_name,
+    hqId: row.hq_id,
+    roomId: row.room_id,
+    purpose: row.purpose,
+    officeIsPrimary: row.office_is_primary,
+  }));
+}
+
+// --- Bootstrap ---
+
+/**
+ * Idempotent bootstrap of the default shared HQ.
+ * Creates 'Agent HQ' (slug: 'agent-hq') if missing.
+ * If officeRoomId is provided, links that room as the primary office named 'Bot Office'.
+ * Returns the HQ record.
+ */
+export async function bootstrapDefaultHq(officeRoomId = null) {
+  if (!pool) return null;
+
+  // Upsert the default HQ
+  const { rows: hqRows } = await pool.query(
+    `INSERT INTO agent_hqs (slug, name, description)
+     VALUES ('agent-hq', 'Agent HQ', 'Default shared HQ for ClaudBots')
+     ON CONFLICT (slug) DO UPDATE SET updated_at = NOW()
+     RETURNING *`,
+    []
+  );
+  const hq = rowToHq(hqRows[0]);
+
+  if (officeRoomId) {
+    // Link the room as the primary office (idempotent)
+    const office = await linkExistingRoomAsOffice(hq.id, officeRoomId, 'Bot Office', 'Default bot workspace');
+    if (office && !office.isPrimary) {
+      await setHqPrimaryOffice(hq.id, office.id);
+    }
+  }
+
+  return hq;
 }
