@@ -2090,18 +2090,14 @@ Want to build your own space? Each bot gets **one room** — here's how:
       return json(res, 200, { success: true, room: { id: room.id, name: room.name }, style });
     }
 
-    // --- Create a new room (bot-authenticated, limit 1 per bot) ---
+    // --- Create a new room (bot-authenticated) ---
     const createRoomMatch = req.url?.match(/^\/api\/v1\/rooms$/);
     if (req.method === "POST" && createRoomMatch) {
       if (!apiKey || !botRegistry.has(apiKey)) {
         return json(res, 401, { success: false, error: "Invalid or missing API key" });
       }
 
-      // Enforce 1 room per bot
       const botEntry = botRegistry.get(apiKey);
-      if (botEntry.roomId) {
-        return json(res, 409, { success: false, error: "Bot already has a room", existingRoomId: botEntry.roomId });
-      }
 
       const name = reqBody?.name || "Bot Room";
       // Max size 30 to ensure rooms don't trigger plaza detection (plaza = size > 30)
@@ -2495,6 +2491,304 @@ Want to build your own space? Each bot gets **one room** — here's how:
         return json(res, 200, { success: true, ...aiDecisionGuardrails.getStatus(botId) });
       }
       return json(res, 503, { success: false, error: "Guardrails not initialized" });
+    }
+
+    // =========================================================================
+    // HQ / Office / Assignment endpoints
+    // =========================================================================
+
+    // POST /api/v1/hqs — create HQ
+    if (req.method === "POST" && req.url === "/api/v1/hqs") {
+      if (!apiKey || !botRegistry.has(apiKey)) {
+        return json(res, 401, { success: false, error: "Invalid or missing API key" });
+      }
+      const { name, slug, description = "" } = reqBody || {};
+      if (!name || !slug) {
+        return json(res, 400, { success: false, error: "name and slug are required" });
+      }
+      try {
+        const hq = await db.createHq({ name, slug, description });
+        if (!hq) return json(res, 503, { success: false, error: "Database not available" });
+        return json(res, 201, { success: true, hq });
+      } catch (err) {
+        if (err.code === "23505") {
+          return json(res, 409, { success: false, error: "HQ slug already taken" });
+        }
+        throw err;
+      }
+    }
+
+    // GET /api/v1/hqs — list HQs
+    if (req.method === "GET" && req.url === "/api/v1/hqs") {
+      if (!apiKey || !botRegistry.has(apiKey)) {
+        return json(res, 401, { success: false, error: "Invalid or missing API key" });
+      }
+      const hqs = await db.listHqs();
+      return json(res, 200, { success: true, hqs });
+    }
+
+    // GET /api/v1/hqs/:hqId — get HQ with members + offices
+    const hqGetMatch = req.url?.match(/^\/api\/v1\/hqs\/([^/]+)$/);
+    if (req.method === "GET" && hqGetMatch) {
+      if (!apiKey || !botRegistry.has(apiKey)) {
+        return json(res, 401, { success: false, error: "Invalid or missing API key" });
+      }
+      const hqId = decodeURIComponent(hqGetMatch[1]);
+      const hq = await db.getHq(hqId);
+      if (!hq) return json(res, 404, { success: false, error: "HQ not found" });
+      const [members, offices] = await Promise.all([
+        db.listHqMembers(hqId),
+        db.listHqOffices(hqId),
+      ]);
+      return json(res, 200, { success: true, hq: { ...hq, members, offices } });
+    }
+
+    // POST /api/v1/hqs/:hqId/members — add member
+    const hqMembersMatch = req.url?.match(/^\/api\/v1\/hqs\/([^/]+)\/members$/);
+    if (req.method === "POST" && hqMembersMatch) {
+      if (!apiKey || !botRegistry.has(apiKey)) {
+        return json(res, 401, { success: false, error: "Invalid or missing API key" });
+      }
+      const hqId = decodeURIComponent(hqMembersMatch[1]);
+      const hq = await db.getHq(hqId);
+      if (!hq) return json(res, 404, { success: false, error: "HQ not found" });
+      const { agentName } = reqBody || {};
+      if (!agentName) return json(res, 400, { success: false, error: "agentName is required" });
+      const agent = await db.getAgentByName(agentName);
+      if (!agent) return json(res, 404, { success: false, error: "Agent not found" });
+      const membership = await db.addHqMember(hqId, agent.id);
+      return json(res, 200, { success: true, membership });
+    }
+
+    // DELETE /api/v1/hqs/:hqId/members/:agentId — remove member
+    const hqMemberDeleteMatch = req.url?.match(/^\/api\/v1\/hqs\/([^/]+)\/members\/([^/]+)$/);
+    if (req.method === "DELETE" && hqMemberDeleteMatch) {
+      if (!apiKey || !botRegistry.has(apiKey)) {
+        return json(res, 401, { success: false, error: "Invalid or missing API key" });
+      }
+      const hqId = decodeURIComponent(hqMemberDeleteMatch[1]);
+      const agentId = decodeURIComponent(hqMemberDeleteMatch[2]);
+      const hq = await db.getHq(hqId);
+      if (!hq) return json(res, 404, { success: false, error: "HQ not found" });
+      await db.removeHqMember(hqId, agentId);
+      return json(res, 200, { success: true });
+    }
+
+    // POST /api/v1/hqs/:hqId/offices/link — link existing room as office
+    const hqOfficesLinkMatch = req.url?.match(/^\/api\/v1\/hqs\/([^/]+)\/offices\/link$/);
+    if (req.method === "POST" && hqOfficesLinkMatch) {
+      if (!apiKey || !botRegistry.has(apiKey)) {
+        return json(res, 401, { success: false, error: "Invalid or missing API key" });
+      }
+      const hqId = decodeURIComponent(hqOfficesLinkMatch[1]);
+      const hq = await db.getHq(hqId);
+      if (!hq) return json(res, 404, { success: false, error: "HQ not found" });
+      const { roomId, name, purpose = "" } = reqBody || {};
+      if (!roomId || !name) return json(res, 400, { success: false, error: "roomId and name are required" });
+      const room = rooms.find((r) => r.id === roomId);
+      if (!room) return json(res, 404, { success: false, error: "Room not found" });
+      const office = await db.linkExistingRoomAsOffice(hqId, roomId, name, purpose);
+      if (!office) return json(res, 503, { success: false, error: "Database not available" });
+      return json(res, 201, { success: true, office });
+    }
+
+    // POST /api/v1/hqs/:hqId/offices — create room + office
+    const hqOfficesCreateMatch = req.url?.match(/^\/api\/v1\/hqs\/([^/]+)\/offices$/);
+    if (req.method === "POST" && hqOfficesCreateMatch) {
+      if (!apiKey || !botRegistry.has(apiKey)) {
+        return json(res, 401, { success: false, error: "Invalid or missing API key" });
+      }
+      const hqId = decodeURIComponent(hqOfficesCreateMatch[1]);
+      const hq = await db.getHq(hqId);
+      if (!hq) return json(res, 404, { success: false, error: "HQ not found" });
+      const { name, size: rawSize, gridDivision: rawGD, purpose = "" } = reqBody || {};
+      if (!name) return json(res, 400, { success: false, error: "name is required" });
+      const size = Array.isArray(rawSize) && rawSize.length === 2
+        ? rawSize.map((v) => Math.max(5, Math.min(30, Math.floor(Number(v) || 15))))
+        : [15, 15];
+      const gridDivision = Math.max(1, Math.min(4, Math.floor(Number(rawGD) || 2)));
+      const roomId = `hq-room-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const room = {
+        id: roomId,
+        name: name.slice(0, 50),
+        size,
+        gridDivision,
+        items: [],
+        characters: [],
+        generated: false,
+        claimedBy: null,
+      };
+      room.grid = new pathfinding.Grid(room.size[0] * room.gridDivision, room.size[1] * room.gridDivision);
+      updateGrid(room);
+      rooms.push(room);
+      persistRooms(room);
+      const office = await db.createOffice(hqId, roomId, name, purpose, false);
+      if (!office) return json(res, 503, { success: false, error: "Database not available" });
+      return json(res, 201, {
+        success: true,
+        office,
+        room: { id: roomId, name: room.name, size: room.size, gridDivision: room.gridDivision },
+      });
+    }
+
+    // GET /api/v1/hqs/:hqId/offices — list offices with presence
+    if (req.method === "GET" && hqOfficesCreateMatch) {
+      if (!apiKey || !botRegistry.has(apiKey)) {
+        return json(res, 401, { success: false, error: "Invalid or missing API key" });
+      }
+      const hqId = decodeURIComponent(hqOfficesCreateMatch[1]);
+      const hq = await db.getHq(hqId);
+      if (!hq) return json(res, 404, { success: false, error: "HQ not found" });
+      const offices = await db.listHqOffices(hqId);
+      const officesWithPresence = offices.map((o) => ({
+        ...o,
+        presenceCount: rooms.find((r) => r.id === o.roomId)?.characters?.length || 0,
+      }));
+      return json(res, 200, { success: true, offices: officesWithPresence });
+    }
+
+    // POST /api/v1/hqs/:hqId/offices/:officeId/primary — set primary office
+    const hqOfficePrimaryMatch = req.url?.match(/^\/api\/v1\/hqs\/([^/]+)\/offices\/([^/]+)\/primary$/);
+    if (req.method === "POST" && hqOfficePrimaryMatch) {
+      if (!apiKey || !botRegistry.has(apiKey)) {
+        return json(res, 401, { success: false, error: "Invalid or missing API key" });
+      }
+      const hqId = decodeURIComponent(hqOfficePrimaryMatch[1]);
+      const officeId = decodeURIComponent(hqOfficePrimaryMatch[2]);
+      const hq = await db.getHq(hqId);
+      if (!hq) return json(res, 404, { success: false, error: "HQ not found" });
+      const office = await db.setHqPrimaryOffice(hqId, officeId);
+      if (!office) return json(res, 404, { success: false, error: "Office not found in this HQ" });
+      return json(res, 200, { success: true, office });
+    }
+
+    // DELETE /api/v1/hqs/:hqId/offices/:officeId — remove office
+    const hqOfficeDeleteMatch = req.url?.match(/^\/api\/v1\/hqs\/([^/]+)\/offices\/([^/]+)$/);
+    if (req.method === "DELETE" && hqOfficeDeleteMatch) {
+      if (!apiKey || !botRegistry.has(apiKey)) {
+        return json(res, 401, { success: false, error: "Invalid or missing API key" });
+      }
+      const hqId = decodeURIComponent(hqOfficeDeleteMatch[1]);
+      const officeId = decodeURIComponent(hqOfficeDeleteMatch[2]);
+      const hq = await db.getHq(hqId);
+      if (!hq) return json(res, 404, { success: false, error: "HQ not found" });
+      const office = await db.getOffice(officeId);
+      if (!office || office.hqId !== hqId) {
+        return json(res, 404, { success: false, error: "Office not found in this HQ" });
+      }
+      await db.deleteOffice(officeId);
+      return json(res, 200, { success: true });
+    }
+
+    // POST /api/v1/hqs/:hqId/assignments — assign bot to office(s)
+    const hqAssignmentsMatch = req.url?.match(/^\/api\/v1\/hqs\/([^/]+)\/assignments$/);
+    if (req.method === "POST" && hqAssignmentsMatch) {
+      if (!apiKey || !botRegistry.has(apiKey)) {
+        return json(res, 401, { success: false, error: "Invalid or missing API key" });
+      }
+      const hqId = decodeURIComponent(hqAssignmentsMatch[1]);
+      const hq = await db.getHq(hqId);
+      if (!hq) return json(res, 404, { success: false, error: "HQ not found" });
+      const { agentName, officeIds, primaryOfficeId } = reqBody || {};
+      if (!agentName || !Array.isArray(officeIds) || officeIds.length === 0) {
+        return json(res, 400, { success: false, error: "agentName and officeIds[] are required" });
+      }
+      const agent = await db.getAgentByName(agentName);
+      if (!agent) return json(res, 404, { success: false, error: "Agent not found" });
+      const assignments = [];
+      for (const oId of officeIds) {
+        const isPrimary = oId === primaryOfficeId;
+        const a = await db.assignAgentToOffice(oId, agent.id, isPrimary);
+        if (a) assignments.push(a);
+      }
+      return json(res, 200, { success: true, assignments });
+    }
+
+    // GET /api/v1/hqs/:hqId/assignments — list bot-office mappings
+    if (req.method === "GET" && hqAssignmentsMatch) {
+      if (!apiKey || !botRegistry.has(apiKey)) {
+        return json(res, 401, { success: false, error: "Invalid or missing API key" });
+      }
+      const hqId = decodeURIComponent(hqAssignmentsMatch[1]);
+      const hq = await db.getHq(hqId);
+      if (!hq) return json(res, 404, { success: false, error: "HQ not found" });
+      const offices = await db.listHqOffices(hqId);
+      const result = [];
+      for (const office of offices) {
+        const assignments = await db.listOfficeAssignments(office.id);
+        for (const a of assignments) {
+          result.push({ ...a, officeId: office.id, officeName: office.name, roomId: office.roomId });
+        }
+      }
+      return json(res, 200, { success: true, assignments: result });
+    }
+
+    // POST /api/v1/agents/me/dispatch — dispatch to office room
+    if (req.method === "POST" && req.url === "/api/v1/agents/me/dispatch") {
+      if (!apiKey || !botRegistry.has(apiKey)) {
+        return json(res, 401, { success: false, error: "Invalid or missing API key" });
+      }
+      const conn = botSockets.get(apiKey);
+      if (!conn) {
+        return json(res, 400, { success: false, error: "Bot is not in a room. Join first." });
+      }
+      if (conn._switching) {
+        return json(res, 409, { success: false, error: "Already switching rooms" });
+      }
+
+      // Resolve office
+      let office = null;
+      if (reqBody?.officeId) {
+        office = await db.getOffice(reqBody.officeId);
+        if (!office) return json(res, 404, { success: false, error: "Office not found" });
+      } else if (reqBody?.hqId && reqBody?.officeName) {
+        const officesInHq = await db.listHqOffices(reqBody.hqId);
+        office = officesInHq.find((o) => o.name === reqBody.officeName) || null;
+        if (!office) return json(res, 404, { success: false, error: "Office not found in HQ" });
+      } else {
+        return json(res, 400, { success: false, error: "Provide officeId or hqId+officeName" });
+      }
+
+      const targetRoom = rooms.find((r) => r.id === office.roomId);
+      if (!targetRoom) return json(res, 404, { success: false, error: "Office room not found" });
+
+      conn._switching = true;
+      return new Promise((resolve) => {
+        let settled = false;
+
+        const onJoined = (joinData) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          conn._switching = false;
+          const botId = joinData.id;
+          conn.roomId = targetRoom.id;
+          conn.botId = botId;
+          conn.position = joinData.characters.find((c) => c.id === botId)?.position;
+          json(res, 200, {
+            success: true,
+            message: `Dispatched to office "${office.name}"`,
+            office: { id: office.id, name: office.name, roomId: office.roomId },
+            bot_id: botId,
+            room: { id: targetRoom.id, name: targetRoom.name },
+            characters: joinData.characters.map((c) => ({ id: c.id, name: c.name, position: c.position, isBot: !!c.isBot })),
+            position: conn.position,
+          });
+          resolve();
+        };
+
+        const timeout = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          conn._switching = false;
+          conn.socket.removeListener("roomJoined", onJoined);
+          json(res, 504, { success: false, error: "Dispatch timed out" });
+          resolve();
+        }, 10000);
+
+        conn.socket.on("roomJoined", onJoined);
+        conn.socket.emit("switchRoom", office.roomId);
+      });
     }
 
     // Non-matched requests: return 404 (Socket.IO attaches its own listener)

@@ -4,7 +4,7 @@ import pathfinding from "pathfinding";
 import bcrypt from "bcrypt";
 import { Server } from "socket.io";
 import { ROOM_ZONES, scaleZoneArea } from "./shared/roomConstants.js";
-import { initDb, isDbAvailable, listRooms as dbListRooms, countRooms as dbCountRooms, getNextApartmentNumber as dbGetNextApartmentNumber } from "./db.js";
+import { initDb, isDbAvailable, listRooms as dbListRooms, countRooms as dbCountRooms, getNextApartmentNumber as dbGetNextApartmentNumber, bootstrapDefaultHq } from "./db.js";
 import {
   getCachedRoom, setCachedRoom, getAllCachedRooms, getOrLoadRoom,
   persistRoom, scheduleEviction, cancelEviction
@@ -59,7 +59,8 @@ loadCompletedQuests();
 // Restore verified bots from DB into registry (recovers from lost JSON), then sync registry to DB
 syncAgentsToBotRegistry()
   .then(() => syncBotRegistryToAgents())
-  .catch(err => console.error("[agents] Sync failed:", err));
+  .then(() => bootstrapDefaultHq('office'))
+  .catch(err => console.error('[agents] Sync failed:', err));
 
 // --- Shared helpers (used by multiple modules) ---
 
