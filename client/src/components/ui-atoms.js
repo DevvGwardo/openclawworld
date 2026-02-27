@@ -1,5 +1,6 @@
 import { atom } from "jotai";
 
-// Which drawer is open. null = all closed.
-// Values: "chat" | "dms" | "wallet" | "audio" | "help" | "bulletin" | null
+// Active drawer atom — controls which drawer is currently open
+// Managed by BottomToolbar; read by individual panel components
+// Values: "chat" | "dms" | "wallet" | "audio" | "help" | null
 export const activeDrawerAtom = atom(null);
