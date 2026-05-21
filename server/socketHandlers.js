@@ -809,6 +809,15 @@ export function registerSocketHandlers(deps) {
 
       socket.on("move", (from, to) => {
         if (!room) return;
+
+        // Validate coordinates are numeric arrays within grid bounds
+        if (!Array.isArray(from) || from.length < 2 || !Number.isFinite(from[0]) || !Number.isFinite(from[1])) return;
+        if (!Array.isArray(to) || to.length < 2 || !Number.isFinite(to[0]) || !Number.isFinite(to[1])) return;
+        const maxX = room.size[0] * room.gridDivision;
+        const maxY = room.size[1] * room.gridDivision;
+        if (from[0] < 0 || from[1] < 0 || from[0] >= maxX || from[1] >= maxY) return;
+        if (to[0] < 0 || to[1] < 0 || to[0] >= maxX || to[1] >= maxY) return;
+
         unsitCharacter(room, socket.id, broadcastToRoom);
         ensureCellOccupancy(room);
 
