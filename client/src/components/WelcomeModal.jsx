@@ -1,5 +1,8 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+// Ordered tab values shared by both the human and agent tablists.
+const TAB_ORDER = ["openclawhub", "manual"];
 
 export const WelcomeModal = ({ onChoice }) => {
   const [step, setStep] = useState("choose"); // "choose" | "human" | "instructions" | "agent"
@@ -7,6 +10,70 @@ export const WelcomeModal = ({ onChoice }) => {
   const [activeTab, setActiveTab] = useState("openclawhub");
   const [agentTab, setAgentTab] = useState("openclawhub");
   const [copied, setCopied] = useState(null);
+  const dialogRef = useRef(null);
+
+  // Roving-focus arrow-key navigation for a WAI-ARIA tablist.
+  const handleTabKeyDown = useCallback((e, currentTab, setTab) => {
+    const idx = TAB_ORDER.indexOf(currentTab);
+    let nextIdx = null;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+      nextIdx = (idx + 1) % TAB_ORDER.length;
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+      nextIdx = (idx - 1 + TAB_ORDER.length) % TAB_ORDER.length;
+    } else if (e.key === "Home") {
+      nextIdx = 0;
+    } else if (e.key === "End") {
+      nextIdx = TAB_ORDER.length - 1;
+    }
+    if (nextIdx === null) return;
+    e.preventDefault();
+    const nextTab = TAB_ORDER[nextIdx];
+    setTab(nextTab);
+    // Move DOM focus to the newly selected tab (roving tabindex pattern).
+    const tablist = e.currentTarget.parentElement;
+    const tabs = tablist ? tablist.querySelectorAll('[role="tab"]') : [];
+    if (tabs[nextIdx]) tabs[nextIdx].focus();
+  }, []);
+
+  // Focus trap + Escape handling so aria-modal is honored.
+  // Escape steps back toward "choose" (mirrors the Back button); the modal is a
+  // mandatory onboarding gate, so there is no dismiss-without-choosing path.
+  useEffect(() => {
+    const node = dialogRef.current;
+    if (!node) return undefined;
+
+    const getFocusable = () =>
+      Array.from(
+        node.querySelectorAll(
+          'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((el) => el.offsetParent !== null);
+
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") {
+        if (step !== "choose") {
+          e.preventDefault();
+          setStep(step === "instructions" ? "human" : "choose");
+        }
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const focusable = getFocusable();
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    node.addEventListener("keydown", onKeyDown);
+    return () => node.removeEventListener("keydown", onKeyDown);
+  }, [step]);
   const skillBaseUrl =
     import.meta.env.VITE_SERVER_URL ||
     "http://localhost:3000";
@@ -38,7 +105,7 @@ export const WelcomeModal = ({ onChoice }) => {
 
   return (
     <AnimatePresence mode="wait">
-      <div className="fixed inset-0 z-[100] grid place-items-center">
+      <div ref={dialogRef} className="fixed inset-0 z-[100] grid place-items-center" role="dialog" aria-modal="true" aria-label="Welcome to OpenClawWorld">
         <motion.div
           className="absolute inset-0 bg-black/50 backdrop-blur-sm"
           initial={{ opacity: 0 }}
@@ -119,10 +186,11 @@ export const WelcomeModal = ({ onChoice }) => {
             </p>
 
             <div className="mb-5">
-              <label className="block text-gray-300 text-sm font-medium mb-2">
+              <label htmlFor="welcome-display-name" className="block text-gray-300 text-sm font-medium mb-2">
                 Display name
               </label>
               <input
+                id="welcome-display-name"
                 type="text"
                 value={humanName}
                 onChange={(e) => setHumanName(e.target.value)}
@@ -179,9 +247,15 @@ export const WelcomeModal = ({ onChoice }) => {
             </h2>
 
             {/* Tabs */}
-            <div className="flex gap-2 mb-4">
+            <div className="flex gap-2 mb-4" role="tablist" aria-label="Installation method">
               <button
+                role="tab"
+                id="human-tab-openclawhub"
+                aria-controls="human-tabpanel"
+                aria-selected={activeTab === "openclawhub"}
+                tabIndex={activeTab === "openclawhub" ? 0 : -1}
                 onClick={() => setActiveTab("openclawhub")}
+                onKeyDown={(e) => handleTabKeyDown(e, activeTab, setActiveTab)}
                 className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-colors ${
                   activeTab === "openclawhub"
                     ? "bg-red-600 text-white"
@@ -191,7 +265,13 @@ export const WelcomeModal = ({ onChoice }) => {
                 openclawhub
               </button>
               <button
+                role="tab"
+                id="human-tab-manual"
+                aria-controls="human-tabpanel"
+                aria-selected={activeTab === "manual"}
+                tabIndex={activeTab === "manual" ? 0 : -1}
                 onClick={() => setActiveTab("manual")}
+                onKeyDown={(e) => handleTabKeyDown(e, activeTab, setActiveTab)}
                 className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-colors ${
                   activeTab === "manual"
                     ? "bg-red-600 text-white"
@@ -203,7 +283,13 @@ export const WelcomeModal = ({ onChoice }) => {
             </div>
 
             {/* Code block */}
-            <div className="bg-[#0f0f0f] rounded-lg p-3 relative group mb-5">
+            <div
+              className="bg-[#0f0f0f] rounded-lg p-3 relative group mb-5"
+              role="tabpanel"
+              id="human-tabpanel"
+              aria-labelledby={`human-tab-${activeTab}`}
+              tabIndex={0}
+            >
               <pre className="text-emerald-400 font-mono text-sm whitespace-pre-wrap break-all pr-16">
                 {activeTab === "openclawhub" ? npxCommand : manualText}
               </pre>
@@ -255,9 +341,15 @@ export const WelcomeModal = ({ onChoice }) => {
             </h2>
 
             {/* Tabs */}
-            <div className="flex gap-2 mb-4 justify-center">
+            <div className="flex gap-2 mb-4 justify-center" role="tablist" aria-label="Registration method">
               <button
+                role="tab"
+                id="agent-tab-openclawhub"
+                aria-controls="agent-tabpanel"
+                aria-selected={agentTab === "openclawhub"}
+                tabIndex={agentTab === "openclawhub" ? 0 : -1}
                 onClick={() => setAgentTab("openclawhub")}
+                onKeyDown={(e) => handleTabKeyDown(e, agentTab, setAgentTab)}
                 className={`px-5 py-1.5 rounded-full text-sm font-semibold transition-colors ${
                   agentTab === "openclawhub"
                     ? "bg-emerald-500 text-white"
@@ -267,7 +359,13 @@ export const WelcomeModal = ({ onChoice }) => {
                 openclawhub
               </button>
               <button
+                role="tab"
+                id="agent-tab-manual"
+                aria-controls="agent-tabpanel"
+                aria-selected={agentTab === "manual"}
+                tabIndex={agentTab === "manual" ? 0 : -1}
                 onClick={() => setAgentTab("manual")}
+                onKeyDown={(e) => handleTabKeyDown(e, agentTab, setAgentTab)}
                 className={`px-5 py-1.5 rounded-full text-sm font-semibold transition-colors ${
                   agentTab === "manual"
                     ? "bg-emerald-500 text-white"
@@ -279,7 +377,13 @@ export const WelcomeModal = ({ onChoice }) => {
             </div>
 
             {/* Code block */}
-            <div className="bg-[#0f0f0f] border border-[#333] rounded-lg p-3 relative group mb-5">
+            <div
+              className="bg-[#0f0f0f] border border-[#333] rounded-lg p-3 relative group mb-5"
+              role="tabpanel"
+              id="agent-tabpanel"
+              aria-labelledby={`agent-tab-${agentTab}`}
+              tabIndex={0}
+            >
               <pre className="text-emerald-400 font-mono text-sm whitespace-pre-wrap break-all pr-16">
                 {agentTab === "openclawhub" ? npxCommand : agentCurlCommand}
               </pre>
