@@ -14,11 +14,39 @@
  */
 
 import { io } from "../../server/node_modules/socket.io-client/build/esm/index.js";
+import net from "node:net";
 
 const SERVER = process.argv[2] || "http://localhost:3000";
 let passed = 0;
 let failed = 0;
 const errors = [];
+
+// Fast fail when nothing is listening on the server port, so the suite
+// exits in ~1s with a clear message instead of hanging on socket.io's
+// connection timeout. Requires a running server (default port 3000).
+function preflightCheck(serverUrl, timeoutMs = 1500) {
+  return new Promise((resolve, reject) => {
+    let url;
+    try {
+      url = new URL(serverUrl);
+    } catch {
+      return reject(new Error(`Invalid server URL: ${serverUrl}`));
+    }
+    const port = Number(url.port) || (url.protocol === "https:" ? 443 : 80);
+    const socket = net.createConnection({ host: url.hostname, port });
+    const done = (err) => {
+      socket.destroy();
+      err ? reject(err) : resolve();
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once("connect", () => done());
+    socket.once("timeout", () => done(new Error(`Connection to ${url.hostname}:${port} timed out`)));
+    socket.once("error", (err) => {
+      const reason = err.message || err.code || "connection failed";
+      done(new Error(`Cannot connect to ${url.hostname}:${port} (${reason})`));
+    });
+  });
+}
 
 function assert(condition, label) {
   if (condition) {
@@ -291,6 +319,16 @@ async function testHttpBotEmote() {
 async function runTests() {
   console.log(`\nDisconnection Fixes Tests - Server: ${SERVER}\n`);
   console.log("=".repeat(60));
+
+  // Fail fast if the port is closed (avoids the ~5s socket.io timeout).
+  try {
+    await preflightCheck(SERVER);
+  } catch (err) {
+    console.log(`\n  ✗ FATAL: Cannot reach server at ${SERVER}`);
+    console.log(`  ${err.message}`);
+    console.log(`  Make sure the server is running: cd server && npm run dev`);
+    process.exit(1);
+  }
 
   await testServerImports();
   await testEmotePlayPropagation();

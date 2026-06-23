@@ -2,7 +2,10 @@
   "type": "module",
   "scripts": {
     "dev": "nodemon index.js --ignore '*.json'",
-    "start": "NODE_ENV=production node index.js"
+    "start": "NODE_ENV=production node index.js",
+    "test": "node ../tests/manual/test-bot-invite.js && node ../tests/manual/test-disconnection-fixes.js",
+    "test:invite": "node ../tests/manual/test-bot-invite.js",
+    "test:disconnection": "node ../tests/manual/test-disconnection-fixes.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
