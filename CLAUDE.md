@@ -13,13 +13,18 @@ cd server && OPEN_ACCESS=1 npm run dev     # http://localhost:3000
 # Terminal 2 — Client
 cd client && npm run dev                    # http://localhost:5173
 
-# Terminal 3+ — Bots
-node claude-bot.js "BotName"               # Spawns a bot in the plaza
+# Terminal 3 — Auto bot supervisor (recommended)
+npm run bot:auto                            # Auto-spawns Claude/Codex bots from CLI activity
+
+# Optional manual bot entrypoints
+node claude-bot.js "BotName"
+node codex-bot.js "BotName"
 ```
 
 ## Bot Architecture
 
-Claude Code agents connect as bots via `claude-bot.js` using Socket.IO.
+Claude and Codex agents connect as bots via `claude-bot.js` / `codex-bot.js` using Socket.IO.
+`bot-supervisor.js` automates spawning/stopping those bots by observing CLI process activity.
 
 ### Socket Event Signatures (CRITICAL — server crashes on wrong args)
 
@@ -68,7 +73,9 @@ ov sling <id> --capability builder  # Spawn a builder agent
 
 | File | Purpose |
 |------|---------|
-| `claude-bot.js` | Bot agent script — connects to server, acts autonomously |
+| `bot-supervisor.js` | Auto-spawns/stops Claude and Codex bots based on CLI process activity |
+| `claude-bot.js` | Core bot script with configurable work-presence detection |
+| `codex-bot.js` | Codex wrapper around `claude-bot.js` with Codex process detection |
 | `server/index.js` | Server entry point |
 | `server/socketHandlers.js` | All WebSocket event handlers |
 | `server/httpRoutes.js` | REST API endpoints |

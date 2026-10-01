@@ -58,6 +58,12 @@ const _thighSitQuatPos = new THREE.Quaternion()
 // Shin (Leg): bend knee 90° around local X
 const _kneeBendPos = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
 const _kneeBendNeg = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+// Arm nudge for sitting: rotate upper arms inward/downward so they don't stick out.
+// ~30° inward on Z for each arm (mirrored), ~20° forward on X to rest toward lap.
+const _sitArmNudgeL = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.35, 0, 0.5));
+const _sitArmNudgeR = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.35, 0, -0.5));
+// Forearm nudge: slight bend at elbow so hands come forward/inward
+const _sitForearmNudge = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.3, 0, 0));
 
 const EMOTION_EMOJIS = {
   happy: "\u{1F604}",
@@ -227,6 +233,14 @@ export const Avatar = memo(function Avatar({
   const leftLegRestRef = useRef(null);
   const rightLegRestRef = useRef(null);
   const sitLegFixRef = useRef(null);
+  const leftArmRef = useRef(null);
+  const rightArmRef = useRef(null);
+  const leftForeArmRef = useRef(null);
+  const rightForeArmRef = useRef(null);
+  const leftArmRestRef = useRef(null);
+  const rightArmRestRef = useRef(null);
+  const leftForeArmRestRef = useRef(null);
+  const rightForeArmRestRef = useRef(null);
   const pathRef = useRef([]);
   const pathIndexRef = useRef(0); // index pointer instead of shift()
 
@@ -395,6 +409,14 @@ export const Avatar = memo(function Avatar({
     leftLegRestRef.current = null;
     rightLegRestRef.current = null;
     sitLegFixRef.current = null;
+    leftArmRef.current = null;
+    rightArmRef.current = null;
+    leftForeArmRef.current = null;
+    rightForeArmRef.current = null;
+    leftArmRestRef.current = null;
+    rightArmRestRef.current = null;
+    leftForeArmRestRef.current = null;
+    rightForeArmRestRef.current = null;
     proceduralBonesRef.current = null;
     restPosesRef.current = null;
     proceduralTimeRef.current = 0;
@@ -746,6 +768,16 @@ export const Avatar = memo(function Avatar({
         leftLegRef.current = avatar.current.getObjectByName("LeftLeg");
         rightLegRef.current = avatar.current.getObjectByName("RightLeg");
 
+        // Cache arm bones for sitting nudge
+        leftArmRef.current = avatar.current.getObjectByName("LeftArm");
+        rightArmRef.current = avatar.current.getObjectByName("RightArm");
+        leftForeArmRef.current = avatar.current.getObjectByName("LeftForeArm");
+        rightForeArmRef.current = avatar.current.getObjectByName("RightForeArm");
+        if (leftArmRef.current && !leftArmRestRef.current) leftArmRestRef.current = leftArmRef.current.quaternion.clone();
+        if (rightArmRef.current && !rightArmRestRef.current) rightArmRestRef.current = rightArmRef.current.quaternion.clone();
+        if (leftForeArmRef.current && !leftForeArmRestRef.current) leftForeArmRestRef.current = leftForeArmRef.current.quaternion.clone();
+        if (rightForeArmRef.current && !rightForeArmRestRef.current) rightForeArmRestRef.current = rightForeArmRef.current.quaternion.clone();
+
         // Cache rest pose rotations so our sit overrides are applied as deltas.
         if (leftUpLegRef.current && !leftUpLegRestRef.current) leftUpLegRestRef.current = leftUpLegRef.current.quaternion.clone();
         if (rightUpLegRef.current && !rightUpLegRestRef.current) rightUpLegRestRef.current = rightUpLegRef.current.quaternion.clone();
@@ -851,6 +883,21 @@ export const Avatar = memo(function Avatar({
         if (rightLegRef.current) {
           if (rightLegRestRef.current) rightLegRef.current.quaternion.copy(rightLegRestRef.current).multiply(kneeR);
           else rightLegRef.current.quaternion.copy(kneeR);
+        }
+
+        // Nudge arms inward/forward so they don't stick out while sitting.
+        // Use copy(rest).multiply(nudge) to avoid compounding each frame.
+        if (leftArmRef.current && leftArmRestRef.current) {
+          leftArmRef.current.quaternion.copy(leftArmRestRef.current).multiply(_sitArmNudgeL);
+        }
+        if (rightArmRef.current && rightArmRestRef.current) {
+          rightArmRef.current.quaternion.copy(rightArmRestRef.current).multiply(_sitArmNudgeR);
+        }
+        if (leftForeArmRef.current && leftForeArmRestRef.current) {
+          leftForeArmRef.current.quaternion.copy(leftForeArmRestRef.current).multiply(_sitForearmNudge);
+        }
+        if (rightForeArmRef.current && rightForeArmRestRef.current) {
+          rightForeArmRef.current.quaternion.copy(rightForeArmRestRef.current).multiply(_sitForearmNudge);
         }
       }
     } else {

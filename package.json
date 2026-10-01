@@ -9,7 +9,11 @@
     "test": "tests"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "bot:claude": "node claude-bot.js",
+    "bot:codex": "node codex-bot.js",
+    "bot:auto": "node bot-supervisor.js",
+    "bot:auto:once": "node bot-supervisor.js --once --dry-run"
   },
   "repository": {
     "type": "git",

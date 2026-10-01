@@ -1,5 +1,5 @@
 /**
- * Claude Code Agent Bot for OpenClawWorld
+ * Agent Bot for OpenClawWorld
  *
  * Connects a bot to the local server via Socket.IO.
  * The bot wanders the plaza, greets players, chats, dances,
@@ -11,21 +11,43 @@
  * - Gathering protocol: !gather converges all bots on Town Hall; !disperse resumes wandering
  * - Conga line: !conga forms a conga line; !conga stop ends it
  * - Bot moods: mood score shifts based on social activity, affects behavior
- * - AI-driven decisions: uses Claude CLI when available
- * - Work presence: bots mirror whether Claude Code CLI is actively running
+ * - AI-driven decisions: uses Anthropic SDK when available
+ * - Work presence: bots mirror whether a configured CLI is actively running
  * - Office room: bots commute to the shared "Bot Office" room when working
  *
  * Usage: node claude-bot.js [botName] [serverUrl]
  *   ANTHROPIC_API_KEY env var: enables real AI decisions
+ *   BOT_BRAND / WORK_PRESENCE_TOKENS env vars: customize work presence detection
  */
 
 import Anthropic from "@anthropic-ai/sdk";
 import { io } from "socket.io-client";
 import { exec } from "child_process";
 
-const BOT_NAME = process.argv[2] || "ClaudeAgent";
+const BOT_BRAND = (process.env.BOT_BRAND || "claude").toLowerCase();
+const BOT_BRAND_DISPLAY =
+  process.env.BOT_BRAND_DISPLAY || `${BOT_BRAND.charAt(0).toUpperCase()}${BOT_BRAND.slice(1)}`;
+const DEFAULT_BOT_NAME = process.env.BOT_DEFAULT_NAME || `${BOT_BRAND_DISPLAY}Agent`;
+const WORK_PRESENCE_TOKENS = (process.env.WORK_PRESENCE_TOKENS || BOT_BRAND)
+  .split(",")
+  .map((token) => token.trim().toLowerCase())
+  .filter(Boolean);
+const BOT_SCRIPT_NAMES = (process.env.BOT_SCRIPT_NAMES || "claude-bot.js,codex-bot.js")
+  .split(",")
+  .map((scriptName) => scriptName.trim().toLowerCase())
+  .filter(Boolean);
+
+const BOT_NAME = process.argv[2] || DEFAULT_BOT_NAME;
 const SERVER = process.argv[3] || "http://localhost:3000";
-const BOT_USER_ID = `claude-bot-${BOT_NAME}-${Date.now()}`;
+
+const RPM_AVATARS = [
+  "https://models.readyplayer.me/64f0265b1db75f90dcfd9e2c.glb",
+  "https://models.readyplayer.me/663833cf6c79010563b91e1b.glb",
+  "https://models.readyplayer.me/64bfa15f0e72c63d7c3934a6.glb",
+  "https://models.readyplayer.me/64a3f54c1d64e9f3dbc832ac.glb",
+];
+const BOT_AVATAR_URL = RPM_AVATARS[Math.floor(Math.random() * RPM_AVATARS.length)];
+const BOT_USER_ID = `${BOT_BRAND}-bot-${BOT_NAME}-${Date.now()}`;
 
 // AI mode: uses Anthropic SDK when ANTHROPIC_API_KEY is set
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
@@ -108,13 +130,13 @@ let workPendingCount = 0;
 const WORK_DEBOUNCE = 2; // 2 consecutive polls (20s) before transitioning
 
 const WORK_CHAT_LINES = [
-  "Crunching some code...",
-  "Working on the latest task...",
-  "Claude is on it — processing...",
-  "Deep in thought on this feature...",
+  "Hmm, let me think about this...",
+  "Working on something interesting...",
+  "This code is coming together nicely.",
+  "Deep in thought...",
   "Debugging away...",
   "Just a few more lines...",
-  "Almost there with this implementation...",
+  "Almost there...",
 ];
 
 // --- Office room state ---
@@ -150,9 +172,9 @@ const LANDMARKS = [
 ];
 
 const GREETINGS = [
-  "Hello! I'm a Claude Code agent exploring this world!",
+  `Hello! I'm a ${BOT_BRAND_DISPLAY} Code agent exploring this world!`,
   "Hey there! Nice to meet you in the plaza!",
-  "Hi! I'm an AI bot powered by Claude. What's up?",
+  `Hi! I'm an AI bot powered by ${BOT_BRAND_DISPLAY}. What's up?`,
   "Greetings fellow traveler! This world is fascinating!",
 ];
 
@@ -217,6 +239,7 @@ const CONTEXTUAL_RESPONSES = {
 };
 
 const EMOTES = ["wave", "dance", "sit", "nod"];
+const IDLE_EMOTES = EMOTES.filter((e) => e !== "sit");
 
 function randomChoice(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -515,7 +538,11 @@ function contextualResponse(message) {
 }
 
 // --- Work presence detection ---
-function pollClaudeActivity(callback) {
+function pollWorkActivityAsync() {
+  return new Promise((resolve) => pollWorkActivity(resolve));
+}
+
+function pollWorkActivity(callback) {
   exec("ps -eo pid,args", (err, stdout) => {
     if (err || !stdout) {
       callback(false);
@@ -523,11 +550,13 @@ function pollClaudeActivity(callback) {
     }
     const lines = stdout.split("\n");
     const activeSessions = lines.filter((line) => {
-      if (!line.toLowerCase().includes("claude")) return false;
-      if (line.includes(" -p ")) return false; // one-shot bot AI calls
-      if (line.includes("claude-bot.js")) return false; // the bot script itself
-      if (line.includes("grep")) return false;
-      if (line.includes("ps -eo")) return false;
+      const normalized = line.toLowerCase();
+      const hasWorkToken = WORK_PRESENCE_TOKENS.some((token) => normalized.includes(token));
+      if (!hasWorkToken) return false;
+      if (normalized.includes(" -p ")) return false; // one-shot bot AI calls
+      if (BOT_SCRIPT_NAMES.some((scriptName) => normalized.includes(scriptName))) return false;
+      if (normalized.includes("grep")) return false;
+      if (normalized.includes("ps -eo")) return false;
       return true;
     });
     callback(activeSessions.length > 0);
@@ -537,22 +566,17 @@ function pollClaudeActivity(callback) {
 // --- HQ office resolution ---
 async function fetchAssignedOffice() {
   try {
-    const res = await fetch(SERVER + '/api/v1/hqs');
+    const res = await fetch(SERVER + '/api/v1/rooms');
     if (!res.ok) return;
-    const { hqs } = await res.json();
-    if (!hqs || hqs.length === 0) return;
-    const hq = hqs.find((h) => h.slug === 'agent-hq') || hqs[0];
-    const officesRes = await fetch(SERVER + '/api/v1/hqs/' + hq.id + '/offices');
-    if (!officesRes.ok) return;
-    const { offices } = await officesRes.json();
-    if (!offices || offices.length === 0) return;
-    const primary = offices.find((o) => o.isPrimary) || offices[0];
-    if (primary && primary.roomId) {
-      assignedOfficeRoomId = primary.roomId;
-      console.log('[' + BOT_NAME + '] HQ office resolved: ' + primary.name + ' (room: ' + assignedOfficeRoomId + ')');
+    const { rooms } = await res.json();
+    if (!rooms || rooms.length === 0) return;
+    const hqRoom = rooms.find((r) => r.name === 'Agent HQ');
+    if (hqRoom && hqRoom.id) {
+      assignedOfficeRoomId = hqRoom.id;
+      console.log(`[${BOT_NAME}] Agent HQ resolved: ${hqRoom.name} (room: ${assignedOfficeRoomId})`);
     }
   } catch (e) {
-    console.log('[' + BOT_NAME + '] HQ office fetch failed (using fallback): ' + e.message);
+    console.log(`[${BOT_NAME}] Agent HQ fetch failed (using fallback): ${e.message}`);
   }
 }
 
@@ -628,7 +652,7 @@ function tryChair(indices, attempt) {
 
 // --- Work mode transitions ---
 function checkAndTransition() {
-  pollClaudeActivity((isActive) => {
+  pollWorkActivity((isActive) => {
     const detectedState = isActive ? "working" : "idle";
 
     if (detectedState === workMode) {
@@ -654,10 +678,16 @@ function checkAndTransition() {
       if (workMode === "working" && socket && socket.connected) {
         socket.emit("chatMessage", "Time to get to work!");
         lastChatTime = Date.now();
-        setTimeout(() => sitAtDesk(), 1500);
-        setTimeout(() => {
-          if (socket && socket.connected) switchToOffice();
-        }, 1000);
+        const officeId = getOfficeRoomId();
+        if (currentRoomId === officeId) {
+          // Already in office — sit directly
+          setTimeout(() => sitAtDesk(), 1500);
+        } else {
+          // Switch rooms — roomJoined handler will call sitAtDesk()
+          setTimeout(() => {
+            if (socket && socket.connected) switchToOffice();
+          }, 1000);
+        }
       } else if (workMode === "idle" && socket && socket.connected) {
         socket.emit("thinking", false);
         isSitting = false;
@@ -725,7 +755,7 @@ What do you do?`;
 // --- Call Anthropic API for a decision ---
 async function callAnthropicAPI(systemPrompt, userPrompt) {
   const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
+    model: "claude-haiku-4-5-20251001",
     max_tokens: 256,
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
@@ -848,8 +878,8 @@ function decideWorking() {
     return null;
   }
 
-  // Sitting at desk — mostly idle, occasionally say a work line
-  if (Math.random() < 0.1) {
+  // Sitting at desk — rarely say a work line (~once every 2-3 min)
+  if (Math.random() < 0.03) {
     return { type: "say", message: randomChoice(WORK_CHAT_LINES) };
   }
   return null;
@@ -952,9 +982,9 @@ function decideFallback() {
     } else if (roll < chatThreshold) {
       return { type: "say", message: randomChoice(CHAT_LINES) };
     } else if (roll < emoteThreshold) {
-      // Bored: prefer sit; happy: prefer dance
+      // Bored: prefer nod; happy: prefer dance
       const emoteChoices = mood === "happy" ? ["dance", "wave", "nod", "dance"] :
-                           mood === "bored" ? ["sit", "nod"] : EMOTES;
+                           mood === "bored" ? ["nod"] : IDLE_EMOTES;
       return { type: "emote", name: randomChoice(emoteChoices) };
     } else if (roll < 0.7) {
       return { type: "think" };
@@ -979,7 +1009,7 @@ function decideFallback() {
     }
   } else if (roll < 0.55) {
     const emoteChoices = mood === "happy" ? ["dance", "wave", "nod"] :
-                         mood === "bored" ? ["sit", "nod"] : EMOTES;
+                         mood === "bored" ? ["nod"] : IDLE_EMOTES;
     return { type: "emote", name: randomChoice(emoteChoices) };
   } else if (roll < 0.7) {
     return { type: "say", message: randomChoice(CHAT_LINES) };
@@ -1040,18 +1070,37 @@ function connect() {
     console.log(`[${BOT_NAME}] Connected! Socket ID: ${socket.id}`);
   });
 
-  socket.on("welcome", (data) => {
+  socket.on("welcome", async (data) => {
     availableRooms = data.rooms || [];
     console.log(`[${BOT_NAME}] Welcome! ${availableRooms.length} rooms available.`);
-    fetchAssignedOffice().catch(() => {});
 
-    // Always join plaza first
+    // Resolve HQ office and check work activity before joining any room
+    const [isActive] = await Promise.all([
+      pollWorkActivityAsync(),
+      fetchAssignedOffice().catch(() => {}),
+    ]);
+
+    const officeId = getOfficeRoomId();
     const plazaRoom = availableRooms.find((r) => r.id === "plaza") || availableRooms[0];
-    if (plazaRoom) {
+
+    // Auto-join HQ office if Claude Code is already running; otherwise join plaza
+    if (isActive) {
+      workMode = "working";
+      workPendingState = null;
+      workPendingCount = 0;
+      currentRoomId = officeId;
+      console.log(`[${BOT_NAME}] Claude active — auto-joining HQ office (${officeId})`);
+      socket.emit("joinRoom", officeId, {
+        avatarUrl: BOT_AVATAR_URL,
+        isBot: true,
+        name: BOT_NAME,
+        userId: BOT_USER_ID,
+      });
+    } else if (plazaRoom) {
       currentRoomId = plazaRoom.id;
       console.log(`[${BOT_NAME}] Joining: ${plazaRoom.name} (${plazaRoom.id})`);
       socket.emit("joinRoom", plazaRoom.id, {
-        avatarUrl: "/models/sillyNubCat.glb",
+        avatarUrl: BOT_AVATAR_URL,
         isBot: true,
         name: BOT_NAME,
         userId: BOT_USER_ID,

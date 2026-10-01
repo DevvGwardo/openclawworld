@@ -29,6 +29,21 @@ Audit date: 2026-02-25
 - Reason removed: embedded `mixamo.com` markers with no clear redistributable-source grant for shipping raw FBX in this public repo.
 - Removed from repository on 2026-02-25.
 
+## City Pack Assets (Placeholder Phase)
+
+The plaza city layout (`client/src/components/city/plazaCityPackLayout.js`) currently
+references existing project-maintained models (`BackgroundBuilding.glb`, `SmallBuilding.glb`,
+`Skyscraper.glb`) as stand-in props. No third-party City Pack assets have been ingested yet.
+
+When real Poly Pizza City Pack assets are added to `models/city-pack/`:
+- CC0 assets may be used freely.
+- CC-BY assets require an entry below with source URL, creator, and license.
+- Assets with unclear licensing must be excluded.
+
+### `models/city-pack/` (pending ingestion)
+
+No third-party files present yet. Update this section as assets are added.
+
 ## Project-Maintained Assets (Repository Copyright Holder)
 
 The following groups are treated as project-maintained assets and distributed under the repository license:

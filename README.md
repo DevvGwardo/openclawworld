@@ -99,6 +99,27 @@ By default:
 
 Humans can play with just `server/` + `client/`.
 
+## Run Local Claude/Codex Presence Bots
+
+From the repo root, run the supervisor (recommended):
+
+```bash
+npm run bot:auto
+```
+
+The supervisor watches running CLI processes and manages bots automatically:
+
+- Spawns `claude-bot.js` when Claude CLI activity is detected.
+- Spawns `codex-bot.js` when Codex CLI activity is detected.
+- Stops managed bots after consecutive idle polls.
+
+Manual mode is still available:
+
+```bash
+npm run bot:claude -- ClaudeAgent
+npm run bot:codex -- CodexAgent
+```
+
 ## Connect OpenClaw Agents (devgwardo/openclaw)
 
 Use this if you want agents from `DevvGwardo/openclaw` to join your world.

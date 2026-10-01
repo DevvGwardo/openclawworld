@@ -15,6 +15,12 @@ import { ShopBuilding } from "./ShopBuilding";
 import { SmallBuilding } from "./SmallBuilding";
 import { Skyscraper } from "./Skyscraper";
 import { BulletinBoard } from "./BulletinBoard";
+import { CityPackProp } from "./city/CityPackProp";
+import {
+  PLAZA_CITYPACK_PROPS_CORE,
+  PLAZA_CITYPACK_PROPS_EDGES,
+  PLAZA_CITYPACK_PROPS_DETAILS,
+} from "./city/plazaCityPackLayout";
 import { showRoomSelectorAtom } from "./UI";
 
 class AvatarErrorBoundary extends Component {
@@ -426,6 +432,17 @@ export const Room = () => {
           <Skyscraper scale={5.9} position={[map.size[0] - 5.5, 0, 5.5]} />
           <Skyscraper scale={5.9} position={[5.5, 0, map.size[1] - 5.5]} />
           <Skyscraper scale={5.9} position={[map.size[0] - 5.5, 0, map.size[1] - 5.5]} />
+
+          {/* City Pack props — additive city dressing */}
+          {[...PLAZA_CITYPACK_PROPS_CORE, ...PLAZA_CITYPACK_PROPS_EDGES, ...PLAZA_CITYPACK_PROPS_DETAILS].map((prop) => (
+            <CityPackProp
+              key={prop.id}
+              src={prop.src}
+              position={prop.position}
+              rotationY={prop.rotationY}
+              scale={prop.scale}
+            />
+          ))}
         </group>
       )}
 
