@@ -34,6 +34,13 @@ npm run dev          # nodemon on port 3000
 cd client
 yarn install
 yarn dev             # Vite on port 5174
+
+# Terminal 3 — Auto bot supervisor (recommended)
+npm run bot:auto                            # Auto-spawns Claude/Codex bots from CLI activity
+
+# Optional manual bot entrypoints
+node claude-bot.js "BotName"
+node codex-bot.js "BotName"
 ```
 
 Open `http://localhost:5174` in your browser.
@@ -43,6 +50,10 @@ Open `http://localhost:5174` in your browser.
 - **Back-end always runs on port `3000`** — configured via `server/.env` (`PORT=3000`)
 - **Server CORS must allow port `5174`** — configured via `server/.env` (`CLIENT_URL=http://localhost:5174`)
 - **Client connects to server** via `VITE_SERVER_URL=http://localhost:3000` in `client/.env`
+
+## Bot Agents
+Claude and Codex agents connect as bots via `claude-bot.js` / `codex-bot.js` using Socket.IO.
+`bot-supervisor.js` automates spawning/stopping those bots by observing CLI process activity.
 
 If CORS errors occur, verify `CLIENT_URL=http://localhost:5174` in `server/.env`.
 
@@ -63,7 +74,7 @@ All assets live in `client/public/` and are served as static files:
 | `sillyNubCat.glb` | — | Fallback avatar model |
 
 ### Furniture/Item Models (`client/public/models/items/`)
-Each item has a corresponding `.glb` file loaded dynamically via `useGLTF(\`/models/items/${name}.glb\`)`:
+Each item has a corresponding `.glb` file loaded dynamically via `useGLTF(\`/models/items/${name}.glb\)`:
 
 **Living**: `loungeSofa`, `loungeChair`, `loungeDesignSofa`, `loungeDesignSofaCorner`, `loungeSofaCorner`, `loungeSofaOttoman`, `tableCoffee`, `tableCoffeeGlassSquare`, `televisionModern`, `televisionVintage`, `speaker`, `speakerSmall`, `lampRoundFloor`, `lampRoundTable`, `lampSquareFloor`, `lampSquareTable`, `plant`, `plantSmall`, `rugRectangle`, `rugRound`, `rugRounded`, `rugSquare`, `radio`
 
@@ -105,6 +116,21 @@ Each item has a corresponding `.glb` file loaded dynamically via `useGLTF(\`/mod
 | `WelcomeModal` | `WelcomeModal.jsx` | Entry/login modal |
 | `Lobby` | `Lobby.jsx` | Pre-room lobby scene |
 | `Shop` | `Shop.jsx` | Item preview in shop UI |
+
+### Bot & Server Files
+
+| File | Purpose |
+|------|---------|
+| `bot-supervisor.js` | Auto-spawns/stops Claude and Codex bots based on CLI process activity |
+| `claude-bot.js` | Core bot script with configurable work-presence detection |
+| `codex-bot.js` | Codex wrapper around `claude-bot.js` with Codex process detection |
+| `server/index.js` | Server entry point |
+| `server/socketHandlers.js` | All WebSocket event handlers |
+| `server/httpRoutes.js` | REST API endpoints |
+| `server/pathfinding.js` | A* grid pathfinding |
+| `client/src/components/SocketManager.jsx` | Client WebSocket manager |
+| `skill.md` | Full bot API documentation |
+| `.overstory/specs/` | Task specifications |
 
 ## Room System
 - Rooms have `size` (world units), `gridDivision`, and a pathfinding grid
