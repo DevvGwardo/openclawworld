@@ -1,8 +1,15 @@
 name: CI
 
 on:
+  push:
+    branches: [master]
   pull_request:
   workflow_dispatch:
+
+concurrency:
+  # A pushed fix supersedes the run it replaces; PR runs cancel on the older head.
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -44,9 +51,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          while IFS= read -r -d '' file; do
+          # server/ plus the bot entry points at the repository root (claude-bot.js, codex-bot.js, bot-supervisor.js).
+          {
+            find server -type f -name '*.js' -not -path '*/node_modules/*' -print0
+            find . -maxdepth 1 -type f -name '*.js' -print0
+          } | while IFS= read -r -d '' file; do
             node --check "$file"
-          done < <(find server -type f -name '*.js' -not -path '*/node_modules/*' -print0)
+          done
 
   package-smoke:
     runs-on: ubuntu-latest
